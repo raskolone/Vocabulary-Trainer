@@ -30,6 +30,7 @@
     "dist",
     "node_modules",
     "functions",
+    "scripts/archive",
     "*.cjs",
     "*.js"
   ]
