@@ -4,7 +4,7 @@ import {
   Plus, Edit2, Trash2, Save, Download, Share2, Eye, EyeOff, 
   Clock, BookOpen, Layers, FileText, CheckCircle2, RotateCcw,
   Zap, Copy, Check, MessageSquare, Volume2, Folder, Wand2,
-  Bookmark, Shield, AlertCircle
+  Bookmark, Shield, AlertCircle, PenLine
 } from 'lucide-react';
 import { 
   User, 
@@ -27,6 +27,7 @@ import { AiDeckGeneratorModal } from './AiDeckGeneratorModal';
 import { ImportDeckModal } from './ImportDeckModal';
 import { AiGuidelinesModal } from './AiGuidelinesModal';
 import { SlideAiAssistantModal } from './SlideAiAssistantModal';
+import Whiteboard from './Whiteboard';
 import Button from '../../ui/Button';
 
 interface LessonPresentationViewProps {
@@ -58,6 +59,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
 
   // Layout & Presentation Modes
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
   const [showNotebook, setShowNotebook] = useState(true);
   const [laserPointerActive, setLaserPointerActive] = useState(false);
   const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
@@ -147,6 +149,11 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         setShowNotebook(prev => !prev);
+      } else if (e.key === 'w' || e.key === 'W') {
+        // Tablica pod jednym klawiszem — sięga się po nią w środku zdania,
+        // więc szukanie przycisku myszą byłoby przerwą w lekcji.
+        e.preventDefault();
+        setIsWhiteboardOpen(prev => !prev);
       }
     };
 
@@ -283,6 +290,19 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
 
         {/* Toolbar Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Tablica wchodzi na wierzch prezentacji: lektor rysuje w środku
+              zdania i wraca do slajdu tam, gdzie był. */}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setIsWhiteboardOpen(true)}
+            className="text-xs font-bold flex items-center gap-1.5"
+            title="Tablica do rysowania"
+          >
+            <PenLine size={14} />
+            <span className="hidden sm:inline">Tablica</span>
+          </Button>
+
           <Button
             size="sm"
             variant="secondary"
@@ -650,6 +670,8 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
         studentId={selectedUser?.id}
         studentName={studentName}
       />
+
+      {isWhiteboardOpen && <Whiteboard onClose={() => setIsWhiteboardOpen(false)} />}
     </div>
   );
 };

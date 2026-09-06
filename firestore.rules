@@ -462,6 +462,38 @@ service cloud.firestore {
     match /lessonScenarios/{scenarioId} {
       allow read, write: if isAdmin();
     }
+
+    // ---------------------------------------------------------------
+    // Testy otwarte (publicTests)
+    // ---------------------------------------------------------------
+    //
+    // Jedyna kolekcja czytana bez logowania — kandydat na kursanta z definicji
+    // nie ma jeszcze konta. Sekretem jest kod dostępu, który jest zarazem id
+    // dokumentu, więc `get` po znanym kodzie przechodzi, a `list` nie: bez tego
+    // rozróżnienia dowolna osoba pobrałaby wszystkie testy razem z kluczami
+    // odpowiedzi. Firestore rozdziela te operacje, gdy reguła odwołuje się do
+    // konkretnego dokumentu — stąd osobne `get` i `list` zamiast `read`.
+    match /publicTests/{code} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+
+      // Podejścia kandydatów. Każdy z kodem może dopisać własne, nikt poza
+      // lektorem nie może ich czytać ani zmieniać — inaczej kolejny kandydat
+      // otwierałby odpowiedzi poprzednika.
+      match /submissions/{submissionId} {
+        allow get, list: if isAdmin();
+        allow create: if request.resource.data.keys().hasAll(['candidateName', 'answers', 'submittedAt'])
+          && request.resource.data.keys().hasOnly(['candidateName', 'candidateEmail', 'answers', 'score', 'maxScore', 'estimatedLevel', 'aiFeedback', 'submittedAt'])
+          && request.resource.data.candidateName is string
+          && request.resource.data.candidateName.size() <= 200
+          && (!('candidateEmail' in request.resource.data) || (request.resource.data.candidateEmail is string && request.resource.data.candidateEmail.size() <= 200))
+          && request.resource.data.answers is map
+          && request.resource.data.answers.keys().size() <= 100
+          && isValidDateString(request.resource.data.submittedAt);
+        allow update, delete: if isAdmin();
+      }
+    }
     // Baza tematów i inne wspólne ustawienia — czyta każdy zalogowany,
     // zapisuje wyłącznie nauczyciel. Rolę "teacher" obsługuje już isAdmin(),
     // więc osobny warunek na nią był zbędny i tylko powielał odczyt dokumentu.

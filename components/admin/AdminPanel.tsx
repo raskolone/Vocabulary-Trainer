@@ -21,6 +21,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import AdminTestGenerator from './AdminTestGenerator';
 import AllTestsTeacherView from './AllTestsTeacherView';
+import PublicTestPanel from './PublicTestPanel';
 
 import TeacherDashboardStats from './TeacherDashboardStats';
 import TeacherSpecialTaskModal from './TeacherSpecialTaskModal';
@@ -2095,6 +2096,25 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               <HomeworkScreen 
                 initialStudentId={selectedUser?.id || null}
               />
+            </div>
+          )}
+
+          {/* Zakładka testów. Kafelek i nagłówek istniały, ale nic pod nimi się
+              nie renderowało — generator i przegląd testów były zaimportowane i
+              nieużywane, więc kliknięcie „Testy" prowadziło na pustą stronę. */}
+          {activeTab === 'tests' && (
+            <div className="space-y-8">
+              <AdminTestGenerator user={selectedUser} users={users} />
+
+              {/* Testy otwarte: dla kandydatów, których nie ma jeszcze w bazie.
+                  Wystawia się je w generatorze wyżej, a tutaj żyją ich kody,
+                  linki i podejścia. */}
+              <div className="space-y-3">
+                <h3 className="text-xl font-bold">Testy otwarte (bez przypisanego kursanta)</h3>
+                {currentUser?.id && <PublicTestPanel teacherId={currentUser.id} />}
+              </div>
+
+              <AllTestsTeacherView />
             </div>
           )}
 

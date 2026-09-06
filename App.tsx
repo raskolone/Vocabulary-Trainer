@@ -12,6 +12,7 @@ import ForcePasswordChangeScreen from './components/auth/ForcePasswordChangeScre
 import GlobalErrorBoundary from './components/ui/GlobalErrorBoundary';
 import ConstellationBackground from './components/ui/ConstellationBackground';
 import StarterVocabularyApp from './components/starter/StarterVocabularyApp';
+import PublicTestScreen, { publicTestCodeFromLocation } from './components/tests/PublicTestScreen';
 import { AdminAIActivityMonitor } from './components/admin/AdminAIActivityMonitor';
 import { handleGlobalEscape } from './utils/modalStack';
 
@@ -52,6 +53,13 @@ const AppContent: React.FC = () => {
 
   if (typeof window !== 'undefined' && window.location.pathname === '/starter') {
     return <StarterVocabularyApp />;
+  }
+
+  // Test poziomujący z linku. Stoi przed sprawdzeniem logowania, bo kandydat
+  // z definicji nie ma konta — czekanie na `isAuthReady` pokazywałoby mu
+  // najpierw spinner, a potem ekran logowania, którego nie potrzebuje.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/test')) {
+    return <PublicTestScreen initialCode={publicTestCodeFromLocation()} />;
   }
 
   if (!isAuthReady) {

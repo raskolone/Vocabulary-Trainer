@@ -609,3 +609,44 @@ export interface LessonPresentation {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Test otwarty — dla kandydatów, których nie ma jeszcze w bazie.
+ *
+ * Nie jest przypisany do żadnego konta, więc żyje w kolekcji głównej, a nie pod
+ * `users/{id}/tests`. Wejściem jest krótki kod, który lektor podaje kandydatowi:
+ * dokument ma ten kod jako własne id, dzięki czemu otwarcie testu to jeden
+ * odczyt po znanym adresie, bez przeszukiwania kolekcji.
+ */
+export interface PublicTest {
+  /** Kod dostępu — jednocześnie id dokumentu. */
+  id: string;
+  title: string;
+  /** Zakres materiału, na podstawie którego powstał test. */
+  scope: string;
+  instructions?: string;
+  questions: TestQuestion[];
+  /** UID lektora, który wystawił test. */
+  createdBy: string;
+  createdAt: string;
+  /** Wyłączony test nie przyjmuje nowych podejść, ale wyniki zostają. */
+  isActive: boolean;
+  /** Po tej dacie test przestaje wpuszczać. Puste — bez terminu. */
+  expiresAt?: string;
+  /** Ilu kandydatów już podeszło — licznik do listy lektora. */
+  submissionCount?: number;
+}
+
+/** Jedno podejście kandydata do testu otwartego. */
+export interface PublicTestSubmission {
+  id?: string;
+  candidateName: string;
+  candidateEmail?: string;
+  answers: Record<string, string>;
+  score?: number;
+  maxScore?: number;
+  /** Poziom oszacowany po wyniku — to po niego sięga lektor. */
+  estimatedLevel?: string;
+  aiFeedback?: string;
+  submittedAt: string;
+}

@@ -6,12 +6,14 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { generateTest, modifyTest } from '../../services/geminiService';
 import { useAuth } from '../../context/AuthContext';
-import { MessageSquare, BookOpen, Calendar, ChevronRight, CheckCircle, X, ChevronUp, ChevronDown, Edit2, Trash2, Plus, Eye, Sparkles } from 'lucide-react';
+import { MessageSquare, BookOpen, Calendar, ChevronRight, CheckCircle, X, ChevronUp, ChevronDown, Edit2, Trash2, Plus, Eye, Sparkles, Link2, Copy } from 'lucide-react';
 import TestPreviewModal from './TestPreviewModal';
 import ConfirmModal from '../ui/ConfirmModal';
 import TestEditModal from './TestEditModal';
 import i18n from "i18next";
 import { normalizePromptLines, parseNumberedItems } from '../../utils/testFormatters';
+import { createPublicTest } from '../../services/publicTest';
+import { buildPublicTestUrl, formatAccessCode } from '../../utils/accessCode';
 
 interface AdminTestGeneratorProps {
   user?: any;
@@ -39,6 +41,9 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
     writing: 1,
   });
   const [writingTopic, setWritingTopic] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
+  /** Kod świeżo wystawionego testu otwartego — pokazujemy go raz, po zapisie. */
+  const [publishedCode, setPublishedCode] = useState<string | null>(null);
 
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,7 +72,9 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
   const [driveLoading, setDriveLoading] = useState(false);
   const [driveError, setDriveError] = useState('');
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
-  const { connectGoogleDrive } = useAuth();
+  // `user` w tym komponencie to kursant, dla którego układamy test — zalogowany
+  // lektor jest tu osobną wartością, stąd alias.
+  const { connectGoogleDrive, user: authUser } = useAuth();
 
   const fetchDriveFiles = async () => {
     try {
@@ -377,6 +384,36 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
     }
   };
 
+  /**
+   * Wystawia wygenerowany test jako otwarty — bez przypisania do konta.
+   *
+   * Test poziomujący układa się z tego samego materiału co zwykły, więc nie ma
+   * powodu na osobny generator; różni się wyłącznie tym, dokąd trafia gotowy
+   * zestaw pytań i że zamiast terminu dostaje kod dostępu.
+   */
+  const handleSaveAsPublicTest = async () => {
+    if (!generatedQuestions || generatedQuestions.length === 0) return;
+    if (!authUser?.id) return alert('Musisz być zalogowany, żeby wystawić test.');
+
+    setIsPublishing(true);
+    try {
+      const created = await createPublicTest({
+        title: testTitle || 'Test poziomujący',
+        scope,
+        questions: generatedQuestions,
+        createdBy: authUser.id,
+      });
+      setPublishedCode(created.id);
+      setGeneratedQuestions(null);
+      setIsPreviewModalOpen(false);
+    } catch (err: any) {
+      console.error('Nie udało się wystawić testu otwartego:', err);
+      alert(err?.message || 'Nie udało się wystawić testu otwartego.');
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const handleSaveTest = async () => {
     if (!generatedQuestions || !user.id || !dueDate) return alert("Wybierz datę wykonania testu!");
     setIsSaving(true);
@@ -462,6 +499,39 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
 
   return (
     <div className="space-y-8">
+      {/* Kod świeżo wystawionego testu otwartego. Stoi na górze i nie znika sam:
+          to jedyny moment, w którym lektor go widzi, a bez niego test jest
+          nie do otwarcia dla nikogo. */}
+      {publishedCode && (
+        <Card className="p-6 border-primary/40 bg-primary/[0.07]">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-primary mb-1">
+                Test otwarty wystawiony
+              </p>
+              <p className="font-mono text-3xl font-black text-white tracking-[0.2em]">
+                {formatAccessCode(publishedCode)}
+              </p>
+              <p className="font-mono text-xs text-content-muted mt-2 break-all">
+                {buildPublicTestUrl(publishedCode)}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => navigator.clipboard?.writeText(buildPublicTestUrl(publishedCode)).catch(() => {})}
+                variant="secondary"
+                className="gap-1.5 text-sm border-primary/30 text-primary"
+              >
+                <Copy className="w-4 h-4" /> Kopiuj link
+              </Button>
+              <Button onClick={() => setPublishedCode(null)} variant="secondary" className="text-sm">
+                Zamknij
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {(!initialUser && users.length > 0) && (
         <Card className="p-6 bg-base-200/50">
           <label className="block text-sm font-bold text-content-muted mb-2">{i18n.t("Wybierz kursanta")}</label>
@@ -615,6 +685,18 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
 
                   <Button onClick={handleSaveTest} isLoading={isSaving} className="bg-primary text-accent-ink hover:bg-primary/90 px-5 py-2 text-sm font-bold shadow-lg shadow-primary/20">
                     {i18n.t("Przypisz Test")}
+                  </Button>
+
+                  {/* Ten sam wygenerowany test, ale dla kogoś spoza bazy: zamiast
+                      przypisania do konta powstaje kod dostępu i link. */}
+                  <Button
+                    onClick={handleSaveAsPublicTest}
+                    isLoading={isPublishing}
+                    variant="secondary"
+                    className="gap-1.5 px-4 py-2 text-sm font-bold border-primary/30 text-primary hover:bg-primary/10"
+                  >
+                    <Link2 className="w-4 h-4" />
+                    <span>Wystaw jako test otwarty</span>
                   </Button>
 
                   <button onClick={() => setIsPreviewModalOpen(false)} className="text-content-muted hover:text-white transition-colors p-2">
