@@ -44,6 +44,39 @@ class GlobalErrorBoundary extends Component<Props, State> {
             <p className="text-content-muted">
               Przepraszamy, coś poszło nie tak. Możesz odświeżyć stronę lub zgłosić ten problem.
             </p>
+
+            {/* Treść błędu wprost na ekranie. Bez tego jedyną drogą do przyczyny
+                była konsola przeglądarki — a zgłoszenie „aplikacja się wywaliła"
+                bez komunikatu nie pozwala niczego naprawić. Nazwa komponentu
+                z `componentStack` mówi, gdzie szukać, i mieści się w jednej linijce. */}
+            {this.state.error && (
+              <div className="text-left space-y-2 rounded-xl bg-black/40 border border-danger/25 p-4">
+                <p className="font-mono text-[13px] text-danger break-words">
+                  {this.state.error.toString()}
+                </p>
+                {this.state.errorInfo?.componentStack && (
+                  <p className="font-mono text-[11px] text-content-muted break-words">
+                    w komponencie:{' '}
+                    {this.state.errorInfo.componentStack
+                      .split('\n')
+                      .map((line) => line.trim())
+                      .filter(Boolean)
+                      .slice(0, 3)
+                      .join(' → ')}
+                  </p>
+                )}
+                <button
+                  onClick={() => {
+                    const text = `${this.state.error?.toString()}\n\n${this.state.errorInfo?.componentStack || ''}`;
+                    navigator.clipboard?.writeText(text).catch(() => {});
+                  }}
+                  className="text-[12px] font-bold text-content-muted underline hover:text-white"
+                >
+                  Kopiuj szczegóły błędu
+                </button>
+              </div>
+            )}
+
             <div className="flex gap-4 justify-center">
               <button 
                 onClick={() => window.location.reload()}
