@@ -72,7 +72,9 @@ const AppContent: React.FC = () => {
   // dokładnie w chwili, w której prowadzący odkrywał odpowiedź — czyli w środku
   // ćwiczenia. Provider startuje z ustawień domyślnych, więc brak zalogowania
   // niczego tu nie blokuje.
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/present')) {
+  // Dokładne dopasowanie, nie `startsWith`: to okno nie ma parametrów w adresie,
+  // a przedrostek złapałby też każdą przyszłą ścieżkę zaczynającą się tak samo.
+  if (typeof window !== 'undefined' && /^\/present\/?$/.test(window.location.pathname)) {
     return (
       <SettingsProvider>
         <PresenterScreen />
