@@ -1674,7 +1674,7 @@ async function startServer() {
   const app = await createApp();
   // Hostingi (Vercel, Render, Railway, Cloud Run) wstrzykują port przez
   // środowisko. Zaszyta trójka działa tylko lokalnie.
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = 3000;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
