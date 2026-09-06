@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, Play, Square, Timer } from 'lucide-react';
-import { LessonPresentation, PresentationSlide } from '../../../types';
+import { LessonPresentation, LiveCorrectionItem, LiveVocabItem, PresentationSlide } from '../../../types';
 import { PRESENTER_PATH, PresenterLink, openPresenterLink } from '../../../utils/presenterChannel';
 import { EMPTY_SLIDE_INTERACTION, SlideInteraction } from './SlideCard';
 import type { Shape } from './whiteboardShapes';
@@ -23,6 +23,8 @@ interface PresenterPanelProps {
   interaction?: SlideInteraction;
   /** Rysunek z tablicy, jeśli jest otwarta. */
   whiteboard?: { shapes: Shape[]; width: number; height: number } | null;
+  /** Notatnik live — kursant widzi nowe słowa i poprawki na bieżąco. */
+  liveNotebook?: { vocab: LiveVocabItem[]; corrections: LiveCorrectionItem[] } | null;
 }
 
 /** Czas w formacie mm:ss — lekcja rzadko przekracza godzinę. */
@@ -52,6 +54,7 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
   onNavigate,
   interaction = EMPTY_SLIDE_INTERACTION,
   whiteboard = null,
+  liveNotebook = null,
 }) => {
   const linkRef = useRef<PresenterLink | null>(null);
   const [presenterWindow, setPresenterWindow] = useState<Window | null>(null);
@@ -82,8 +85,18 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
       interaction,
       whiteboard,
       timerEndsAt,
+      liveNotebook,
     });
-  }, [current, activeSlideIndex, deck.slides.length, deck.title, interaction, whiteboard, timerEndsAt]);
+  }, [
+    current,
+    activeSlideIndex,
+    deck.slides.length,
+    deck.title,
+    interaction,
+    whiteboard,
+    timerEndsAt,
+    liveNotebook,
+  ]);
 
   // Odliczanie należy do konkretnego ćwiczenia — przy przejściu dalej gasimy je,
   // żeby na następnym slajdzie nie tykał zegar od poprzedniego zadania.
@@ -111,6 +124,7 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
         interaction,
         whiteboard,
         timerEndsAt,
+        liveNotebook,
       });
     }, 600);
     if (!isRunning) setIsRunning(true);

@@ -1,6 +1,7 @@
 import { PresentationSlide } from '../types';
 import type { SlideInteraction } from '../components/admin/presentation/SlideCard';
 import type { Shape } from '../components/admin/presentation/whiteboardShapes';
+import type { LiveCorrectionItem, LiveVocabItem } from '../types';
 
 /**
  * Łącze między kartą lektora a oknem, które widzi kursant.
@@ -44,6 +45,12 @@ export interface PresenterState {
    * — inaczej trzeba by wysyłać tykanie co sekundę do wszystkich naraz.
    */
   timerEndsAt?: number | null;
+  /**
+   * Nowe słowa i poprawki zapisywane w trakcie zajęć. Kursant widzi je na
+   * bieżąco, zamiast dostawać dopiero po lekcji — poprawka przeczytana w chwili,
+   * w której padła, zostaje w głowie inaczej niż ta sama linijka w mailu.
+   */
+  liveNotebook?: { vocab: LiveVocabItem[]; corrections: LiveCorrectionItem[] } | null;
   /** Rośnie z każdą wiadomością — okno odrzuca to, co już pokazało. */
   revision: number;
 }

@@ -575,6 +575,10 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
             onNavigate={setActiveSlideIndex}
             interaction={slideInteraction}
             whiteboard={whiteboardShapes}
+            liveNotebook={{
+              vocab: currentDeck.liveVocab || [],
+              corrections: currentDeck.liveCorrections || [],
+            }}
           />
 
           {/* SLIDE NAVIGATION CONTROLS */}

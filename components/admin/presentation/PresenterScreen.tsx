@@ -7,6 +7,7 @@ import {
 } from '../../../utils/presenterChannel';
 import { fitCanvasToDisplay, renderShapes, scaleShapes } from './whiteboardShapes';
 import SlideTimer from './SlideTimer';
+import LiveNotesForStudent from './LiveNotesForStudent';
 
 /**
  * Okno, które widzi kursant.
@@ -85,8 +86,9 @@ const PresenterScreen: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-base-100 p-4 sm:p-8 flex items-center">
-      <div className="relative w-full max-w-6xl mx-auto">
+    <div className="min-h-screen bg-base-100 p-4 sm:p-8 flex flex-col justify-center">
+      <div className="w-full max-w-6xl mx-auto">
+      <div className="relative">
         <SlideCard
           slide={state.slide}
           slideIndex={state.slideIndex}
@@ -113,6 +115,14 @@ const PresenterScreen: React.FC = () => {
             <SlideTimer endsAt={state.timerEndsAt} />
           </div>
         ) : null}
+      </div>
+
+      {state.liveNotebook ? (
+        <LiveNotesForStudent
+          vocab={state.liveNotebook.vocab || []}
+          corrections={state.liveNotebook.corrections || []}
+        />
+      ) : null}
       </div>
     </div>
   );
