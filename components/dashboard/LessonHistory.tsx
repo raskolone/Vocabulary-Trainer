@@ -6,6 +6,7 @@ import { LessonRecord } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import AISkeletonLoader from '../ui/AISkeletonLoader';
+import Toast, { useToast } from '../ui/Toast';
 import { useLanguage } from '../../context/LanguageContext';
 import { generateHomework } from '../../services/geminiService';
 import Markdown from 'react-markdown';
@@ -15,6 +16,7 @@ const LessonHistory: React.FC = () => {
   const { language } = useLanguage();
   const { user } = useAuth();
   const isTeacher = user?.role === 'admin' || user?.role === 'teacher';
+  const { toast, showToast, dismissToast } = useToast();
   const [lessons, setLessons] = useState<LessonRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -52,7 +54,12 @@ const LessonHistory: React.FC = () => {
       setGeneratedHomework(prev => ({ ...prev, [lesson.id]: hw }));
     } catch (error) {
       console.error('Error generating homework:', error);
-      alert(language === 'pl' ? 'Wystąpił błąd podczas generowania pracy domowej.' : 'Failed to generate homework.');
+      showToast(
+        language === 'pl'
+          ? 'Nie udało się wygenerować pracy domowej. Spróbuj ponownie.'
+          : 'Could not generate the homework. Please try again.',
+        'warning'
+      );
     } finally {
       setGeneratingHomeworkFor(null);
     }
@@ -83,6 +90,8 @@ const LessonHistory: React.FC = () => {
   }
 
   return (
+    <>
+      <Toast toast={toast} onDismiss={dismissToast} />
     <Card>
       <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
         {language === 'pl' ? 'Historia lekcji' : 'Lesson History'}
@@ -203,6 +212,7 @@ const LessonHistory: React.FC = () => {
         ))}
       </div>
     </Card>
+    </>
   );
 };
 

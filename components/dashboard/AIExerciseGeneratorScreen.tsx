@@ -30,6 +30,7 @@ export interface CachedExerciseSet {
 import { getVocabularySetsForStudent, markVocabularySetAsUsed } from '../../services/lessonRecord';
 import { GENERAL_VOCABULARY_SETS, LEVEL_GROUPS } from '../../data/generalVocabulary';
 import Card from '../ui/Card';
+import Toast, { useToast } from '../ui/Toast';
 import PuzzleExercise from './PuzzleExercise';
 import Button from '../ui/Button';
 import ConfirmModal from '../ui/ConfirmModal';
@@ -614,7 +615,7 @@ const AIExerciseGeneratorScreen: React.FC<AIExerciseGeneratorScreenProps> = ({ i
 
   const handleStartBasketPractice = async (type: 'intro' | 'flashcards' | 'quiz' | 'match') => {
     if (!user?.id || basketWords.length === 0) {
-      alert(language === 'pl' ? 'Koszyk jest pusty! Dodaj najpierw słówka przyciskiem +' : 'Basket is empty! Add words first using +');
+      showToast(language === 'pl' ? 'Koszyk jest pusty — dodaj słówka przyciskiem +' : 'Basket is empty — add words with +', 'warning');
       return;
     }
     setIsLoading(true);
@@ -737,6 +738,9 @@ const AIExerciseGeneratorScreen: React.FC<AIExerciseGeneratorScreenProps> = ({ i
   const [activeTab, setActiveTab] = useState<'ai' | 'other'>('ai');
   const [selectedSetId, setSelectedSetId] = useState<string>('all');
   const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([]);
+  const { toast, showToast, dismissToast } = useToast();
+  /** Reset promptów potwierdzony pierwszym dotknięciem. */
+  const [confirmResetPrompts, setConfirmResetPrompts] = useState(false);
   const [level, setLevel] = useState<string>(user?.level || 'B1');
   const [numSentences, setNumSentences] = useState<number>(5);
   const [practiceMode, setPracticeMode] = useState<'fixed' | 'time'>('fixed');
@@ -1152,16 +1156,30 @@ const AIExerciseGeneratorScreen: React.FC<AIExerciseGeneratorScreenProps> = ({ i
   const handleSavePrompts = () => {
     (function(){ try { localStorage.setItem('ai_custom_gen_prompt', customGenPrompt); } catch(e) {} })();
     (function(){ try { localStorage.setItem('ai_custom_eval_prompt', customEvalPrompt); } catch(e) {} })();
-    alert(language === 'pl' ? 'Prompty zostały pomyślnie zapisane!' : 'Prompts saved successfully!');
+    showToast(language === 'pl' ? 'Prompty zapisane' : 'Prompts saved', 'success');
   };
 
+  /**
+   * Reset promptów kasuje własne ustawienia, więc pyta — ale nie oknem
+   * systemowym: pierwsze dotknięcie ostrzega, drugie wykonuje.
+   */
   const handleResetPrompts = () => {
-    if (window.confirm(language === 'pl' ? 'Czy na pewno chcesz zresetować prompty do domyślnych?' : 'Are you sure you want to reset prompts to default?')) {
-      setCustomGenPrompt(DEFAULT_GENERATION_PROMPT);
-      setCustomEvalPrompt(DEFAULT_EVALUATION_PROMPT);
-      (function(){ try { localStorage.removeItem('ai_custom_gen_prompt'); } catch(e) {} })();
-      (function(){ try { localStorage.removeItem('ai_custom_eval_prompt'); } catch(e) {} })();
+    if (!confirmResetPrompts) {
+      showToast(
+        language === 'pl'
+          ? 'To przywróci domyślne prompty i skasuje Twoje. Dotknij jeszcze raz, żeby potwierdzić.'
+          : 'This restores the default prompts and discards yours. Tap again to confirm.',
+        'warning'
+      );
+      setConfirmResetPrompts(true);
+      return;
     }
+    setCustomGenPrompt(DEFAULT_GENERATION_PROMPT);
+    setCustomEvalPrompt(DEFAULT_EVALUATION_PROMPT);
+    (function(){ try { localStorage.removeItem('ai_custom_gen_prompt'); } catch(e) {} })();
+    (function(){ try { localStorage.removeItem('ai_custom_eval_prompt'); } catch(e) {} })();
+    setConfirmResetPrompts(false);
+    showToast(language === 'pl' ? 'Przywrócono domyślne prompty' : 'Default prompts restored', 'success');
   };
 
   const syncWordsToFirestoreSet = async (items: BasketWordItem[], title: string) => {
@@ -1205,12 +1223,12 @@ const AIExerciseGeneratorScreen: React.FC<AIExerciseGeneratorScreenProps> = ({ i
 
     const selectedWords = setupWords.filter(w => setupCheckedWordIds.has(w.id));
     if (selectedWords.length === 0) {
-      alert(language === 'pl' ? 'Wybierz co najmniej jedno słowo!' : 'Please select at least one word!');
+      showToast(language === 'pl' ? 'Wybierz co najmniej jedno słowo' : 'Select at least one word', 'warning');
       return;
     }
 
     if (practiceSetupType === 'match' && selectedWords.length < 2) {
-      alert(language === 'pl' ? 'Gra w dopasowywanie wymaga co najmniej 2 słówek!' : 'Matching game requires at least 2 words!');
+      showToast(language === 'pl' ? 'Dopasowywanie wymaga co najmniej dwóch słówek' : 'Matching needs at least two words', 'warning');
       return;
     }
 
@@ -1279,7 +1297,7 @@ const AIExerciseGeneratorScreen: React.FC<AIExerciseGeneratorScreenProps> = ({ i
       }
 
       if (!initialSource) {
-        alert(language === 'pl' ? 'Wybierz najpierw źródło słownictwa lub dodaj słówka do koszyka!' : 'Select a vocabulary source or add words to the basket first!');
+        showToast(language === 'pl' ? 'Najpierw wybierz źródło słownictwa albo dodaj słówka do koszyka' : 'Choose a vocabulary source or add words to the basket first', 'warning');
         return;
       }
 
@@ -2043,6 +2061,7 @@ ${learningContext?.briefing || ''}
 
   return (
     <div className="relative">
+      <Toast toast={toast} onDismiss={dismissToast} />
       {/* Pulsar effect for the whole screen area */}
 
       {/* GLOBAL MOBILE HEADER */}
@@ -2151,9 +2170,11 @@ ${learningContext?.briefing || ''}
             <div className="flex gap-2">
               <button 
                 onClick={handleResetPrompts} 
-                className="text-xs text-content-muted hover:text-white underline"
+                className={`text-xs underline ${confirmResetPrompts ? 'text-warn font-bold' : 'text-content-muted hover:text-white'}`}
               >
-                {language === 'pl' ? 'Domyślne' : 'Restore defaults'}
+                {confirmResetPrompts
+                  ? (language === 'pl' ? 'Potwierdź reset' : 'Confirm reset')
+                  : (language === 'pl' ? 'Domyślne' : 'Restore defaults')}
               </button>
               <button 
                 onClick={handleSavePrompts} 

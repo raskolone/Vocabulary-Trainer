@@ -8,6 +8,7 @@ import { gradeTest } from '../../services/geminiService';
 import Card from '../ui/Card';
 import ConfirmModal from '../ui/ConfirmModal';
 import Button from '../ui/Button';
+import Toast, { useToast } from '../ui/Toast';
 import TestQuestionFields, { TestQuestionHeader } from './TestQuestionFields';
 import { exportTestToPDF } from "../../utils/pdfExport";
 import { Download, CheckCircle } from "lucide-react";
@@ -22,7 +23,10 @@ interface TakeTestScreenProps {
 const TakeTestScreen: React.FC<TakeTestScreenProps> = ({ test, onBack }) => {
   const { user, updateUserStreak } = useAuth();
   const { language } = useLanguage();
+  const { toast, showToast, dismissToast } = useToast();
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  /** Kursant zobaczył ostrzeżenie o pustych pytaniach i może zakończyć mimo to. */
+  const [confirmedIncomplete, setConfirmedIncomplete] = useState(false);
   const [confirmModalState, setConfirmModalState] = useState<{isOpen: boolean; title: string; message: string; onConfirm: () => void}>({
     isOpen: false,
     title: '',
@@ -47,11 +51,16 @@ const TakeTestScreen: React.FC<TakeTestScreenProps> = ({ test, onBack }) => {
   };
 
   const handleSubmit = async () => {
+    // Zamiast okna systemowego: ostrzeżenie w toaście, a przycisk zmienia się
+    // w „zakończ mimo to". Kursant zostaje przy pytaniach i widzi, ile pominął.
     const unanswered = test.questions.filter(q => !answers[q.id]?.trim());
-    if (unanswered.length > 0) {
-      if (!window.confirm(`Masz ${unanswered.length} nieodpowiedzianych pytań. Czy na pewno chcesz zakończyć test?`)) {
-        return;
-      }
+    if (unanswered.length > 0 && !confirmedIncomplete) {
+      showToast(
+        `Masz ${unanswered.length} nieodpowiedzianych pytań. Dotknij jeszcze raz, żeby zakończyć mimo to.`,
+        'warning'
+      );
+      setConfirmedIncomplete(true);
+      return;
     }
 
     setIsSubmitting(true);
@@ -115,7 +124,7 @@ const TakeTestScreen: React.FC<TakeTestScreenProps> = ({ test, onBack }) => {
       setSubmitted(true);
     } catch (err) {
       console.error(err);
-      alert("Wystąpił błąd podczas zapisywania odpowiedzi.");
+      showToast('Nie udało się zapisać odpowiedzi. Sprawdź połączenie i spróbuj ponownie.', 'warning');
     } finally {
       setIsSubmitting(false);
     }
@@ -166,6 +175,7 @@ const TakeTestScreen: React.FC<TakeTestScreenProps> = ({ test, onBack }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">
+      <Toast toast={toast} onDismiss={dismissToast} />
       <div className="flex items-center justify-between mb-8">
         <button onClick={onBack} className="text-content-muted hover:text-white flex items-center gap-2">
           ← {language === 'pl' ? 'Wróć' : 'Back'}
@@ -203,10 +213,17 @@ const TakeTestScreen: React.FC<TakeTestScreenProps> = ({ test, onBack }) => {
       </div>
 
       <div className="pt-8 flex justify-end">
-        <Button onClick={handleSubmit} isLoading={isSubmitting} className="bg-primary text-accent-ink hover:bg-primary/90 font-bold px-8 py-3 text-lg">
-          
-                            {i18n.t("Zakończ Test")}
-                          </Button>
+        <Button
+          onClick={handleSubmit}
+          isLoading={isSubmitting}
+          className={`font-bold px-8 py-3 text-lg ${
+            confirmedIncomplete
+              ? 'bg-warn text-accent-ink hover:bg-warn/90'
+              : 'bg-primary text-accent-ink hover:bg-primary/90'
+          }`}
+        >
+          {confirmedIncomplete ? 'Zakończ mimo to' : i18n.t("Zakończ Test")}
+        </Button>
       </div>
       <ConfirmModal
         isOpen={confirmModalState.isOpen}
