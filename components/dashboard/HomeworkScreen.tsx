@@ -13,6 +13,7 @@ import ConfirmModal from '../ui/ConfirmModal';
 import { LessonSelectionModal } from './LessonSelectionModal';
 import HomeworkComposer from '../admin/HomeworkComposer';
 import { FillInTheBlankTask } from '../practice/FillInTheBlankTask';
+import { useEscapeModal } from '../../hooks/useEscapeModal';
 import Badge from '../ui/Badge';
 import { 
   BookOpen, 
@@ -139,6 +140,11 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({ initialTaskId = 
   // Delete modal state
   const [taskToDelete, setTaskToDelete] = useState<SpecialTask | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  useEscapeModal(!!reviewTask, () => setReviewTask(null));
+  useEscapeModal(!!previewTask, () => setPreviewTask(null));
+  useEscapeModal(showBulkAddModal, () => setShowBulkAddModal(false));
+  useEscapeModal(!!taskToDelete, () => setTaskToDelete(null), 10);
 
   const handleHomeworkTypeChange = (type: HomeworkType) => {
     if (

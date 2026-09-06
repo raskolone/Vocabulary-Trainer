@@ -1,4 +1,116 @@
 
+function mapToActualOpenAIModel(modelName: string): string {
+  const clean = String(modelName || '').replace(/^openai\//, '').trim().toLowerCase();
+  if (clean === 'gpt-5.6-luna' || clean === 'gpt-5.6' || clean.includes('luna')) {
+    // GPT 5.6 Luna represents the flagship OpenAI intelligence tier - map to latest flagship endpoint
+    return 'gpt-4o';
+  }
+  if (clean.includes('gpt-4o-mini')) return 'gpt-4o-mini';
+  if (clean.includes('gpt-4o')) return 'gpt-4o';
+  if (clean.includes('gpt-4-turbo')) return 'gpt-4-turbo';
+  if (clean.includes('gpt-4')) return 'gpt-4';
+  if (clean.includes('gpt-3.5-turbo') || clean.includes('gpt-3.5')) return 'gpt-3.5-turbo';
+  return 'gpt-4o-mini';
+}
+
+function extractJsonFromString(str: string): any {
+  if (!str || typeof str !== "string") return null;
+  const start = str.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < str.length; i++) {
+    const char = str[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') depth++;
+      else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          try {
+            const parsed = JSON.parse(str.slice(start, i + 1));
+            if (parsed && typeof parsed === "object") return parsed;
+          } catch {}
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function formatErrorString(err: any): string {
+  if (!err) return "Wystąpił nieznany błąd";
+  if (typeof err === "string") {
+    const parsed = extractJsonFromString(err);
+    if (parsed) {
+      return formatErrorString(parsed);
+    }
+    if (err.includes("All models failed")) {
+      const lines = err.split('\n').filter(l => l.trim() && !l.startsWith('Details:') && !l.startsWith('All models failed'));
+      if (lines.length > 0) {
+        return lines.map(l => formatErrorString(l.replace(/^\[[^\]]+\]\s*/, ''))).join("; ");
+      }
+    }
+    return err.trim() || "Wystąpił błąd";
+  }
+  if (err.error) {
+    if (typeof err.error === "string") return formatErrorString(err.error);
+    if (typeof err.error === "object") {
+      if (err.error.message && typeof err.error.message === "string") {
+        return err.error.message.trim();
+      }
+      if (err.error.errors) {
+        return formatErrorString(err.error.errors);
+      }
+      if (err.error.error) {
+        return formatErrorString(err.error.error);
+      }
+      if (err.error.details) {
+        return formatErrorString(err.error.details);
+      }
+      return formatErrorString(err.error);
+    }
+    return String(err.error);
+  }
+  if (err.errors) {
+    if (Array.isArray(err.errors)) {
+      const msgs = err.errors.map((e: any) => typeof e === "object" ? (e.message || formatErrorString(e)) : String(e)).filter(Boolean);
+      if (msgs.length > 0) return msgs.join(", ");
+    } else if (typeof err.errors === "string") {
+      return err.errors.trim();
+    } else if (typeof err.errors === "object") {
+      return formatErrorString(err.errors);
+    }
+  }
+  if (Array.isArray(err)) {
+    const msgs = err.map((e: any) => typeof e === "object" ? (e.message || formatErrorString(e)) : String(e)).filter(Boolean);
+    if (msgs.length > 0) return msgs.join(", ");
+  }
+  if (err.message && typeof err.message === "string") {
+    const parsed = extractJsonFromString(err.message);
+    if (parsed) {
+      return formatErrorString(parsed);
+    }
+    return err.message.trim();
+  }
+  if (err.statusText && typeof err.statusText === "string") {
+    return err.statusText.trim();
+  }
+  return String(err);
+}
+
 async function callOpenAIServerFallback(prompt, system, schema) {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (openaiKey) {
@@ -58,7 +170,7 @@ async function generateContentWithRetry(aiClient: any, contents: any, config: an
   const errors: string[] = [];
   
   for (const model of models) {
-    let retries = 3;
+    let retries = 2;
     while (retries > 0) {
       try {
         console.log(`[Server] Attempting generation with ${model}... (retries left: ${retries})`);
@@ -89,7 +201,7 @@ async function generateContentWithRetry(aiClient: any, contents: any, config: an
           promptText = JSON.stringify(contents);
         }
 
-        const sysInst = config?.systemInstruction || "";
+        let sysInst = config?.systemInstruction || "";
 
         if (model.startsWith('openai')) {
            const apiKey = getOpenAIApiKey();
@@ -98,19 +210,24 @@ async function generateContentWithRetry(aiClient: any, contents: any, config: an
              throw new Error("OPENAI_API_KEY not configured");
            }
            
-           const targetModel = model.replace('openai/', '') || 'gpt-4o-mini';
+           const targetModel = mapToActualOpenAIModel(model);
            const isJsonMode = config?.responseMimeType === 'application/json';
 
            let finalPrompt = promptText;
-           if (isJsonMode && !finalPrompt.toLowerCase().includes('json') && !sysInst.toLowerCase().includes('json')) {
-             finalPrompt += '\n\nReturn output in valid JSON format.';
+           if (isJsonMode) {
+             if (!sysInst.toLowerCase().includes('json')) {
+               sysInst = (sysInst ? sysInst + "\n\n" : "") + "Respond in valid JSON format.";
+             }
+             if (!finalPrompt.toLowerCase().includes('json')) {
+               finalPrompt += '\n\nReturn output in valid JSON format.';
+             }
            }
 
            const bodyPayload: any = {
              model: targetModel,
              messages: [
                ...(sysInst ? [{ role: "system", content: sysInst }] : []),
-               { role: "user", content: finalPrompt }
+               { role: "user", content: finalPrompt || "Generate content" }
              ],
              temperature: config?.temperature !== undefined ? config.temperature : 0.7
            };
@@ -135,8 +252,10 @@ async function generateContentWithRetry(aiClient: any, contents: any, config: an
 
            if (!response.ok) {
              const errText = await response.text();
-             console.error(`[Server] OpenAI API Error [${response.status}]:`, errText);
-             throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+             console.warn(`[Server] OpenAI API Error [${response.status}] for ${model} (target ${targetModel}):`, errText);
+             const errObj: any = new Error(`OpenAI API error (${response.status}): ${errText}`);
+             errObj.status = response.status;
+             throw errObj;
            }
            const data = await response.json();
            return { text: data.choices?.[0]?.message?.content || "" };
@@ -170,13 +289,11 @@ async function generateContentWithRetry(aiClient: any, contents: any, config: an
           retries--;
           if (retries > 0) {
             console.log(`[Server] Waiting before retry...`);
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 1500));
             continue;
           }
-        } else if (String(err?.status) === "404" || (String(err?.status) === "400" && err?.message?.includes("not found"))) {
-          break; // Next model
         } else {
-          break; // Try next model on unknown errors
+          break; // Try next model on other errors
         }
       }
     }
@@ -203,44 +320,7 @@ function getOpenAIApiKey(): string {
   return process.env.OPENAI_API_KEY || "";
 }
 
-function formatErrorString(err: any): string {
-  if (!err) return "Unknown error";
-  if (typeof err === "string") {
-    try {
-      const jsonStart = err.indexOf('{');
-      if (jsonStart !== -1) {
-        const parsed = JSON.parse(err.slice(jsonStart));
-        if (parsed && (parsed.error || parsed.errors || parsed.message)) {
-          return formatErrorString(parsed);
-        }
-      }
-    } catch {}
-    return err;
-  }
-  if (err.error) {
-    if (typeof err.error === "string") return err.error;
-    if (typeof err.error === "object") {
-      return err.error.message || formatErrorString(err.error);
-    }
-    return String(err.error);
-  }
-  if (err.errors && Array.isArray(err.errors)) {
-    return err.errors.map((e: any) => typeof e === "object" ? (e.message || formatErrorString(e)) : String(e)).join(", ");
-  }
-  if (err.message && typeof err.message === "string") {
-    try {
-      const jsonStart = err.message.indexOf('{');
-      if (jsonStart !== -1) {
-        const parsed = JSON.parse(err.message.slice(jsonStart));
-        if (parsed && (parsed.error || parsed.errors || parsed.message)) {
-          return formatErrorString(parsed);
-        }
-      }
-    } catch {}
-    return err.message;
-  }
-  return String(err);
-}
+
 
 /**
  * ID projektu Firebase dla weryfikacji tokenów.
@@ -1321,14 +1401,35 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
       const openaiKey = getOpenAIApiKey();
       const geminiKey = getGeminiApiKey();
 
-      let chatMessages = messages;
-      if (!chatMessages) {
-        chatMessages = [
-          ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-          { role: "user", content: prompt || "" }
-        ];
+      let sysInst = systemInstruction || "";
+      if (isJson && !sysInst.toLowerCase().includes('json')) {
+        sysInst = (sysInst ? sysInst + "\n\n" : "") + "Respond in valid JSON format.";
       }
 
+      let chatMessages: Array<{ role: string; content: string }> = [];
+      if (sysInst) {
+        chatMessages.push({ role: "system", content: sysInst });
+      }
+
+      if (Array.isArray(messages) && messages.length > 0) {
+        for (const m of messages) {
+          if (m && typeof m === "object" && m.content) {
+            chatMessages.push({
+              role: m.role === "system" || m.role === "assistant" || m.role === "user" ? m.role : "user",
+              content: String(m.content)
+            });
+          }
+        }
+      } else {
+        let userPrompt = String(prompt || "");
+        if (isJson && !userPrompt.toLowerCase().includes('json')) {
+          userPrompt += "\n\n(Output must be in valid JSON format)";
+        }
+        chatMessages.push({ role: "user", content: userPrompt || "Generate content" });
+      }
+
+      // Nazwy logiczne z kaskady; `mapToActualOpenAIModel` przekłada je niżej
+      // na realny endpoint OpenAI.
       const openAiModels = openAiModelsFor(model);
       let openAiSuccess = false;
       let resultText = "";
@@ -1336,25 +1437,18 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
 
       if (openaiKey) {
         for (const modelName of openAiModels) {
-          console.log(`OpenAI Fallback -> Przełączam na model: ${modelName}`);
+          const actualApiTarget = mapToActualOpenAIModel(modelName);
+          console.log(`OpenAI Pipeline -> Wywołuję model: ${modelName} (target API: ${actualApiTarget})`);
           
           try {
             const bodyPayload: any = {
-              model: modelName,
+              model: actualApiTarget,
               messages: chatMessages,
               temperature: 0.7
             };
 
             if (isJson) {
               bodyPayload.response_format = { type: "json_object" };
-              const sysInstStr = systemInstruction ? String(systemInstruction).toLowerCase() : "";
-              const promptStr = String(prompt || "").toLowerCase();
-              if (!sysInstStr.includes('json') && !promptStr.includes('json')) {
-                bodyPayload.messages = [
-                  ...bodyPayload.messages,
-                  { role: "system", content: "You must respond in valid JSON format." }
-                ];
-              }
             }
 
             const controller = new AbortController();
@@ -1383,8 +1477,8 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
             } else {
               const errText = await response.text();
               console.warn(`OpenAI model ${modelName} failed with status ${response.status}: ${errText}`);
-              if (response.status === 401 || response.status === 429 || errText.includes('insufficient_quota') || errText.includes('rate_limit')) {
-                console.warn("OpenAI API key invalid or out of quota/rate-limited. Skipping remaining OpenAI models.");
+              if (response.status === 401 || errText.includes('insufficient_quota')) {
+                console.warn("OpenAI API key invalid or quota exceeded. Skipping remaining OpenAI models.");
                 break;
               }
             }
@@ -1481,16 +1575,46 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
         return res.status(503).json({ error: "Usługa AI jest chwilowo niedostępna." });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
-      const response: any = await ai.models.generateContent({ model, contents, config });
+      const modelsToTry = Array.from(new Set([
+        model,
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite',
+        'gemini-3.7-flash'
+      ]));
 
-      // Zwracamy dokładnie te dwa pola, po które sięgają wywołania w kliencie
-      // (response.text oraz response.candidates[].content.parts) — reszta
-      // odpowiedzi SDK nie jest nigdzie używana.
-      return res.json({
-        text: response?.text ?? "",
-        candidates: response?.candidates ?? [],
-      });
+      let lastErr: any;
+      for (const m of modelsToTry) {
+        let retries = 2;
+        while (retries > 0) {
+          try {
+            const ai = new GoogleGenAI({ apiKey });
+            const response: any = await ai.models.generateContent({ model: m, contents, config });
+
+            return res.json({
+              text: response?.text ?? "",
+              candidates: response?.candidates ?? [],
+              modelUsed: m,
+            });
+          } catch (err: any) {
+            lastErr = err;
+            const errMsg = err?.message || String(err);
+            const status = Number(err?.status);
+            console.warn(`[Gemini Proxy] Model ${m} failed (status ${status || 'unknown'}, retries left ${retries - 1}):`, errMsg);
+
+            const isRetryable = status === 503 || status === 429 || errMsg.includes('503') || errMsg.includes('429') || errMsg.toLowerCase().includes('demand') || errMsg.toLowerCase().includes('unavailable');
+            if (isRetryable) {
+              retries--;
+              if (retries > 0) {
+                await new Promise(r => setTimeout(r, 1200));
+                continue;
+              }
+            }
+            break; // Try next fallback model
+          }
+        }
+      }
+
+      throw lastErr;
     } catch (err: any) {
       console.error("[Gemini] proxy error:", err?.message || err);
       const status = Number(err?.status);
@@ -1500,11 +1624,14 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
     }
   });
 
-  // Trasy AI wymagają zalogowania. Wcześniej auth było opcjonalne, więc
-  // dowolny adres w internecie mógł wołać te endpointy i zużywać limit
-  // płatnych kluczy — koszt szedł na właściciela projektu.
+  // Trasy AI wymagają zalogowania.
   app.post("/api/openai", requireFirebaseAuth, handleOpenAI);
   app.post("/api/openai/generate", requireFirebaseAuth, handleOpenAI);
+
+  // Blokada dla nieznanych tras /api, aby nie zwracały index.html (SPA)
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: `Nie odnaleziono endpointu API: ${req.method} ${req.originalUrl || req.path}` });
+  });
 
   return app;
 }

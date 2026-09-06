@@ -53,42 +53,79 @@ export const extractJSON = (text: string): string => {
   return text.trim();
 };
 
+function extractJsonFromString(str: string): any {
+  if (!str || typeof str !== "string") return null;
+  const start = str.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < str.length; i++) {
+    const char = str[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (char === '\\') {
+      escape = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === '{') depth++;
+      else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          try {
+            const parsed = JSON.parse(str.slice(start, i + 1));
+            if (parsed && typeof parsed === "object") return parsed;
+          } catch {}
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export const extractErrorMessage = (data: any, fallback: string = "Wystąpił błąd"): string => {
   if (!data) return fallback;
   if (typeof data === "string") {
-    try {
-      const jsonStart = data.indexOf('{');
-      const arrayStart = data.indexOf('[');
-      const start = (jsonStart !== -1 && arrayStart !== -1) ? Math.min(jsonStart, arrayStart) : (jsonStart !== -1 ? jsonStart : arrayStart);
-      if (start !== -1) {
-        const parsed = JSON.parse(data.slice(start));
-        if (parsed && typeof parsed === 'object') {
-          return extractErrorMessage(parsed, fallback);
-        }
+    const parsed = extractJsonFromString(data);
+    if (parsed) {
+      return extractErrorMessage(parsed, fallback);
+    }
+    if (data.includes("All models failed")) {
+      const lines = data.split('\n').filter(l => l.trim() && !l.startsWith('Details:') && !l.startsWith('All models failed'));
+      if (lines.length > 0) {
+        return lines.map(l => extractErrorMessage(l.replace(/^\[[^\]]+\]\s*/, ''), fallback)).join("; ");
       }
-    } catch {}
+    }
     return data.trim() || fallback;
   }
   
   if (data.error !== undefined && data.error !== null) {
-    if (typeof data.error === "string") return data.error.trim() || fallback;
+    if (typeof data.error === "string") {
+      const parsed = extractJsonFromString(data.error);
+      if (parsed) return extractErrorMessage(parsed, fallback);
+      return data.error.trim() || fallback;
+    }
     if (typeof data.error === "object") {
       if (data.error.message && typeof data.error.message === "string") {
         return data.error.message.trim() || fallback;
       }
-      if (data.error.error) {
-        return extractErrorMessage(data.error.error, fallback);
-      }
       if (data.error.errors) {
         return extractErrorMessage(data.error.errors, fallback);
+      }
+      if (data.error.error) {
+        return extractErrorMessage(data.error.error, fallback);
       }
       if (data.error.details && typeof data.error.details === "string") {
         return data.error.details.trim() || fallback;
       }
-      try {
-        const str = JSON.stringify(data.error);
-        if (str && str !== '{}') return str;
-      } catch {}
+      return extractErrorMessage(data.error, fallback);
     }
     return String(data.error);
   }
@@ -124,15 +161,10 @@ export const extractErrorMessage = (data: any, fallback: string = "Wystąpił b�
   }
 
   if (data.message && typeof data.message === "string") {
-    try {
-      const jsonStart = data.message.indexOf('{');
-      if (jsonStart !== -1) {
-        const parsed = JSON.parse(data.message.slice(jsonStart));
-        if (parsed && (parsed.error || parsed.errors || parsed.message)) {
-          return extractErrorMessage(parsed, fallback);
-        }
-      }
-    } catch {}
+    const parsed = extractJsonFromString(data.message);
+    if (parsed) {
+      return extractErrorMessage(parsed, fallback);
+    }
     return data.message.trim() || fallback;
   }
 
@@ -275,19 +307,31 @@ const generateContentWithFallback = async (params: any) => {
   throw lastError;
 };
 
-const callOpenAI = async (prompt: string, systemInstruction: string, model: string = "gpt-4o-mini", isJson: boolean = true): Promise<{ text: string, modelUsed?: string }> => {
+const callOpenAI = async (
+  promptOrMessages: string | Array<{ role: string; content: string }>,
+  systemInstruction?: string,
+  model: string = "gpt-5.6-luna",
+  isJson: boolean = true
+): Promise<{ text: string, modelUsed?: string }> => {
   console.log("Wysyłam zapytanie do OpenAI przez proxy (" + model + ")...");
   
   try {
+    const isMessages = Array.isArray(promptOrMessages);
+    const bodyPayload: any = {
+      systemInstruction,
+      isJson,
+      model
+    };
+    if (isMessages) {
+      bodyPayload.messages = promptOrMessages;
+    } else {
+      bodyPayload.prompt = promptOrMessages;
+    }
+
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: await authHeaders(),
-      body: JSON.stringify({
-        prompt,
-        systemInstruction,
-        isJson,
-        model
-      })
+      body: JSON.stringify(bodyPayload)
     });
     
     const rawText = await res.text();
@@ -310,12 +354,113 @@ const callOpenAI = async (prompt: string, systemInstruction: string, model: stri
   }
 };
 
+export const generateLessonPlannerAI = async ({
+  prompt,
+  systemInstruction,
+  conversationHistory = [],
+  preferredModels = PREFERRED_AI_MODELS,
+  onModelAttempt
+}: {
+  prompt: string;
+  systemInstruction: string;
+  conversationHistory?: Array<{ role: 'user' | 'assistant' | 'model' | 'system'; content: string }>;
+  preferredModels?: string[];
+  onModelAttempt?: (modelName: string) => void;
+}): Promise<{ text: string; modelUsed: string }> => {
+  const reqId = aiMonitor.startRequest({
+    taskName: 'Planer lekcji AI',
+    initialModel: preferredModels[0] || 'openai/gpt-5.6-luna',
+    category: 'general',
+    promptSnippet: prompt,
+    statusMessage: `Planer lekcji: inicjalizacja...`
+  });
+
+  let lastError: any;
+  for (const model of preferredModels) {
+    try {
+      aiMonitor.updateModelAttempt(reqId, model, `Planer lekcji: odpytywanie ${formatAIModelName(model)}...`);
+      if (onModelAttempt) onModelAttempt(model);
+
+      if (model.startsWith('openai')) {
+        const messages = [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...conversationHistory.map(m => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content
+          })),
+          { role: 'user', content: prompt }
+        ];
+
+        const openAiRes = await callOpenAI(messages, undefined, model.replace('openai/', ''), false);
+        if (openAiRes?.text) {
+          const usedModel = openAiRes.modelUsed || model;
+          aiMonitor.completeRequest(reqId, { modelUsed: usedModel });
+          return { text: openAiRes.text, modelUsed: usedModel };
+        }
+      } else if (model.startsWith('gemini')) {
+        let retries = 2;
+        while (retries > 0) {
+          try {
+            const geminiContents = [
+              ...conversationHistory.map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+              })),
+              {
+                role: 'user',
+                parts: [{ text: prompt }]
+              }
+            ];
+
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error("Zapytanie do modelu AI przekroczyło limit czasu (60s)")), 60000);
+            });
+
+            const apiCall = getAI().models.generateContent({
+              model,
+              contents: geminiContents,
+              config: {
+                systemInstruction,
+                temperature: 0.7
+              }
+            });
+
+            const response: any = await Promise.race([apiCall, timeoutPromise]);
+            const text = response?.text;
+            if (text) {
+              aiMonitor.completeRequest(reqId, { modelUsed: model });
+              return { text, modelUsed: model };
+            }
+          } catch (gErr: any) {
+            console.warn(`Gemini model ${model} attempt failed (retries left ${retries - 1}):`, gErr?.message || gErr);
+            retries--;
+            if (retries > 0) {
+              aiMonitor.updateStatus(reqId, `Ponawianie próby dla ${formatAIModelName(model)}...`);
+              await new Promise(r => setTimeout(r, 1200));
+            } else {
+              throw gErr;
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn(`Model ${model} failed in lesson planner:`, err?.message || err);
+      lastError = err;
+      aiMonitor.updateStatus(reqId, `Model ${formatAIModelName(model)} niedostępny (${err?.status || '503/429'}). Przełączanie...`);
+      continue;
+    }
+  }
+
+  aiMonitor.failRequest(reqId, lastError?.message || "Wszystkie modele AI dla planera zawiodły.");
+  throw lastError || new Error("Wszystkie modele AI dla planera lekcji są chwilowo niedostępne.");
+};
+
 /** Kolejność schodzenia po modelach — definicja w services/aiModels.ts. */
 export const PREFERRED_AI_MODELS = AI_MODEL_CASCADE;
 
 export const formatAIModelName = (model?: string): string => {
-  if (!model) return 'OpenAI (GPT-4o mini)';
-  if (model.includes('gpt-5.6-luna')) return 'OpenAI (GPT-5.6 Luna)';
+  if (!model) return 'GPT 5.6 Luna';
+  if (model.includes('gpt-5.6-luna') || model.includes('gpt-5.6') || model.includes('luna') || model.includes('GPT 5.6')) return 'GPT 5.6 Luna';
   if (model.includes('gemini-3.8')) return 'Gemini 3.8 Flash';
   if (model.includes('tts-1-hd')) return 'OpenAI (TTS-1 HD)';
   if (model.includes('tts-1') || model === 'openai-tts-1') return 'OpenAI (TTS-1 Audio)';
@@ -324,6 +469,7 @@ export const formatAIModelName = (model?: string): string => {
   if (model.includes('gpt-4o')) return 'OpenAI (GPT-4o)';
   if (model.includes('gpt-4-turbo')) return 'OpenAI (GPT-4 Turbo)';
   if (model.includes('gpt-4')) return 'OpenAI (GPT-4)';
+  if (model.includes('gpt-3.5')) return 'OpenAI (GPT-3.5 Turbo)';
   if (model.includes('gemini-3.1-flash-tts')) return 'Gemini 3.1 Flash (TTS Audio)';
   if (model.includes('gemini-3.7')) return 'Gemini 3.7 Flash';
   if (model.includes('gemini-2.5')) return 'Gemini 2.5 Flash';
@@ -904,7 +1050,7 @@ export const generateTest = async (
 ): Promise<any[]> => {
   const reqId = aiMonitor.startRequest({
     taskName: `Generowanie testu: "${testTitle || level}"`,
-    initialModel: 'openai/gpt-4o-mini',
+    initialModel: 'openai/gpt-5.6-luna',
     category: 'test',
     provider: 'OpenAI',
     promptSnippet: `Zakres: ${scope}, Poziom: ${level}`,
@@ -952,7 +1098,7 @@ export const generateTest = async (
     
     const data = await res.json();
     aiMonitor.completeRequest(reqId, {
-      modelUsed: data.modelUsed || 'openai/gpt-4o-mini',
+      modelUsed: data.modelUsed || 'openai/gpt-5.6-luna',
       message: `Wygenerowano ${data.questions?.length || 0} pytań testowych`
     });
     return data.questions || [];
@@ -1015,16 +1161,16 @@ Dla każdego słówka/zwrotu podaj:
 
 Zwróć WYŁĄCZNIE tablicowy obiekt JSON, w którym każdy element to obiekt o kluczach: "term", "definition", "contextSentence".`;
 
-  const sysInst = "Jesteś asystentem AI tworzącym zestawy fiszek w formacie JSON dla modelu gpt-4o-mini.";
+  const sysInst = "Jesteś asystentem AI tworzącym zestawy fiszek w formacie JSON dla modelu GPT 5.6 Luna.";
 
   try {
-    const openAiRes = await callOpenAI(prompt, sysInst, 'gpt-4o-mini', true);
+    const openAiRes = await callOpenAI(prompt, sysInst, 'gpt-5.6-luna', true);
     const jsonText = extractJSON(openAiRes.text || "");
     const parsed = JSON.parse(jsonText);
     const list = Array.isArray(parsed) ? parsed : (parsed.flashcards || parsed.words || parsed.items || []);
     return list;
   } catch (err) {
-    console.warn("GPT-4o-mini direct call failed, trying fallback:", err);
+    console.warn("GPT direct call failed, trying fallback:", err);
     try {
       const resp = await generateContentWithFallback({ contents: prompt, config: { systemInstruction: sysInst } });
       const jsonText = extractJSON(resp?.text || "");
@@ -1377,7 +1523,7 @@ export const gradeTest = async (
 ): Promise<{score: number, feedback: string}> => {
   const reqId = aiMonitor.startRequest({
     taskName: `Ocenianie testu: "${testTitle || 'Test'}"`,
-    initialModel: 'openai/gpt-4o-mini',
+    initialModel: 'openai/gpt-5.6-luna',
     category: 'test',
     provider: 'OpenAI',
     statusMessage: 'Weryfikacja odpowiedzi i generowanie ocen...'
@@ -1412,7 +1558,7 @@ export const gradeTest = async (
     }
     const data = await res.json();
     aiMonitor.completeRequest(reqId, {
-      modelUsed: 'openai/gpt-4o-mini',
+      modelUsed: data.modelUsed || 'openai/gpt-5.6-luna',
       message: `Wynik testu: ${data.score}% (${data.feedback ? 'Z opinią' : 'OK'})`
     });
     return data;
@@ -1904,7 +2050,7 @@ DLA LICZBY ZDAŃ: ${numSentences}. Zwróć DOKŁADNIE ${numSentences} zdań w fo
 
   let draftSentences: any[] = [];
   try {
-    const openAiResult = await callOpenAI(openAiUserPrompt, openAiSystemInstruction, "gpt-4o-mini", true);
+    const openAiResult = await callOpenAI(openAiUserPrompt, openAiSystemInstruction, "gpt-5.6-luna", true);
     const jsonStr = extractJSON(openAiResult.text || "{}");
     const parsed = JSON.parse(jsonStr);
     if (parsed && Array.isArray(parsed.sentences)) {
@@ -2129,17 +2275,17 @@ For each term found, provide:
 
 Return a JSON array of objects.`;
 
-  const sysInst = "You are an AI assistant creating flashcard sets in JSON format for the gpt-4o-mini model. Output ONLY a valid JSON array of objects with keys: term, definition, contextSentence.";
+  const sysInst = "You are an AI assistant creating flashcard sets in JSON format for the GPT 5.6 Luna model. Output ONLY a valid JSON array of objects with keys: term, definition, contextSentence.";
 
   try {
-    const openAiRes = await callOpenAI(prompt, sysInst, 'gpt-4o-mini', true);
+    const openAiRes = await callOpenAI(prompt, sysInst, 'gpt-5.6-luna', true);
     const jsonText = extractJSON(openAiRes.text || "");
     const parsed = JSON.parse(jsonText);
     const list = Array.isArray(parsed) ? parsed : (parsed.flashcards || parsed.cards || parsed.words || parsed.items || []);
     return list;
   } catch (err) {
     console.error("Error generating flashcards from text with GPT:", err);
-    throw new Error("Failed to parse vocabulary from text using GPT-4o-mini.");
+    throw new Error("Failed to parse vocabulary from text using GPT.");
   }
 };
 

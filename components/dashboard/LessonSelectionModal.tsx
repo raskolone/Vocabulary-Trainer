@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { LessonRecord } from '../../types';
 import { X, BookOpen, Check, Search, Calendar, FileText, Sparkles, Filter, RefreshCw } from 'lucide-react';
 import Button from '../ui/Button';
+import { useAuth } from '../../context/AuthContext';
+import { useEscapeModal } from '../../hooks/useEscapeModal';
 
 interface LessonSelectionModalProps {
   isOpen: boolean;
@@ -22,9 +24,13 @@ export const LessonSelectionModal: React.FC<LessonSelectionModalProps> = ({
   onSave,
   studentName,
 }) => {
+  const { user } = useAuth();
+  const isTeacher = user?.role === 'admin' || user?.role === 'teacher';
   const [tempSelectedIds, setTempSelectedIds] = useState<string[]>(selectedLessonIds);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
+
+  useEscapeModal(isOpen, onClose);
 
   // Sync temp state whenever modal opens
   React.useEffect(() => {
@@ -227,7 +233,7 @@ export const LessonSelectionModal: React.FC<LessonSelectionModalProps> = ({
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-text-2">
                             {vocabCount > 0 && <span>słówek: <strong className="text-primary">{vocabCount}</strong></span>}
                             {record.thingsToImprove && <span className="text-warn/90 font-medium">• Uwagi do poprawy</span>}
-                            {record.studentSpeaking && <span className="text-primary/90 font-medium">• Transcript wypowiedzi</span>}
+                            {isTeacher && record.studentSpeaking && <span className="text-primary/90 font-medium">• Transcript wypowiedzi</span>}
                           </div>
                         </div>
                       </div>
@@ -269,7 +275,7 @@ export const LessonSelectionModal: React.FC<LessonSelectionModalProps> = ({
                           </div>
                         )}
 
-                        {record.studentSpeaking && (
+                        {isTeacher && record.studentSpeaking && (
                           <div>
                             <span className="text-[10px] uppercase tracking-wider text-primary font-bold block mb-1">
                               Student Transcript / Spoken content:

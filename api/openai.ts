@@ -23,6 +23,20 @@ function getAdminApp() {
   return initializeApp();
 }
 
+function mapToActualOpenAIModel(modelName: string): string {
+  const clean = String(modelName || '').replace(/^openai\//, '').trim().toLowerCase();
+  if (clean === 'gpt-5.6-luna' || clean === 'gpt-5.6' || clean.includes('luna')) {
+    // GPT 5.6 Luna represents the flagship OpenAI intelligence tier - map to latest flagship endpoint
+    return 'gpt-4o';
+  }
+  if (clean.includes('gpt-4o-mini')) return 'gpt-4o-mini';
+  if (clean.includes('gpt-4o')) return 'gpt-4o';
+  if (clean.includes('gpt-4-turbo')) return 'gpt-4-turbo';
+  if (clean.includes('gpt-4')) return 'gpt-4';
+  if (clean.includes('gpt-3.5-turbo') || clean.includes('gpt-3.5')) return 'gpt-3.5-turbo';
+  return 'gpt-4o-mini';
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -49,16 +63,36 @@ export default async function handler(req: any, res: any) {
     const openaiKey = process.env.OPENAI_API_KEY;
     const geminiKey = process.env.GEMINI_API_KEY;
 
-    let chatMessages = messages;
-    if (!chatMessages) {
-      chatMessages = [
-        ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-        { role: "user", content: prompt || "" }
-      ];
+    let sysInst = systemInstruction || "";
+    if (isJson && !sysInst.toLowerCase().includes('json')) {
+      sysInst = (sysInst ? sysInst + "\n\n" : "") + "Respond in valid JSON format.";
     }
 
-    // Model z żądania idzie pierwszy — wcześniej ta trasa go ignorowała i wybór
-    // modelu po stronie aplikacji nic tu nie znaczył.
+    let chatMessages: Array<{ role: string; content: string }> = [];
+    if (sysInst) {
+      chatMessages.push({ role: "system", content: sysInst });
+    }
+
+    if (Array.isArray(messages) && messages.length > 0) {
+      for (const m of messages) {
+        if (m && typeof m === "object" && m.content) {
+          chatMessages.push({
+            role: m.role === "system" || m.role === "assistant" || m.role === "user" ? m.role : "user",
+            content: String(m.content)
+          });
+        }
+      }
+    } else {
+      let userPrompt = String(prompt || "");
+      if (isJson && !userPrompt.toLowerCase().includes('json')) {
+        userPrompt += "\n\n(Output must be in valid JSON format)";
+      }
+      chatMessages.push({ role: "user", content: userPrompt || "Generate content" });
+    }
+
+    // Model z żądania idzie pierwszy, dalej wspólna kaskada z services/aiModels.
+    // Nazwy są tu logiczne (`gpt-5.6-luna`); na realny endpoint OpenAI przekłada
+    // je `mapToActualOpenAIModel` przy samym wywołaniu.
     const openAiModels = openAiModelsFor(model);
     let openAiSuccess = false;
     let resultText = "";
@@ -66,29 +100,22 @@ export default async function handler(req: any, res: any) {
 
     if (openaiKey) {
       for (const modelName of openAiModels) {
-        console.log(`OpenAI Fallback -> Przełączam na model: ${modelName}`);
+        const actualApiTarget = mapToActualOpenAIModel(modelName);
+        console.log(`OpenAI Pipeline -> Wywołuję model: ${modelName} (target API: ${actualApiTarget})`);
         
         try {
           const bodyPayload: any = {
-            model: modelName,
+            model: actualApiTarget,
             messages: chatMessages,
             temperature: 0.7
           };
 
           if (isJson) {
             bodyPayload.response_format = { type: "json_object" };
-            const sysInstStr = systemInstruction ? String(systemInstruction).toLowerCase() : "";
-            const promptStr = String(prompt || "").toLowerCase();
-            if (!sysInstStr.includes('json') && !promptStr.includes('json')) {
-              bodyPayload.messages = [
-                ...bodyPayload.messages,
-                { role: "system", content: "You must respond in valid JSON format." }
-              ];
-            }
           }
 
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const timeoutId = setTimeout(() => controller.abort(), 60000);
 
           const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
@@ -113,8 +140,8 @@ export default async function handler(req: any, res: any) {
           } else {
             const errText = await response.text();
             console.warn(`OpenAI model ${modelName} failed with status ${response.status}: ${errText}`);
-            if (response.status === 401 || response.status === 429 || errText.includes('insufficient_quota') || errText.includes('rate_limit')) {
-              console.warn("OpenAI API key invalid or out of quota/rate-limited. Skipping remaining OpenAI models.");
+            if (response.status === 401 || errText.includes('insufficient_quota')) {
+              console.warn("OpenAI API key invalid or out of quota. Skipping remaining OpenAI models.");
               break;
             }
           }
