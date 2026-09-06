@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ExternalLink, Timer } from 'lucide-react';
 import { LessonPresentation, PresentationSlide } from '../../../types';
 import { PRESENTER_PATH, PresenterLink, openPresenterLink } from '../../../utils/presenterChannel';
+import { EMPTY_SLIDE_INTERACTION, SlideInteraction } from './SlideCard';
 
 /**
  * Panel prowadzącego — zostaje na ekranie lektora, gdy okno ze slajdem idzie
@@ -16,6 +17,8 @@ interface PresenterPanelProps {
   deck: LessonPresentation;
   activeSlideIndex: number;
   onNavigate: (index: number) => void;
+  /** Co lektor odkrył na slajdzie — leci do okna kursanta razem ze slajdem. */
+  interaction?: SlideInteraction;
 }
 
 /** Czas w formacie mm:ss — lekcja rzadko przekracza godzinę. */
@@ -39,7 +42,12 @@ const slideSummary = (slide?: PresentationSlide): string => {
   return '';
 };
 
-const PresenterPanel: React.FC<PresenterPanelProps> = ({ deck, activeSlideIndex, onNavigate }) => {
+const PresenterPanel: React.FC<PresenterPanelProps> = ({
+  deck,
+  activeSlideIndex,
+  onNavigate,
+  interaction = EMPTY_SLIDE_INTERACTION,
+}) => {
   const linkRef = useRef<PresenterLink | null>(null);
   const [presenterWindow, setPresenterWindow] = useState<Window | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -64,8 +72,9 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({ deck, activeSlideIndex,
       slideIndex: activeSlideIndex,
       totalSlides: deck.slides.length,
       deckTitle: deck.title,
+      interaction,
     });
-  }, [current, activeSlideIndex, deck.slides.length, deck.title]);
+  }, [current, activeSlideIndex, deck.slides.length, deck.title, interaction]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -84,6 +93,7 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({ deck, activeSlideIndex,
         slideIndex: activeSlideIndex,
         totalSlides: deck.slides.length,
         deckTitle: deck.title,
+        interaction,
       });
     }, 600);
     if (!isRunning) setIsRunning(true);

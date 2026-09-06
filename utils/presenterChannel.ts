@@ -1,4 +1,5 @@
 import { PresentationSlide } from '../types';
+import type { SlideInteraction } from '../components/admin/presentation/SlideCard';
 
 /**
  * Łącze między kartą lektora a oknem, które widzi kursant.
@@ -24,6 +25,12 @@ export interface PresenterState {
   slideIndex: number;
   totalSlides: number;
   deckTitle: string;
+  /**
+   * Co lektor odkrył i podświetlił na slajdzie. Bez tego okno kursanta
+   * pokazywało slajd, ale każde odsłonięcie odpowiedzi zostawało po stronie
+   * prowadzącego — czyli wszystko klikalne działało tylko dla niego.
+   */
+  interaction: SlideInteraction;
   /** Rośnie z każdą wiadomością — okno odrzuca to, co już pokazało. */
   revision: number;
 }

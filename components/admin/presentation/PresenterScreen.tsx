@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { SlideCard } from './SlideCard';
+import { EMPTY_SLIDE_INTERACTION, SlideCard } from './SlideCard';
 import {
   PresenterState,
   openPresenterLink,
@@ -60,6 +60,11 @@ const PresenterScreen: React.FC = () => {
           slideIndex={state.slideIndex}
           totalSlides={state.totalSlides}
           isFullscreen
+          // Interakcją steruje wyłącznie lektor: puste `onInteractionChange`
+          // sprawia, że kliknięcie w oknie kursanta nic nie zmienia, więc widok
+          // nie rozjeżdża się z tym, co prowadzący ma na ekranie.
+          interaction={state.interaction || EMPTY_SLIDE_INTERACTION}
+          onInteractionChange={() => {}}
         />
       </div>
     </div>

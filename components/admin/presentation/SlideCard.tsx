@@ -9,12 +9,39 @@ import { PresentationSlide, PresentationSlideItem } from '../../../types';
 import TTSButtons from '../../flashcards/TTSButtons';
 import Button from '../../ui/Button';
 
+/**
+ * Stan interakcji na slajdzie: co jest odkryte i co podświetlone.
+ *
+ * Wyjęty na zewnątrz komponentu, bo w trybie prowadzącego slajd żyje w dwóch
+ * oknach naraz. Gdy stan siedział wyłącznie w środku, lektor odkrywał odpowiedź
+ * u siebie, a kursant w swoim oknie dalej widział zasłoniętą — czyli wszystko,
+ * co na slajdzie klikalne, działało tylko dla prowadzącego.
+ */
+export interface SlideInteraction {
+  revealedAnswers: Record<string, boolean>;
+  highlightedItemId: string | null;
+  randomQuestionIndex: number | null;
+}
+
+export const EMPTY_SLIDE_INTERACTION: SlideInteraction = {
+  revealedAnswers: {},
+  highlightedItemId: null,
+  randomQuestionIndex: null,
+};
+
 interface SlideCardProps {
   slide: PresentationSlide;
   slideIndex: number;
   totalSlides: number;
   isFullscreen?: boolean;
   onUpdateSlideItem?: (itemId: string, updates: Partial<PresentationSlideItem>) => void;
+  /**
+   * Sterowanie interakcją z zewnątrz. Podane — komponent przestaje trzymać stan
+   * u siebie i pokazuje to, co dostał; bez tego zachowuje się jak dotąd, więc
+   * miejsca, które nie potrzebują synchronizacji, zostają bez zmian.
+   */
+  interaction?: SlideInteraction;
+  onInteractionChange?: (next: SlideInteraction) => void;
 }
 
 export const SlideCard: React.FC<SlideCardProps> = ({
@@ -22,27 +49,40 @@ export const SlideCard: React.FC<SlideCardProps> = ({
   slideIndex,
   totalSlides,
   isFullscreen = false,
-  onUpdateSlideItem
+  onUpdateSlideItem,
+  interaction,
+  onInteractionChange
 }) => {
-  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
-  const [randomQuestionIndex, setRandomQuestionIndex] = useState<number | null>(null);
-  const [revealedAnswers, setRevealedAnswers] = useState<Record<string, boolean>>({});
+  const [localInteraction, setLocalInteraction] = useState<SlideInteraction>(EMPTY_SLIDE_INTERACTION);
+
+  const isControlled = Boolean(interaction && onInteractionChange);
+  const state = isControlled ? (interaction as SlideInteraction) : localInteraction;
+  const { revealedAnswers, highlightedItemId, randomQuestionIndex } = state;
+
+  const applyInteraction = (next: SlideInteraction) => {
+    if (isControlled) onInteractionChange!(next);
+    else setLocalInteraction(next);
+  };
+
+  const setHighlightedItemId = (id: string | null) =>
+    applyInteraction({ ...state, highlightedItemId: id });
 
   const toggleReveal = (itemId: string) => {
-    setRevealedAnswers(prev => ({
-      ...prev,
-      [itemId]: !prev[itemId]
-    }));
+    applyInteraction({
+      ...state,
+      revealedAnswers: { ...state.revealedAnswers, [itemId]: !state.revealedAnswers[itemId] },
+    });
   };
 
   const handleRollDice = () => {
     if (!slide.items || slide.items.length === 0) return;
     const nextIdx = Math.floor(Math.random() * slide.items.length);
-    setRandomQuestionIndex(nextIdx);
     const targetItem = slide.items[nextIdx];
-    if (targetItem) {
-      setHighlightedItemId(targetItem.id);
-    }
+    applyInteraction({
+      ...state,
+      randomQuestionIndex: nextIdx,
+      highlightedItemId: targetItem ? targetItem.id : state.highlightedItemId,
+    });
   };
 
   // Theme styling

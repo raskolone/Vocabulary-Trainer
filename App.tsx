@@ -66,8 +66,18 @@ const AppContent: React.FC = () => {
   // Okno prezentacji dla kursanta. Stoi przed sprawdzeniem logowania, bo jest
   // otwierane w nowej karcie i ma pokazywać slajd od razu, bez ekranu logowania
   // w środku lekcji.
+  //
+  // `SettingsProvider` jest tu konieczny: slajdy renderują przyciski wymowy,
+  // a te sięgają po ustawienia lektora. Bez providera okno wywracało się
+  // dokładnie w chwili, w której prowadzący odkrywał odpowiedź — czyli w środku
+  // ćwiczenia. Provider startuje z ustawień domyślnych, więc brak zalogowania
+  // niczego tu nie blokuje.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/present')) {
-    return <PresenterScreen />;
+    return (
+      <SettingsProvider>
+        <PresenterScreen />
+      </SettingsProvider>
+    );
   }
 
   if (!isAuthReady) {

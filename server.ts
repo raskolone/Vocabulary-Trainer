@@ -1674,7 +1674,11 @@ async function startServer() {
   const app = await createApp();
   // Hostingi (Vercel, Render, Railway, Cloud Run) wstrzykują port przez
   // środowisko. Zaszyta trójka działa tylko lokalnie.
-  const PORT = 3000;
+  // Lokalnie zawsze 3000 (w .env nie ma PORT, więc alternatywa i tak się nie
+  // wykonuje). Na hostingu port jest narzucony przez środowisko i zignorowanie
+  // go znaczy, że proces nasłuchuje pod innym numerem, niż platforma kieruje
+  // ruch — aplikacja wstaje, ale nikt się do niej nie dobija.
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

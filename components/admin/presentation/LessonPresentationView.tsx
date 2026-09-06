@@ -20,7 +20,7 @@ import {
   getSavedPresentationsList, 
   deleteSavedPresentation 
 } from '../../../services/presentationService';
-import { SlideCard } from './SlideCard';
+import { EMPTY_SLIDE_INTERACTION, SlideCard, SlideInteraction } from './SlideCard';
 import { LiveNotebookPanel } from './LiveNotebookPanel';
 import { SlideEditorModal } from './SlideEditorModal';
 import { AiDeckGeneratorModal } from './AiDeckGeneratorModal';
@@ -61,6 +61,14 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
   // Layout & Presentation Modes
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+  /**
+   * Odkryte odpowiedzi i podświetlenia bieżącego slajdu.
+   *
+   * Stan żyje tutaj, a nie w SlideCard, bo ten sam slajd renderuje się w dwóch
+   * oknach: u lektora i u kursanta. Zerujemy przy zmianie slajdu — inaczej
+   * kolejny slajd otwierałby się z odpowiedziami odkrytymi na poprzednim.
+   */
+  const [slideInteraction, setSlideInteraction] = useState<SlideInteraction>(EMPTY_SLIDE_INTERACTION);
   const [showNotebook, setShowNotebook] = useState(true);
   const [laserPointerActive, setLaserPointerActive] = useState(false);
   const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
@@ -161,6 +169,10 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentDeck.slides.length, isFullscreen]);
+
+  useEffect(() => {
+    setSlideInteraction(EMPTY_SLIDE_INTERACTION);
+  }, [activeSlideIndex, currentDeck.id]);
 
   // Laser Pointer mouse tracker
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -522,6 +534,8 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
               slideIndex={activeSlideIndex}
               totalSlides={currentDeck.slides.length}
               isFullscreen={isFullscreen}
+              interaction={slideInteraction}
+              onInteractionChange={setSlideInteraction}
             />
           )}
 
@@ -532,6 +546,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
             deck={currentDeck}
             activeSlideIndex={activeSlideIndex}
             onNavigate={setActiveSlideIndex}
+            interaction={slideInteraction}
           />
 
           {/* SLIDE NAVIGATION CONTROLS */}
@@ -722,6 +737,8 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
                   slideIndex={activeSlideIndex}
                   totalSlides={currentDeck.slides.length}
                   isFullscreen
+                  interaction={slideInteraction}
+                  onInteractionChange={() => {}}
                 />
               </div>
             ) : undefined
