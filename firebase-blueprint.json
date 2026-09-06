@@ -137,6 +137,7 @@
         "recentOutcomes": { "type": "array" },
         "attemptsSinceLevelChange": { "type": "number" },
         "recentMistakes": { "type": "array" },
+        "levelHistory": { "type": "array" },
         "lastUpdated": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
