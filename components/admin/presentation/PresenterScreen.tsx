@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { EMPTY_SLIDE_INTERACTION, SlideCard } from './SlideCard';
 import {
   PresenterState,
   openPresenterLink,
   readLastPresenterState,
 } from '../../../utils/presenterChannel';
+import { fitCanvasToDisplay, renderShapes, scaleShapes } from './whiteboardShapes';
 
 /**
  * Okno, które widzi kursant.
@@ -38,6 +39,36 @@ const PresenterScreen: React.FC = () => {
     document.title = state?.deckTitle ? `${state.deckTitle} — prezentacja` : 'Prezentacja';
   }, [state?.deckTitle]);
 
+  // Rysunek lektora nad slajdem. Przeliczamy go na rozmiar tego okna — kursant
+  // prawie nigdy nie ma okna tej samej wielkości co prowadzący, a strzałka ma
+  // wskazywać to samo słowo, nie ten sam piksel.
+  const boardRef = useRef<HTMLCanvasElement>(null);
+  const board = state?.whiteboard;
+
+  useEffect(() => {
+    const canvas = boardRef.current;
+    if (!canvas) return;
+
+    const paint = () => {
+      fitCanvasToDisplay(canvas);
+      const rect = canvas.getBoundingClientRect();
+      if (!board || board.shapes.length === 0 || !board.width || !board.height) {
+        renderShapes(canvas, [], { background: null });
+        return;
+      }
+      const scaled = scaleShapes(
+        board.shapes,
+        rect.width / board.width,
+        rect.height / board.height
+      );
+      renderShapes(canvas, scaled, { background: null });
+    };
+
+    paint();
+    window.addEventListener('resize', paint);
+    return () => window.removeEventListener('resize', paint);
+  }, [board]);
+
   if (!state?.slide) {
     return (
       <div className="min-h-screen bg-base-100 flex items-center justify-center p-8 text-center">
@@ -54,7 +85,7 @@ const PresenterScreen: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-base-100 p-4 sm:p-8 flex items-center">
-      <div className="w-full max-w-6xl mx-auto">
+      <div className="relative w-full max-w-6xl mx-auto">
         <SlideCard
           slide={state.slide}
           slideIndex={state.slideIndex}
@@ -65,6 +96,13 @@ const PresenterScreen: React.FC = () => {
           // nie rozjeżdża się z tym, co prowadzący ma na ekranie.
           interaction={state.interaction || EMPTY_SLIDE_INTERACTION}
           onInteractionChange={() => {}}
+        />
+
+        {/* Warstwa rysunku. `pointer-events-none`, bo kursant tylko patrzy —
+            wszystko, co widzi, pochodzi od prowadzącego. */}
+        <canvas
+          ref={boardRef}
+          className="pointer-events-none absolute inset-0 w-full h-full"
         />
       </div>
     </div>

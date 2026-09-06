@@ -1,5 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, Eraser, Highlighter, Pen, RotateCcw, Trash2, Type, X } from 'lucide-react';
+import {
+  ERASER_WIDTH,
+  MARKER_ALPHA,
+  MARKER_WIDTH,
+  PEN_WIDTH,
+  Point,
+  Shape,
+  fitCanvasToDisplay,
+  renderShapes,
+} from './whiteboardShapes';
 
 /**
  * Tablica do rysowania na lekcji.
@@ -30,6 +40,11 @@ interface WhiteboardProps {
   backdrop?: React.ReactNode;
   /** Podpis w pasku narzędzi, np. tytuł slajdu — żeby wiadomo było, co pod spodem. */
   contextLabel?: string;
+  /**
+   * Rysunek po każdej zmianie — stąd trafia do okna kursanta. Bez tego lektor
+   * rysuje wyłącznie u siebie, a kursant patrzy na czysty slajd.
+   */
+  onShapesChange?: (shapes: Shape[], canvasSize: { width: number; height: number }) => void;
 }
 
 const COLORS = [
@@ -39,19 +54,6 @@ const COLORS = [
   { name: 'Czerwony', value: '#f87171' },
 ];
 
-const PEN_WIDTH = 3.5;
-/** Zakreślacz jest gruby i półprzezroczysty — ma podkreślać, nie zamalowywać. */
-const MARKER_WIDTH = 18;
-const MARKER_ALPHA = 0.32;
-const ERASER_WIDTH = 30;
-
-type Point = { x: number; y: number };
-
-type Shape =
-  | { kind: 'stroke'; points: Point[]; color: string; width: number; alpha: number; erase: boolean }
-  | { kind: 'arrow'; from: Point; to: Point; color: string }
-  | { kind: 'text'; at: Point; text: string; color: string };
-
 const TOOLS: Array<{ id: WhiteboardTool; label: string; icon: React.ReactNode }> = [
   { id: 'pen', label: 'Pisak', icon: <Pen size={16} /> },
   { id: 'marker', label: 'Zakreślacz', icon: <Highlighter size={16} /> },
@@ -60,7 +62,12 @@ const TOOLS: Array<{ id: WhiteboardTool; label: string; icon: React.ReactNode }>
   { id: 'eraser', label: 'Gumka', icon: <Eraser size={16} /> },
 ];
 
-const Whiteboard: React.FC<WhiteboardProps> = ({ onClose, backdrop, contextLabel }) => {
+const Whiteboard: React.FC<WhiteboardProps> = ({
+  onClose,
+  backdrop,
+  contextLabel,
+  onShapesChange,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [color, setColor] = useState(COLORS[0].value);
@@ -80,88 +87,19 @@ const Whiteboard: React.FC<WhiteboardProps> = ({ onClose, backdrop, contextLabel
   // nie ma wtedy czym zamalowywać, więc wycina piksele (`destination-out`).
   const background = isOverlay ? null : '#0b1120';
 
-  const drawShape = (ctx: CanvasRenderingContext2D, shape: Shape) => {
-    ctx.save();
-    if (shape.kind === 'stroke') {
-      ctx.globalAlpha = shape.alpha;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = shape.width;
-      if (shape.erase) {
-        ctx.globalCompositeOperation = isOverlay ? 'destination-out' : 'source-over';
-        ctx.strokeStyle = background || 'rgba(0,0,0,1)';
-      } else {
-        ctx.strokeStyle = shape.color;
-      }
-      ctx.beginPath();
-      if (shape.points.length > 0) {
-        ctx.moveTo(shape.points[0].x, shape.points[0].y);
-        shape.points.forEach((p) => ctx.lineTo(p.x, p.y));
-      }
-      ctx.stroke();
-    } else if (shape.kind === 'arrow') {
-      const { from, to, color: c } = shape;
-      const head = 14;
-      const angle = Math.atan2(to.y - from.y, to.x - from.x);
-      ctx.strokeStyle = c;
-      ctx.fillStyle = c;
-      ctx.lineWidth = 3.5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-      // Grot rysowany jako trójkąt, nie dwie kreski — przy grubej linii dwie
-      // kreski rozjeżdżają się na końcu i strzałka wygląda na złamaną.
-      ctx.beginPath();
-      ctx.moveTo(to.x, to.y);
-      ctx.lineTo(to.x - head * Math.cos(angle - Math.PI / 7), to.y - head * Math.sin(angle - Math.PI / 7));
-      ctx.lineTo(to.x - head * Math.cos(angle + Math.PI / 7), to.y - head * Math.sin(angle + Math.PI / 7));
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      ctx.fillStyle = shape.color;
-      ctx.font = '600 24px system-ui, -apple-system, sans-serif';
-      ctx.textBaseline = 'top';
-      shape.text.split('\n').forEach((line, i) => {
-        ctx.fillText(line, shape.at.x, shape.at.y + i * 30);
-      });
-    }
-    ctx.restore();
-  };
-
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (background) {
-      ctx.fillStyle = background;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    ctx.restore();
-
+    if (!canvas) return;
     const all = current.current ? [...shapes, current.current] : shapes;
-    all.forEach((shape) => drawShape(ctx, shape));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, background, isOverlay]);
+    renderShapes(canvas, all, { background });
+  }, [shapes, background]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const resize = () => {
-      const ratio = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * ratio;
-      canvas.height = rect.height * ratio;
-      const ctx = canvas.getContext('2d');
-      // Bez tej skali linia na ekranie z dpr 2 byłaby o połowę cieńsza, niż
-      // wynika z `lineWidth`, i rozjeżdżała się z pozycją kursora.
-      ctx?.setTransform(ratio, 0, 0, ratio, 0, 0);
+      fitCanvasToDisplay(canvas);
       redraw();
     };
 
@@ -173,6 +111,19 @@ const Whiteboard: React.FC<WhiteboardProps> = ({ onClose, backdrop, contextLabel
   useEffect(() => {
     redraw();
   }, [redraw]);
+
+  // Rysunek do okna kursanta wysyłamy po skończonej kresce, nie przy każdym
+  // ruchu ręki: w trakcie rysowania byłoby to kilkadziesiąt wiadomości na
+  // sekundę, a kursant i tak zobaczy linię dopiero, gdy będzie gotowa.
+  useEffect(() => {
+    if (!onShapesChange) return;
+    const canvas = canvasRef.current;
+    const rect = canvas?.getBoundingClientRect();
+    onShapesChange(shapes, {
+      width: rect?.width || 0,
+      height: rect?.height || 0,
+    });
+  }, [shapes, onShapesChange]);
 
   const pointFrom = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
     const rect = e.currentTarget.getBoundingClientRect();

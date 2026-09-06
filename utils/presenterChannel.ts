@@ -1,5 +1,6 @@
 import { PresentationSlide } from '../types';
 import type { SlideInteraction } from '../components/admin/presentation/SlideCard';
+import type { Shape } from '../components/admin/presentation/whiteboardShapes';
 
 /**
  * Łącze między kartą lektora a oknem, które widzi kursant.
@@ -31,6 +32,12 @@ export interface PresenterState {
    * prowadzącego — czyli wszystko klikalne działało tylko dla niego.
    */
   interaction: SlideInteraction;
+  /**
+   * Rysunek z tablicy lektora wraz z rozmiarem płótna, na którym powstał.
+   * Rozmiar jest potrzebny, bo okno kursanta ma inne wymiary — bez przeliczenia
+   * strzałka wskazująca słowo trafiałaby u niego w inne miejsce.
+   */
+  whiteboard?: { shapes: Shape[]; width: number; height: number } | null;
   /** Rośnie z każdą wiadomością — okno odrzuca to, co już pokazało. */
   revision: number;
 }

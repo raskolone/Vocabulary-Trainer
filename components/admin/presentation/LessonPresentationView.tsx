@@ -29,6 +29,7 @@ import { AiGuidelinesModal } from './AiGuidelinesModal';
 import { SlideAiAssistantModal } from './SlideAiAssistantModal';
 import Whiteboard from './Whiteboard';
 import PresenterPanel from './PresenterPanel';
+import type { Shape } from './whiteboardShapes';
 import Button from '../../ui/Button';
 
 interface LessonPresentationViewProps {
@@ -69,6 +70,12 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
    * kolejny slajd otwierałby się z odpowiedziami odkrytymi na poprzednim.
    */
   const [slideInteraction, setSlideInteraction] = useState<SlideInteraction>(EMPTY_SLIDE_INTERACTION);
+  /** Rysunek z tablicy — przekazywany do okna kursanta, żeby widział to samo. */
+  const [whiteboardShapes, setWhiteboardShapes] = useState<{
+    shapes: Shape[];
+    width: number;
+    height: number;
+  } | null>(null);
   const [showNotebook, setShowNotebook] = useState(true);
   const [laserPointerActive, setLaserPointerActive] = useState(false);
   const [laserPos, setLaserPos] = useState({ x: 0, y: 0 });
@@ -172,6 +179,9 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
 
   useEffect(() => {
     setSlideInteraction(EMPTY_SLIDE_INTERACTION);
+    // Rysunek należy do slajdu, na którym powstał — przeniesiony na następny
+    // zasłaniałby treść kreskami, które już nic nie znaczą.
+    setWhiteboardShapes(null);
   }, [activeSlideIndex, currentDeck.id]);
 
   // Laser Pointer mouse tracker
@@ -564,6 +574,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
             activeSlideIndex={activeSlideIndex}
             onNavigate={setActiveSlideIndex}
             interaction={slideInteraction}
+            whiteboard={whiteboardShapes}
           />
 
           {/* SLIDE NAVIGATION CONTROLS */}
@@ -744,8 +755,14 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
           przejść na slajd `freeform` albo wyczyścić deck. */}
       {isWhiteboardOpen && (
         <Whiteboard
-          onClose={() => setIsWhiteboardOpen(false)}
+          onClose={() => {
+            setIsWhiteboardOpen(false);
+            setWhiteboardShapes(null);
+          }}
           contextLabel={currentSlide?.title}
+          onShapesChange={(shapes, size) =>
+            setWhiteboardShapes({ shapes, width: size.width, height: size.height })
+          }
           backdrop={
             currentSlide ? (
               <div className="p-4 sm:p-8">

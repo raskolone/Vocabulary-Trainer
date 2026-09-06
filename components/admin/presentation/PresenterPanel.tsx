@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, Timer } from 'lucide-react';
 import { LessonPresentation, PresentationSlide } from '../../../types';
 import { PRESENTER_PATH, PresenterLink, openPresenterLink } from '../../../utils/presenterChannel';
 import { EMPTY_SLIDE_INTERACTION, SlideInteraction } from './SlideCard';
+import type { Shape } from './whiteboardShapes';
 
 /**
  * Panel prowadzącego — zostaje na ekranie lektora, gdy okno ze slajdem idzie
@@ -19,6 +20,8 @@ interface PresenterPanelProps {
   onNavigate: (index: number) => void;
   /** Co lektor odkrył na slajdzie — leci do okna kursanta razem ze slajdem. */
   interaction?: SlideInteraction;
+  /** Rysunek z tablicy, jeśli jest otwarta. */
+  whiteboard?: { shapes: Shape[]; width: number; height: number } | null;
 }
 
 /** Czas w formacie mm:ss — lekcja rzadko przekracza godzinę. */
@@ -47,6 +50,7 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
   activeSlideIndex,
   onNavigate,
   interaction = EMPTY_SLIDE_INTERACTION,
+  whiteboard = null,
 }) => {
   const linkRef = useRef<PresenterLink | null>(null);
   const [presenterWindow, setPresenterWindow] = useState<Window | null>(null);
@@ -73,8 +77,9 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
       totalSlides: deck.slides.length,
       deckTitle: deck.title,
       interaction,
+      whiteboard,
     });
-  }, [current, activeSlideIndex, deck.slides.length, deck.title, interaction]);
+  }, [current, activeSlideIndex, deck.slides.length, deck.title, interaction, whiteboard]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -94,6 +99,7 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
         totalSlides: deck.slides.length,
         deckTitle: deck.title,
         interaction,
+        whiteboard,
       });
     }, 600);
     if (!isRunning) setIsRunning(true);
