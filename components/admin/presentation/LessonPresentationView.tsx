@@ -183,12 +183,18 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
 
   // Deck Saving
   const handleSaveDeck = async () => {
-    try {
-      await savePresentationToStorage(currentDeck);
-      refreshSavedDecks();
-      showToast('Zapisano prezentację i notatnik w pamięci!');
-    } catch (e: any) {
-      showToast('Nie udało się zapisać: ' + (e?.message || 'nieznany błąd'));
+    const result = await savePresentationToStorage(currentDeck);
+    refreshSavedDecks();
+
+    if (result.cloud) {
+      showToast('Zapisano prezentację i notatnik.');
+    } else if (result.local) {
+      // Rozróżnienie jest tu istotne: talia zapisana tylko lokalnie zniknie po
+      // przesiadce na drugi komputer, a lektor musi o tym wiedzieć przed lekcją,
+      // nie w jej trakcie.
+      showToast('Zapisano tylko w tej przeglądarce — nie udało się zapisać w chmurze.');
+    } else {
+      showToast('Nie udało się zapisać prezentacji.');
     }
   };
 
@@ -204,15 +210,26 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
    * każdej literze to setki zapisów na lekcję.
    */
   const isFirstDeckRender = useRef(true);
+  /** Ostrzeżenie o nieudanym zapisie do chmury pokazujemy raz, nie co autozapis. */
+  const cloudSaveWarned = useRef(false);
   useEffect(() => {
     if (isFirstDeckRender.current) {
       isFirstDeckRender.current = false;
       return;
     }
     const timer = setTimeout(() => {
-      savePresentationToStorage(currentDeck).catch((e) =>
-        console.warn('Autozapis prezentacji nie powiódł się:', e)
-      );
+      savePresentationToStorage(currentDeck)
+        .then((result) => {
+          // Autozapis milczy, gdy się udał — komunikat w środku lekcji byłby
+          // rozpraszaczem. O nieudanym zapisie do chmury mówimy raz, przy
+          // pierwszym niepowodzeniu, żeby nie powtarzać go co dwie sekundy.
+          if (!result.cloud && !cloudSaveWarned.current) {
+            cloudSaveWarned.current = true;
+            showToast('Zmiany zapisują się tylko w tej przeglądarce — chmura odmawia zapisu.');
+          }
+          if (result.cloud) cloudSaveWarned.current = false;
+        })
+        .catch((e) => console.warn('Autozapis prezentacji nie powiódł się:', e));
     }, 2000);
     return () => clearTimeout(timer);
   }, [currentDeck]);

@@ -695,35 +695,56 @@ export const enhanceAISlide = async ({
   };
 };
 
-export const savePresentationToStorage = async (presentation: LessonPresentation): Promise<void> => {
+/** Gdzie realnie wylądowała talia — lektor musi wiedzieć, czy ma ją na drugim komputerze. */
+export interface PresentationSaveResult {
+  local: boolean;
+  cloud: boolean;
+  cloudError?: string;
+}
+
+/**
+ * Zapisuje talię lokalnie i w chmurze.
+ *
+ * Zapis do chmury bywał odrzucany po cichu — reguły Firestore nie znały
+ * kolekcji `presentations`, więc talia zostawała wyłącznie w `localStorage`
+ * tej jednej przeglądarki. Lektor nie miał jak tego zauważyć: przygotowywał
+ * lekcję na jednym komputerze, siadał do drugiego i nie znajdował materiału.
+ *
+ * Dlatego wynik jest zwracany, a nie połykany. Zapis lokalny zostaje jako
+ * pierwszy krok — działa offline i przeżywa awarię sieci w środku lekcji.
+ */
+export const savePresentationToStorage = async (
+  presentation: LessonPresentation
+): Promise<PresentationSaveResult> => {
+  const updated = {
+    ...presentation,
+    updatedAt: new Date().toISOString()
+  };
+  const result: PresentationSaveResult = { local: false, cloud: false };
+
   try {
-    const updated = {
-      ...presentation,
-      updatedAt: new Date().toISOString()
-    };
-
-    // Save to LocalStorage
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_PRESENTATIONS_KEY);
-      const list: LessonPresentation[] = stored ? JSON.parse(stored) : [];
-      const filtered = list.filter(p => p.id !== updated.id);
-      filtered.unshift(updated);
-      localStorage.setItem(LOCAL_STORAGE_PRESENTATIONS_KEY, JSON.stringify(filtered.slice(0, 50)));
-    } catch (e) {
-      console.warn('LocalStorage error:', e);
-    }
-
-    // Save to Firestore
-    if (presentation.studentId) {
-      const presRef = doc(db, `users/${presentation.studentId}/presentations`, presentation.id);
-      await setDoc(presRef, updated, { merge: true });
-    } else {
-      const presRef = doc(db, 'globalPresentations', presentation.id);
-      await setDoc(presRef, updated, { merge: true });
-    }
-  } catch (err) {
-    console.error('Error saving presentation:', err);
+    const stored = localStorage.getItem(LOCAL_STORAGE_PRESENTATIONS_KEY);
+    const list: LessonPresentation[] = stored ? JSON.parse(stored) : [];
+    const filtered = list.filter(p => p.id !== updated.id);
+    filtered.unshift(updated);
+    localStorage.setItem(LOCAL_STORAGE_PRESENTATIONS_KEY, JSON.stringify(filtered.slice(0, 50)));
+    result.local = true;
+  } catch (e) {
+    console.warn('LocalStorage error:', e);
   }
+
+  try {
+    const presRef = presentation.studentId
+      ? doc(db, `users/${presentation.studentId}/presentations`, presentation.id)
+      : doc(db, 'globalPresentations', presentation.id);
+    await setDoc(presRef, updated, { merge: true });
+    result.cloud = true;
+  } catch (err: any) {
+    result.cloudError = err?.message || String(err);
+    console.error('Error saving presentation to Firestore:', err);
+  }
+
+  return result;
 };
 
 export const getSavedPresentationsList = async (studentId?: string | null): Promise<LessonPresentation[]> => {

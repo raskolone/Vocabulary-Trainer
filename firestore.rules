@@ -310,6 +310,14 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // Prezentacje przypisane do kursanta. Układa i zmienia je lektor, kursant
+      // może je czytać — dziś ogląda je przez udostępniony ekran, ale odczyt
+      // otwiera drogę do pokazania mu materiału po lekcji.
+      match /presentations/{presentationId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update, delete: if isAdmin();
+      }
+
       match /flashcardProgress/{progressId} {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if (isOwner(userId) || isAdmin()) && isValidFlashcardProgress(request.resource.data);
@@ -461,6 +469,13 @@ service cloud.firestore {
     }
     match /lessonScenarios/{scenarioId} {
       allow read, write: if isAdmin();
+    }
+
+    // Prezentacje nieprzypisane do żadnego kursanta — szablony i materiał
+    // ogólny. Czyta każdy zalogowany, zmienia wyłącznie lektor.
+    match /globalPresentations/{presentationId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
     }
 
     // ---------------------------------------------------------------
