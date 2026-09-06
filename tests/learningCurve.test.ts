@@ -15,6 +15,9 @@ import {
   shiftLevel,
   weakestExerciseTypes,
   windowAccuracy,
+  FIRESTORE_LEARNING_PROFILE_ALLOWED_KEYS,
+  FIRESTORE_LEARNING_PROFILE_REQUIRED_KEYS,
+  serializeLearningProfile,
 } from '../utils/learningCurve';
 
 /**
@@ -213,4 +216,40 @@ test('briefing bez historii mówi wprost, że danych jeszcze nie ma', () => {
 
   assert.match(briefing, /brak jeszcze historii ćwiczeń/);
   assert.match(briefing, /Poziom docelowy: A2/);
+});
+
+test('serializeLearningProfile generuje dokładnie taki kształt, jakiego wymagają Firestore Security Rules', () => {
+  const profile = ingestAttempts(profileWith('B1'), [attempt({ isCorrect: true })], NOW).profile;
+  const serialized = serializeLearningProfile(profile, NOW);
+  const keys = Object.keys(serialized);
+
+  // keys().hasAll(['studentId','baseLevel','currentLevel','totalAttempts','totalCorrect'])
+  for (const requiredKey of FIRESTORE_LEARNING_PROFILE_REQUIRED_KEYS) {
+    assert.ok(keys.includes(requiredKey), `Brak wymaganego pola w profilu: ${requiredKey}`);
+  }
+
+  // keys().hasOnly(['studentId','baseLevel','currentLevel','totalAttempts','totalCorrect','byLevel','byExerciseType','recentOutcomes','attemptsSinceLevelChange','recentMistakes','lastUpdated','createdAt'])
+  for (const key of keys) {
+    assert.ok(
+      (FIRESTORE_LEARNING_PROFILE_ALLOWED_KEYS as readonly string[]).includes(key),
+      `Pole ${key} nie jest dozwolone przez reguły Firestore Security Rules`
+    );
+  }
+
+  assert.equal(keys.length, FIRESTORE_LEARNING_PROFILE_ALLOWED_KEYS.length);
+  assert.equal(serialized.studentId, 'student-1');
+  assert.equal(serialized.baseLevel, 'B1');
+  assert.equal(serialized.currentLevel, 'B1');
+  assert.equal(typeof serialized.totalAttempts, 'number');
+  assert.equal(typeof serialized.totalCorrect, 'number');
+  assert.equal(typeof serialized.lastUpdated, 'string');
+  assert.equal(typeof serialized.createdAt, 'string');
+});
+
+test('streakHidden: dozwolona flaga logiczna kursanta', () => {
+  const isValidStreakHidden = (val: unknown) => typeof val === 'boolean';
+  assert.equal(isValidStreakHidden(true), true);
+  assert.equal(isValidStreakHidden(false), true);
+  assert.equal(isValidStreakHidden('true'), false);
+  assert.equal(isValidStreakHidden(1), false);
 });

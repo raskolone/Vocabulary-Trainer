@@ -9,7 +9,10 @@ import {
   createProfile,
   ingestAttempts,
   normalizeLevel,
+  serializeLearningProfile,
 } from '../utils/learningCurve';
+
+export { serializeLearningProfile };
 
 /**
  * Trwały profil krzywej uczenia kursanta.
@@ -52,7 +55,8 @@ export async function getLearningProfile(
     if (!snapshot.exists()) return emptyProfileFor(studentId, baseLevel);
 
     const stored = snapshot.data() as Partial<LearningProfile>;
-    const profile = createProfile(studentId, fallbackLevel, new Date().toISOString());
+    const now = new Date().toISOString();
+    const profile = createProfile(studentId, fallbackLevel, stored.lastUpdated || stored.updatedAt || now);
     return {
       ...profile,
       ...stored,
@@ -64,6 +68,8 @@ export async function getLearningProfile(
       recentOutcomes: stored.recentOutcomes || [],
       recentMistakes: stored.recentMistakes || [],
       levelHistory: stored.levelHistory || [],
+      lastUpdated: stored.lastUpdated || stored.updatedAt || now,
+      createdAt: stored.createdAt || now,
     };
   } catch (error) {
     // Brak profilu nie może zablokować ćwiczenia — bez niego model dostaje
@@ -72,6 +78,7 @@ export async function getLearningProfile(
     return emptyProfileFor(studentId, baseLevel);
   }
 }
+
 
 /**
  * Zapisuje wyniki ćwiczenia i przelicza poziom trudności.
@@ -91,7 +98,8 @@ export async function recordExerciseResults(
     const current = await getLearningProfile(studentId, baseLevel);
     const now = new Date().toISOString();
     const { profile, decision } = ingestAttempts(current, attempts, now);
-    await setDoc(profileRef(studentId), profile);
+    const payload = serializeLearningProfile(profile, current.createdAt || now);
+    await setDoc(profileRef(studentId), payload);
     return { profile, decision };
   } catch (error) {
     // Ćwiczenie jest już zrobione i zapisane w historii sesji — nieudany zapis

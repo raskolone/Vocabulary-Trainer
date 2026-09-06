@@ -77,6 +77,8 @@ export interface LearningProfile {
   /** Dziennik zmian poziomu — wewnętrzny raport mechanizmu. */
   levelHistory: LevelChange[];
   updatedAt: string;
+  lastUpdated?: string;
+  createdAt?: string;
 }
 
 /** Okno, po którym w ogóle wolno ruszyć poziomem. */
@@ -161,6 +163,8 @@ export function createProfile(studentId: string, baseLevel: CefrLevel, now: stri
     recentMistakes: [],
     levelHistory: [],
     updatedAt: now,
+    lastUpdated: now,
+    createdAt: now,
   };
 }
 
@@ -183,6 +187,7 @@ export function recordAttempts(
     recentMistakes: [...profile.recentMistakes],
     levelHistory: [...profile.levelHistory],
     updatedAt: now,
+    lastUpdated: now,
   };
 
   attempts.forEach((attempt) => {
@@ -309,6 +314,7 @@ export function applyLevelDecision(
       { date: now, from: profile.currentLevel, to: decision.level, reason: decision.reason },
     ].slice(-30),
     updatedAt: now,
+    lastUpdated: now,
   };
 }
 
@@ -404,4 +410,49 @@ export function buildStudentBriefing(profile: LearningProfile): string {
   );
 
   return lines.filter((line) => line !== '').join('\n');
+}
+
+/** Dozwolone klucze dokumentu learningCurve w Firestore Security Rules */
+export const FIRESTORE_LEARNING_PROFILE_ALLOWED_KEYS = [
+  'studentId',
+  'baseLevel',
+  'currentLevel',
+  'totalAttempts',
+  'totalCorrect',
+  'byLevel',
+  'byExerciseType',
+  'recentOutcomes',
+  'attemptsSinceLevelChange',
+  'recentMistakes',
+  'lastUpdated',
+  'createdAt',
+] as const;
+
+export const FIRESTORE_LEARNING_PROFILE_REQUIRED_KEYS = [
+  'studentId',
+  'baseLevel',
+  'currentLevel',
+  'totalAttempts',
+  'totalCorrect',
+] as const;
+
+/**
+ * Przekształca profil w czysty obiekt dozwolony przez reguły Firestore.
+ */
+export function serializeLearningProfile(profile: LearningProfile, createdAt?: string) {
+  const now = new Date().toISOString();
+  return {
+    studentId: profile.studentId,
+    baseLevel: profile.baseLevel,
+    currentLevel: profile.currentLevel,
+    totalAttempts: profile.totalAttempts,
+    totalCorrect: profile.totalCorrect,
+    byLevel: profile.byLevel || {},
+    byExerciseType: profile.byExerciseType || {},
+    recentOutcomes: profile.recentOutcomes || [],
+    attemptsSinceLevelChange: profile.attemptsSinceLevelChange || 0,
+    recentMistakes: profile.recentMistakes || [],
+    lastUpdated: profile.lastUpdated || profile.updatedAt || now,
+    createdAt: profile.createdAt || createdAt || profile.updatedAt || now,
+  };
 }

@@ -9,7 +9,8 @@
         "email": { "type": "string" },
         "role": { "type": "string" },
         "streakCount": { "type": "number" },
-        "lastStreakDate": { "type": "string", "format": "date-time" }
+        "lastStreakDate": { "type": "string", "format": "date-time" },
+        "streakHidden": { "type": "boolean" }
       },
       "required": ["username", "email", "role"]
     },
@@ -120,12 +121,36 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["studentId", "lessonRecordId", "title", "date", "topic", "vocabularyText", "itemCount", "status", "source", "createdAt", "updatedAt"]
+    },
+    "LearningProfile": {
+      "title": "LearningProfile",
+      "description": "Student learning curve progress profile written by client after evaluated exercises.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "baseLevel": { "type": "string" },
+        "currentLevel": { "type": "string" },
+        "totalAttempts": { "type": "number" },
+        "totalCorrect": { "type": "number" },
+        "byLevel": { "type": "object" },
+        "byExerciseType": { "type": "object" },
+        "recentOutcomes": { "type": "array" },
+        "attemptsSinceLevelChange": { "type": "number" },
+        "recentMistakes": { "type": "array" },
+        "lastUpdated": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "baseLevel", "currentLevel", "totalAttempts", "totalCorrect"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profile data."
+    },
+    "/users/{userId}/profile/{docId}": {
+      "schema": { "$ref": "#/entities/LearningProfile" },
+      "description": "Student's learning curve profile (docId: learningCurve)."
     },
     "/users/{userId}/words/{wordId}": {
       "schema": { "$ref": "#/entities/Word" },
