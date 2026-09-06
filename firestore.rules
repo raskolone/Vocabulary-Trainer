@@ -501,5 +501,23 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    // ---------------------------------------------------------------
+    // Testy poziomujące (publicTests)
+    // ---------------------------------------------------------------
+    // Kolekcja dla kandydatów bez założonego konta w systemie.
+    // Dostęp do konkretnego testu warunkuje znajomość jego id (kodu dostępu).
+    match /publicTests/{code} {
+      allow get: if true;
+      allow list, write: if isAdmin();
+
+      match /submissions/{id} {
+        allow create: if true
+          && request.resource.data.keys().hasAll(['candidateName', 'testCode', 'answers', 'submittedAt'])
+          && request.resource.data.testCode == code
+          && request.resource.data.answers is list;
+        allow get, list, update, delete: if isAdmin();
+      }
+    }
   }
 }
