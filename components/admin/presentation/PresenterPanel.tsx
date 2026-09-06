@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ExternalLink, Timer } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, Play, Square, Timer } from 'lucide-react';
 import { LessonPresentation, PresentationSlide } from '../../../types';
 import { PRESENTER_PATH, PresenterLink, openPresenterLink } from '../../../utils/presenterChannel';
 import { EMPTY_SLIDE_INTERACTION, SlideInteraction } from './SlideCard';
 import type { Shape } from './whiteboardShapes';
+import SlideTimer from './SlideTimer';
 
 /**
  * Panel prowadzącego — zostaje na ekranie lektora, gdy okno ze slajdem idzie
@@ -56,6 +57,8 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
   const [presenterWindow, setPresenterWindow] = useState<Window | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
+  /** Koniec odliczania ćwiczenia — trafia do okna kursanta, żeby widział to samo. */
+  const [timerEndsAt, setTimerEndsAt] = useState<number | null>(null);
 
   const current = deck.slides[activeSlideIndex];
   const next = deck.slides[activeSlideIndex + 1];
@@ -78,8 +81,15 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
       deckTitle: deck.title,
       interaction,
       whiteboard,
+      timerEndsAt,
     });
-  }, [current, activeSlideIndex, deck.slides.length, deck.title, interaction, whiteboard]);
+  }, [current, activeSlideIndex, deck.slides.length, deck.title, interaction, whiteboard, timerEndsAt]);
+
+  // Odliczanie należy do konkretnego ćwiczenia — przy przejściu dalej gasimy je,
+  // żeby na następnym slajdzie nie tykał zegar od poprzedniego zadania.
+  useEffect(() => {
+    setTimerEndsAt(null);
+  }, [activeSlideIndex]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -100,6 +110,7 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
         deckTitle: deck.title,
         interaction,
         whiteboard,
+        timerEndsAt,
       });
     }, 600);
     if (!isRunning) setIsRunning(true);
@@ -125,6 +136,28 @@ const PresenterPanel: React.FC<PresenterPanelProps> = ({
             <Timer size={14} />
             {formatElapsed(elapsed)}
           </button>
+
+          {current?.timerMinutes ? (
+            timerEndsAt ? (
+              <button
+                onClick={() => setTimerEndsAt(null)}
+                title="Zatrzymaj odliczanie ćwiczenia"
+                className="inline-flex items-center gap-1.5 min-h-[2.5rem] px-3 rounded-xl border border-warn/35 text-warn text-sm font-bold"
+              >
+                <Square size={13} /> Stop
+              </button>
+            ) : (
+              <button
+                onClick={() => setTimerEndsAt(Date.now() + current.timerMinutes! * 60_000)}
+                title={`Odlicz ${current.timerMinutes} min na to ćwiczenie`}
+                className="inline-flex items-center gap-1.5 min-h-[2.5rem] px-3 rounded-xl border border-white/12 text-content-muted text-sm font-bold"
+              >
+                <Play size={13} /> {current.timerMinutes} min
+              </button>
+            )
+          ) : null}
+
+          <SlideTimer endsAt={timerEndsAt} compact />
 
           <button
             onClick={openPresenterWindow}

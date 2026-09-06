@@ -38,6 +38,12 @@ export interface PresenterState {
    * strzałka wskazująca słowo trafiałaby u niego w inne miejsce.
    */
   whiteboard?: { shapes: Shape[]; width: number; height: number } | null;
+  /**
+   * Koniec odliczania jako znacznik czasu, nie liczba sekund: dzięki temu
+   * wystarczy jedna wiadomość na całe ćwiczenie, a każde okno liczy sobie samo
+   * — inaczej trzeba by wysyłać tykanie co sekundę do wszystkich naraz.
+   */
+  timerEndsAt?: number | null;
   /** Rośnie z każdą wiadomością — okno odrzuca to, co już pokazało. */
   revision: number;
 }

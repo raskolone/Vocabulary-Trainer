@@ -6,6 +6,7 @@ import {
   readLastPresenterState,
 } from '../../../utils/presenterChannel';
 import { fitCanvasToDisplay, renderShapes, scaleShapes } from './whiteboardShapes';
+import SlideTimer from './SlideTimer';
 
 /**
  * Okno, które widzi kursant.
@@ -104,6 +105,14 @@ const PresenterScreen: React.FC = () => {
           ref={boardRef}
           className="pointer-events-none absolute inset-0 w-full h-full"
         />
+
+        {/* Odliczanie w rogu slajdu: duże, bo kursant patrzy na nie z drugiej
+            strony połączenia, i z dala od treści, żeby jej nie zasłaniało. */}
+        {state.timerEndsAt ? (
+          <div className="pointer-events-none absolute top-4 right-4 sm:top-6 sm:right-6">
+            <SlideTimer endsAt={state.timerEndsAt} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
