@@ -5,51 +5,112 @@
       "description": "User profile with role and streak information.",
       "type": "object",
       "properties": {
-        "username": { "type": "string" },
-        "email": { "type": "string" },
-        "role": { "type": "string" },
-        "streakCount": { "type": "number" },
-        "lastStreakDate": { "type": "string", "format": "date-time" },
-        "streakHidden": { "type": "boolean" }
+        "username": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "streakCount": {
+          "type": "number"
+        },
+        "lastStreakDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "streakHidden": {
+          "type": "boolean"
+        }
       },
-      "required": ["username", "email", "role"]
+      "required": [
+        "username",
+        "email",
+        "role"
+      ]
     },
     "Word": {
       "title": "Word",
       "description": "A vocabulary word saved by the user.",
       "type": "object",
       "properties": {
-        "word": { "type": "string" },
-        "ipa": { "type": "string" },
-        "definition": { "type": "string" },
-        "example": { "type": "string" },
-        "language": { "type": "string" },
-        "isDifficult": { "type": "boolean" },
-        "setId": { "type": "string" }
+        "word": {
+          "type": "string"
+        },
+        "ipa": {
+          "type": "string"
+        },
+        "definition": {
+          "type": "string"
+        },
+        "example": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "isDifficult": {
+          "type": "boolean"
+        },
+        "setId": {
+          "type": "string"
+        }
       },
-      "required": ["word", "ipa", "definition", "example", "language", "isDifficult"]
+      "required": [
+        "word",
+        "ipa",
+        "definition",
+        "example",
+        "language",
+        "isDifficult"
+      ]
     },
     "WordSet": {
       "title": "WordSet",
       "description": "A custom set of vocabulary words.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "language": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["name", "description", "createdAt"]
+      "required": [
+        "name",
+        "description",
+        "createdAt"
+      ]
     },
     "UserSettings": {
       "title": "UserSettings",
       "description": "User specific settings and practice history.",
       "type": "object",
       "properties": {
-        "lastExerciseType": { "type": "string" },
-        "lastPracticeDate": { "type": "string", "format": "date-time" },
-        "revisionFrequency": { "type": "string" },
-        "lastRevisionDate": { "type": "string", "format": "date-time" }
+        "lastExerciseType": {
+          "type": "string"
+        },
+        "lastPracticeDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revisionFrequency": {
+          "type": "string"
+        },
+        "lastRevisionDate": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     },
     "FlashcardProgress": {
@@ -57,129 +118,402 @@
       "description": "Spaced repetition tracking for a single flashcard.",
       "type": "object",
       "properties": {
-        "flashcardId": { "type": "string" },
-        "setId": { "type": "string" },
-        "userId": { "type": "string" },
-        "repetitions": { "type": "number" },
-        "interval": { "type": "number" },
-        "easeFactor": { "type": "number" },
-        "nextReviewDate": { "type": "string", "format": "date-time" },
-        "lastReviewedAt": { "type": "string", "format": "date-time" }
+        "flashcardId": {
+          "type": "string"
+        },
+        "setId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "repetitions": {
+          "type": "number"
+        },
+        "interval": {
+          "type": "number"
+        },
+        "easeFactor": {
+          "type": "number"
+        },
+        "nextReviewDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastReviewedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["flashcardId", "setId", "userId", "repetitions", "interval", "easeFactor", "nextReviewDate", "lastReviewedAt"]
+      "required": [
+        "flashcardId",
+        "setId",
+        "userId",
+        "repetitions",
+        "interval",
+        "easeFactor",
+        "nextReviewDate",
+        "lastReviewedAt"
+      ]
     },
     "RecallItem": {
       "title": "RecallItem",
       "description": "Spaced recall item created and approved by teacher for student practice.",
       "type": "object",
       "properties": {
-        "studentId": { "type": "string" },
-        "lessonId": { "type": "string" },
-        "targetForm": { "type": "string" },
-        "meaningOrFunction": { "type": "string" },
-        "learningType": { "type": "string" },
-        "teacherNote": { "type": "string" },
-        "approvalStatus": { "type": "string", "enum": ["draft", "approved", "rejected"] },
-        "retrievalHistory": { "type": "array" },
-        "nextDueAt": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "studentId": {
+          "type": "string"
+        },
+        "lessonId": {
+          "type": "string"
+        },
+        "targetForm": {
+          "type": "string"
+        },
+        "meaningOrFunction": {
+          "type": "string"
+        },
+        "learningType": {
+          "type": "string"
+        },
+        "teacherNote": {
+          "type": "string"
+        },
+        "approvalStatus": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "approved",
+            "rejected"
+          ]
+        },
+        "retrievalHistory": {
+          "type": "array"
+        },
+        "nextDueAt": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["studentId", "lessonId", "targetForm", "learningType", "approvalStatus", "createdAt", "updatedAt"]
+      "required": [
+        "studentId",
+        "lessonId",
+        "targetForm",
+        "learningType",
+        "approvalStatus",
+        "createdAt",
+        "updatedAt"
+      ]
     },
     "LessonRecord": {
       "title": "LessonRecord",
       "description": "Teacher lesson notes, summary, and assigned vocabulary.",
       "type": "object",
       "properties": {
-        "studentId": { "type": "string" },
-        "date": { "type": "string" },
-        "topic": { "type": "string" },
-        "vocabularyText": { "type": "string" },
-        "lessonSummary": { "type": "string" },
-        "vocabularySetId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "studentId": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "vocabularyText": {
+          "type": "string"
+        },
+        "lessonSummary": {
+          "type": "string"
+        },
+        "vocabularySetId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["studentId", "date", "topic", "vocabularyText", "createdAt", "updatedAt"]
+      "required": [
+        "studentId",
+        "date",
+        "topic",
+        "vocabularyText",
+        "createdAt",
+        "updatedAt"
+      ]
     },
     "VocabularySet": {
       "title": "VocabularySet",
       "description": "Vocabulary set derived from a lesson record.",
       "type": "object",
       "properties": {
-        "studentId": { "type": "string" },
-        "lessonRecordId": { "type": "string" },
-        "title": { "type": "string" },
-        "date": { "type": "string" },
-        "topic": { "type": "string" },
-        "vocabularyText": { "type": "string" },
-        "itemCount": { "type": "number" },
-        "status": { "type": "string" },
-        "source": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "studentId": {
+          "type": "string"
+        },
+        "lessonRecordId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        },
+        "vocabularyText": {
+          "type": "string"
+        },
+        "itemCount": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["studentId", "lessonRecordId", "title", "date", "topic", "vocabularyText", "itemCount", "status", "source", "createdAt", "updatedAt"]
+      "required": [
+        "studentId",
+        "lessonRecordId",
+        "title",
+        "date",
+        "topic",
+        "vocabularyText",
+        "itemCount",
+        "status",
+        "source",
+        "createdAt",
+        "updatedAt"
+      ]
     },
     "LearningProfile": {
       "title": "LearningProfile",
       "description": "Student learning curve progress profile written by client after evaluated exercises.",
       "type": "object",
       "properties": {
-        "studentId": { "type": "string" },
-        "baseLevel": { "type": "string" },
-        "currentLevel": { "type": "string" },
-        "totalAttempts": { "type": "number" },
-        "totalCorrect": { "type": "number" },
-        "byLevel": { "type": "object" },
-        "byExerciseType": { "type": "object" },
-        "recentOutcomes": { "type": "array" },
-        "attemptsSinceLevelChange": { "type": "number" },
-        "recentMistakes": { "type": "array" },
-        "levelHistory": { "type": "array" },
-        "lastUpdated": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "studentId": {
+          "type": "string"
+        },
+        "baseLevel": {
+          "type": "string"
+        },
+        "currentLevel": {
+          "type": "string"
+        },
+        "totalAttempts": {
+          "type": "number"
+        },
+        "totalCorrect": {
+          "type": "number"
+        },
+        "byLevel": {
+          "type": "object"
+        },
+        "byExerciseType": {
+          "type": "object"
+        },
+        "recentOutcomes": {
+          "type": "array"
+        },
+        "attemptsSinceLevelChange": {
+          "type": "number"
+        },
+        "recentMistakes": {
+          "type": "array"
+        },
+        "levelHistory": {
+          "type": "array"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["studentId", "baseLevel", "currentLevel", "totalAttempts", "totalCorrect"]
+      "required": [
+        "studentId",
+        "baseLevel",
+        "currentLevel",
+        "totalAttempts",
+        "totalCorrect"
+      ]
+    },
+    "PublicTest": {
+      "title": "PublicTest",
+      "description": "Open test for a candidate who is not in the database yet. Document id is the access code.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "questions": {
+          "type": "array"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "submissionCount": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "questions",
+        "createdBy",
+        "createdAt",
+        "isActive"
+      ]
+    },
+    "PublicTestSubmission": {
+      "title": "PublicTestSubmission",
+      "description": "One candidate attempt at an open test. Created by an unauthenticated candidate, read only by the teacher.",
+      "type": "object",
+      "properties": {
+        "candidateName": {
+          "type": "string"
+        },
+        "candidateEmail": {
+          "type": "string"
+        },
+        "answers": {
+          "type": "object"
+        },
+        "score": {
+          "type": "number"
+        },
+        "maxScore": {
+          "type": "number"
+        },
+        "estimatedLevel": {
+          "type": "string"
+        },
+        "aiFeedback": {
+          "type": "string"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "candidateName",
+        "answers",
+        "submittedAt"
+      ]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": { "$ref": "#/entities/User" },
+      "schema": {
+        "$ref": "#/entities/User"
+      },
       "description": "User profile data."
     },
     "/users/{userId}/profile/{docId}": {
-      "schema": { "$ref": "#/entities/LearningProfile" },
+      "schema": {
+        "$ref": "#/entities/LearningProfile"
+      },
       "description": "Student's learning curve profile (docId: learningCurve)."
     },
     "/users/{userId}/words/{wordId}": {
-      "schema": { "$ref": "#/entities/Word" },
+      "schema": {
+        "$ref": "#/entities/Word"
+      },
       "description": "User's saved vocabulary words."
     },
     "/users/{userId}/wordSets/{setId}": {
-      "schema": { "$ref": "#/entities/WordSet" },
+      "schema": {
+        "$ref": "#/entities/WordSet"
+      },
       "description": "User's custom word sets."
     },
     "/users/{userId}/settings/practice": {
-      "schema": { "$ref": "#/entities/UserSettings" },
+      "schema": {
+        "$ref": "#/entities/UserSettings"
+      },
       "description": "User's practice history and settings."
     },
     "/users/{userId}/flashcardProgress/{progressId}": {
-      "schema": { "$ref": "#/entities/FlashcardProgress" },
+      "schema": {
+        "$ref": "#/entities/FlashcardProgress"
+      },
       "description": "User's spaced repetition card progress records."
     },
     "/users/{userId}/recallItems/{itemId}": {
-      "schema": { "$ref": "#/entities/RecallItem" },
+      "schema": {
+        "$ref": "#/entities/RecallItem"
+      },
       "description": "User's recall queue items for daily practice."
     },
     "/users/{userId}/lessonRecords/{recordId}": {
-      "schema": { "$ref": "#/entities/LessonRecord" },
+      "schema": {
+        "$ref": "#/entities/LessonRecord"
+      },
       "description": "User's lesson history records."
     },
     "/users/{userId}/vocabularySets/{setId}": {
-      "schema": { "$ref": "#/entities/VocabularySet" },
+      "schema": {
+        "$ref": "#/entities/VocabularySet"
+      },
       "description": "User's vocabulary sets from lessons."
+    },
+    "/publicTests/{code}": {
+      "schema": {
+        "$ref": "#/entities/PublicTest"
+      },
+      "description": "Open placement tests. Readable with `get` by anyone who knows the code (no login: candidates have no account); `list`, writes and deletes are teacher-only."
+    },
+    "/publicTests/{code}/submissions/{submissionId}": {
+      "schema": {
+        "$ref": "#/entities/PublicTestSubmission"
+      },
+      "description": "Candidate attempts. Anyone with the code may create one; only the teacher may read, update or delete."
     }
   }
 }
