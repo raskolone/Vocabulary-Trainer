@@ -294,7 +294,19 @@ service cloud.firestore {
           && docId == 'learningCurve'
           && request.resource.data.studentId == userId
           && request.resource.data.keys().hasAll(['studentId', 'baseLevel', 'currentLevel', 'totalAttempts', 'totalCorrect'])
-          && request.resource.data.keys().hasOnly(['studentId', 'baseLevel', 'currentLevel', 'totalAttempts', 'totalCorrect', 'byLevel', 'byExerciseType', 'recentOutcomes', 'attemptsSinceLevelChange', 'recentMistakes', 'lastUpdated', 'createdAt']);
+          && request.resource.data.keys().hasOnly(['studentId', 'baseLevel', 'currentLevel', 'totalAttempts', 'totalCorrect', 'byLevel', 'byExerciseType', 'recentOutcomes', 'attemptsSinceLevelChange', 'recentMistakes', 'levelHistory', 'lastUpdated', 'createdAt'])
+          // Same nazwy kluczy nie wystarczą: dokument zapisuje przeglądarka
+          // kursanta, a lektor czyta go jako raport postępów. Bez kontroli typów
+          // do raportu wchodzi dowolny poziom i dowolna liczba, a bez limitów
+          // długości list rośnie on bez końca.
+          && request.resource.data.baseLevel in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+          && request.resource.data.currentLevel in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+          && request.resource.data.totalAttempts is number
+          && request.resource.data.totalCorrect is number
+          && (!('attemptsSinceLevelChange' in request.resource.data) || request.resource.data.attemptsSinceLevelChange is number)
+          && (!('recentOutcomes' in request.resource.data) || (request.resource.data.recentOutcomes is list && request.resource.data.recentOutcomes.size() <= 100))
+          && (!('recentMistakes' in request.resource.data) || (request.resource.data.recentMistakes is list && request.resource.data.recentMistakes.size() <= 50))
+          && (!('levelHistory' in request.resource.data) || (request.resource.data.levelHistory is list && request.resource.data.levelHistory.size() <= 50));
         allow delete: if isAdmin();
       }
 

@@ -424,6 +424,7 @@ export const FIRESTORE_LEARNING_PROFILE_ALLOWED_KEYS = [
   'recentOutcomes',
   'attemptsSinceLevelChange',
   'recentMistakes',
+  'levelHistory',
   'lastUpdated',
   'createdAt',
 ] as const;
@@ -438,6 +439,15 @@ export const FIRESTORE_LEARNING_PROFILE_REQUIRED_KEYS = [
 
 /**
  * Przekształca profil w czysty obiekt dozwolony przez reguły Firestore.
+ *
+ * `levelHistory` musi tu być: to dziennik decyzji o trudności (kiedy poziom
+ * poszedł w górę, kiedy w dół i dlaczego), czyli ta część raportu, której nie da
+ * się odtworzyć z niczego innego — liczniki mówią, jak jest teraz, a nie jak
+ * kursant do tego doszedł. Pominięty w serializacji był liczony przy każdej
+ * sesji i wyrzucany przy zapisie.
+ *
+ * `updatedAt` żyje tylko w pamięci (ustawiają je funkcje krzywej); do bazy idzie
+ * `lastUpdated` i to ono wraca przy odczycie.
  */
 export function serializeLearningProfile(profile: LearningProfile, createdAt?: string) {
   const now = new Date().toISOString();
@@ -452,6 +462,7 @@ export function serializeLearningProfile(profile: LearningProfile, createdAt?: s
     recentOutcomes: profile.recentOutcomes || [],
     attemptsSinceLevelChange: profile.attemptsSinceLevelChange || 0,
     recentMistakes: profile.recentMistakes || [],
+    levelHistory: profile.levelHistory || [],
     lastUpdated: profile.lastUpdated || profile.updatedAt || now,
     createdAt: profile.createdAt || createdAt || profile.updatedAt || now,
   };

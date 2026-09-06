@@ -246,10 +246,21 @@ test('serializeLearningProfile generuje dokładnie taki kształt, jakiego wymaga
   assert.equal(typeof serialized.createdAt, 'string');
 });
 
-test('streakHidden: dozwolona flaga logiczna kursanta', () => {
-  const isValidStreakHidden = (val: unknown) => typeof val === 'boolean';
-  assert.equal(isValidStreakHidden(true), true);
-  assert.equal(isValidStreakHidden(false), true);
-  assert.equal(isValidStreakHidden('true'), false);
-  assert.equal(isValidStreakHidden(1), false);
+test('dziennik zmian poziomu przechodzi przez serializację do bazy', () => {
+  // Bez tego pola raport mówi tylko, jak jest teraz, i gubi drogę, którą
+  // kursant do tego poziomu doszedł — a tej nie da się odtworzyć z liczników.
+  const promoted = ingestAttempts(
+    profileWith('B1'),
+    Array.from({ length: DECISION_WINDOW }, () => attempt({ isCorrect: true })),
+    NOW
+  ).profile;
+
+  const serialized = serializeLearningProfile(promoted, NOW);
+
+  assert.equal(promoted.levelHistory.length, 1);
+  assert.equal(serialized.levelHistory.length, 1);
+  assert.deepEqual(
+    { from: serialized.levelHistory[0].from, to: serialized.levelHistory[0].to },
+    { from: 'B1', to: 'B2' }
+  );
 });
