@@ -11,6 +11,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import ConfirmModal from '../ui/ConfirmModal';
 import { LessonSelectionModal } from './LessonSelectionModal';
+import HomeworkComposer from '../admin/HomeworkComposer';
 import { FillInTheBlankTask } from '../practice/FillInTheBlankTask';
 import Badge from '../ui/Badge';
 import { 
@@ -1097,7 +1098,17 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({ initialTaskId = 
       ) : null}
 
       {/* ---------------- TEACHER CREATE / EDIT HOMEWORK WORKSPACE ---------------- */}
-      {isTeacher && activeTab === 'create' && !activeTask && (
+      {/* Nowe zadanie układa kreator: kursant, materiał, typy ćwiczeń, termin.
+          Stary formularz zostaje wyłącznie do edycji już przypisanej pracy —
+          tam liczy się dostęp do konkretnych zdań, a nie szybkość składania. */}
+      {isTeacher && activeTab === 'create' && !activeTask && !editingTask && (
+        <HomeworkComposer
+          initialStudentId={initialStudentId || undefined}
+          onAssigned={() => setActiveTab('list')}
+        />
+      )}
+
+      {isTeacher && activeTab === 'create' && !activeTask && editingTask && (
         <Card className="liquid-glass p-6 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">

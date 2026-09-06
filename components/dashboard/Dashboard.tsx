@@ -27,6 +27,7 @@ import AdminPanel from '../admin/AdminPanel';
 import StudentStatsScreen from './StudentStatsScreen';
 import LessonHistoryScreen from './LessonHistoryScreen';
 import TodayScreen from './TodayScreen';
+import StudentPanelPreview from './StudentPanelPreview';
 import { isModuleVisible } from '../../config/featureFlags';
 import StudentTestsScreen from '../tests/StudentTestsScreen';
 import AdminStatsScreen from '../admin/AdminStatsScreen';
@@ -38,6 +39,7 @@ import FlashcardPresentationScreen from '../flashcards/FlashcardPresentationScre
 import SettingsScreen from '../settings/SettingsScreen';
 import TopicDatabaseScreen from '../admin/TopicDatabaseScreen';
 import HomeworkScreen from './HomeworkScreen';
+import StudentHomeworkScreen from './StudentHomeworkScreen';
 import AdminDebuggingScreen from '../admin/AdminDebuggingScreen';
 import OnboardingOverlay from './OnboardingOverlay';
 
@@ -179,17 +181,12 @@ const Dashboard: React.FC = () => {
     }
     if (view === 'lesson-history') {
       return (
-        <LessonHistoryScreen 
+        <LessonHistoryScreen
           onStudySet={(setId) => {
             (window as any)._initialStudyMode = 'flashcards';
             handleNavigate('flashcard-study', { setId });
           }}
-          onNavigate={(v: any, extra?: any) => {
-            if (extra && (extra.setId || extra.activeSetId)) {
-              setActiveSetId(extra.setId || extra.activeSetId);
-            }
-            setView(v as View);
-          }}
+          onNavigate={(v: any, extra?: any) => handleNavigate(v as View, extra)}
         />
       );
     }
@@ -272,10 +269,21 @@ const Dashboard: React.FC = () => {
       );
     }
     if (view === 'homework') {
+      // Kursant i lektor robią przy pracy domowej dwie różne rzeczy: jeden ją
+      // rozwiązuje, drugi układa i ocenia. Jeden ekran dla obu ról znaczył, że
+      // kursant przewijał się przez filtry i kreator lektora.
+      if (isTeacher) {
+        return (
+          <HomeworkScreen
+            initialTaskId={activeTaskId}
+            onBack={() => handleNavigate('dashboard')}
+          />
+        );
+      }
       return (
-        <HomeworkScreen 
-          initialTaskId={activeTaskId} 
-          onBack={() => handleNavigate('dashboard')} 
+        <StudentHomeworkScreen
+          initialTaskId={activeTaskId}
+          onBack={() => handleNavigate('dashboard')}
         />
       );
     }
@@ -292,19 +300,30 @@ const Dashboard: React.FC = () => {
       return <AdminPanel />;
     }
 
-    // Domyślne wejście kursanta to kolejka zatwierdzonych elementów, nie
-    // generator. Generator nadal istnieje i działa pod dwoma wejściami:
-    // „Praktyka dodatkowa" w menu oraz `ai-generator`, którego używają
-    // przyciski „Generuj zdania AI z tego zestawu" w zestawach, fiszkach
-    // i historii lekcji. Gdyby `ai-generator` też trafiał tutaj, te przyciski
-    // przestałyby cokolwiek robić.
+    // Domyślne wejście kursanta to jego panel, nie generator. Generator nadal
+    // istnieje i działa pod dwoma wejściami: „Praktyka dodatkowa" w menu oraz
+    // `ai-generator`, którego używają przyciski „Przećwicz w zdaniach AI"
+    // w zestawach, fiszkach i przy lekcjach. Gdyby `ai-generator` też trafiał
+    // tutaj, te przyciski przestałyby cokolwiek robić.
     if (view !== 'extra-practice' && view !== 'ai-generator') {
-      return (
-        <TodayScreen
-          onOpenExtraPractice={() => handleNavigate('extra-practice')}
-          onOpenLastLesson={() => handleNavigate('lesson-history')}
-        />
-      );
+      const panelProps = {
+        onOpenExtraPractice: () => handleNavigate('extra-practice'),
+        onOpenHomework: (taskId?: string) =>
+          handleNavigate('homework', taskId ? { taskId } : undefined),
+        onStudySet: (setId: string) => {
+          (window as any)._initialStudyMode = 'flashcards';
+          handleNavigate('flashcard-study', { setId });
+        },
+        onPracticeAI: (setId: string) => handleNavigate('ai-generator', { setId }),
+      };
+
+      // Lektor w „Panelu kursanta" ogląda konto wybranego kursanta; bez tego
+      // czytałby własne, puste lekcje i widział panel, którego nikt nie dostaje.
+      if (isTeacher) {
+        return <StudentPanelPreview {...panelProps} />;
+      }
+
+      return <TodayScreen {...panelProps} />;
     }
 
     return <AIExerciseGeneratorScreen 

@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { GEMINI_MODEL_CASCADE, openAiModelsFor } from "../services/aiModels";
 
 /**
  * Wariant serverless trasy /api/openai (wdrożenie na Vercelu).
@@ -40,7 +41,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { prompt, systemInstruction, isJson, messages } = req.body || {};
+    const { prompt, systemInstruction, isJson, messages, model } = req.body || {};
     if (!prompt && !messages) {
       return res.status(400).json({ error: 'Missing prompt or messages' });
     }
@@ -56,7 +57,9 @@ export default async function handler(req: any, res: any) {
       ];
     }
 
-    const openAiModels = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4-turbo"];
+    // Model z żądania idzie pierwszy — wcześniej ta trasa go ignorowała i wybór
+    // modelu po stronie aplikacji nic tu nie znaczył.
+    const openAiModels = openAiModelsFor(model);
     let openAiSuccess = false;
     let resultText = "";
     let usedModel = "";
@@ -127,40 +130,43 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ text: resultText, modelUsed: usedModel });
     }
 
-    // Ultimate Fallback to Gemini 2.5 Flash
-    console.log("OpenAI Fallback -> Przełączam na model: gemini-2.5-flash");
+    // Zapas u drugiego dostawcy — ta sama kolejność, co w server.ts.
     if (geminiKey) {
-      let gRetries = 3;
-      while (gRetries > 0) {
-        try {
-          const ai = new GoogleGenAI({ apiKey: geminiKey });
-          let fullPrompt = prompt || "";
-          if (!fullPrompt && Array.isArray(messages)) {
-            fullPrompt = messages.map((m: any) => `${m.role}: ${m.content}`).join("\n");
-          }
+      for (const gModel of GEMINI_MODEL_CASCADE) {
+        console.log(`OpenAI Fallback -> Przełączam na model: ${gModel}`);
+        let gRetries = 2;
+        while (gRetries > 0) {
+          try {
+            const ai = new GoogleGenAI({ apiKey: geminiKey });
+            let fullPrompt = prompt || "";
+            if (!fullPrompt && Array.isArray(messages)) {
+              fullPrompt = messages.map((m: any) => `${m.role}: ${m.content}`).join("\n");
+            }
 
-          const geminiConfig: any = {};
-          if (systemInstruction) {
-            geminiConfig.systemInstruction = systemInstruction;
-          }
-          if (isJson) {
-            geminiConfig.responseMimeType = "application/json";
-          }
+            const geminiConfig: any = {};
+            if (systemInstruction) {
+              geminiConfig.systemInstruction = systemInstruction;
+            }
+            if (isJson) {
+              geminiConfig.responseMimeType = "application/json";
+            }
 
-          const geminiRes = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: fullPrompt,
-            config: geminiConfig
-          });
+            const geminiRes = await ai.models.generateContent({
+              model: gModel,
+              contents: fullPrompt,
+              config: geminiConfig
+            });
 
-          if (geminiRes.text) {
-            return res.status(200).json({ text: geminiRes.text, modelUsed: "gemini-2.5-flash" });
-          }
-        } catch (gErr: any) {
-          console.warn(`Gemini fallback exception (retries left ${gRetries - 1}):`, gErr?.message || gErr);
-          gRetries--;
-          if (gRetries > 0) {
-            await new Promise(r => setTimeout(r, 1500));
+            if (geminiRes.text) {
+              return res.status(200).json({ text: geminiRes.text, modelUsed: gModel });
+            }
+            break;
+          } catch (gErr: any) {
+            console.warn(`Gemini fallback ${gModel} exception (retries left ${gRetries - 1}):`, gErr?.message || gErr);
+            gRetries--;
+            if (gRetries > 0) {
+              await new Promise(r => setTimeout(r, 1500));
+            }
           }
         }
       }

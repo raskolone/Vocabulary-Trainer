@@ -1,4 +1,5 @@
-import { auth } from '../../firebase';
+import { auth, db } from '../../firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 
 import React, { useState } from 'react';
@@ -10,7 +11,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { FREQUENCIES } from '../../constants';
 import { RevisionFrequency, TTSAccent, VoiceGender, VoiceSpeed, SoundEngine, canUserViewAiMonitor } from '../../types';
-import { LogOut, Volume2, Play, CheckCircle2, RefreshCw, VolumeX, Sparkles, Sliders, Check } from 'lucide-react';
+import { LogOut, Volume2, Play, CheckCircle2, RefreshCw, VolumeX, Sparkles, Sliders, Check, Flame } from 'lucide-react';
 import { playSpeech } from '../../services/ttsService';
 import i18n from "i18next";
 
@@ -20,6 +21,7 @@ const SettingsScreen: React.FC = () => {
     const { language } = useLanguage();
     const { linkGoogleAccount, user, logout } = useAuth();
     const canViewAiModels = canUserViewAiMonitor(user);
+    const [isSavingStreakPref, setIsSavingStreakPref] = useState(false);
     const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
     const [linkError, setLinkError] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -87,6 +89,18 @@ const SettingsScreen: React.FC = () => {
         await updateSoundSettings({ [key]: value });
         setSaveSuccessMessage(true);
         setTimeout(() => setSaveSuccessMessage(false), 2500);
+    };
+
+    const handleToggleStreakVisibility = async (hidden: boolean) => {
+        if (!user?.id) return;
+        setIsSavingStreakPref(true);
+        try {
+            await updateDoc(doc(db, 'users', user.id), { streakHidden: hidden });
+        } catch (error) {
+            console.error('Nie udało się zapisać ustawienia passy:', error);
+        } finally {
+            setIsSavingStreakPref(false);
+        }
     };
 
     return (
@@ -433,6 +447,32 @@ const SettingsScreen: React.FC = () => {
                             {i18n.t("This setting controls how often you are prompted to revise words you have marked as difficult.")}
                         </p>
                     </div>
+                </Card>
+
+                <Card>
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <Flame className="w-5 h-5 text-warn" />
+                        {language === 'pl' ? 'Passa (streak)' : 'Streak'}
+                    </h2>
+                    <label className="flex items-center justify-between p-3 rounded-xl bg-black/30 border border-white/5 hover:border-white/15 transition-all cursor-pointer">
+                        <div className="pr-4">
+                            <span className="text-sm font-semibold text-white block">
+                                {language === 'pl' ? 'Pokazuj ikonę passy w panelu' : 'Show streak icon in panel'}
+                            </span>
+                            <span className="text-xs text-content-muted">
+                                {language === 'pl'
+                                    ? 'Mała ikonka z liczbą dni z rzędu nauki obok paska postępu. Wyłączenie chowa tylko ikonę — passa dalej się liczy.'
+                                    : 'A small icon with your current day streak next to the progress bar. Turning it off only hides the icon — the streak keeps counting.'}
+                            </span>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={!user?.streakHidden}
+                            disabled={isSavingStreakPref}
+                            onChange={(e) => handleToggleStreakVisibility(!e.target.checked)}
+                            className="w-5 h-5 rounded border-white/20 bg-black/40 text-primary focus:ring-primary accent-primary cursor-pointer shrink-0"
+                        />
+                    </label>
                 </Card>
 
                 <Card className="border-danger/30 bg-danger/5 md:col-span-2">

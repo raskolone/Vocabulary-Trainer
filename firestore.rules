@@ -205,6 +205,26 @@ service cloud.firestore {
              isValidDateString(data.lastReviewedAt);
     }
 
+    // Profil krzywej uczenia. Zapisuje go przeglądarka kursanta po każdym
+    // ocenionym zadaniu, więc kształt musi być pilnowany tutaj — inaczej
+    // dowolna treść wchodziłaby do dokumentu, z którego lektor czyta raport
+    // postępów. `studentId` musi zgadzać się z właścicielem ścieżki, żeby
+    // profil nie mógł podszyć się pod innego kursanta.
+    function isValidLearningProfile(userId, data) {
+      return hasRequiredFields(['studentId', 'baseLevel', 'currentLevel', 'totalAttempts', 'totalCorrect']) &&
+             hasOnlyAllowedFields(['studentId', 'baseLevel', 'currentLevel', 'totalAttempts', 'totalCorrect', 'byLevel', 'byExerciseType', 'recentOutcomes', 'attemptsSinceLevelChange', 'recentMistakes', 'levelHistory', 'updatedAt']) &&
+             data.studentId == userId &&
+             data.baseLevel in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] &&
+             data.currentLevel in ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] &&
+             data.totalAttempts is number &&
+             data.totalCorrect is number &&
+             (!('recentOutcomes' in data) || (data.recentOutcomes is list && data.recentOutcomes.size() <= 100)) &&
+             (!('recentMistakes' in data) || (data.recentMistakes is list && data.recentMistakes.size() <= 50)) &&
+             (!('levelHistory' in data) || (data.levelHistory is list && data.levelHistory.size() <= 50)) &&
+             (!('attemptsSinceLevelChange' in data) || data.attemptsSinceLevelChange is number) &&
+             (!('updatedAt' in data) || isValidDateString(data.updatedAt));
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -212,7 +232,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && ((request.resource.data.role == 'user') || ('email' in request.auth.token && (request.auth.token.email == "maciej.wyrozumski@gmail.com" || request.auth.token.email == "marta.lukaszczyk@gmail.com")) || isAdmin());
-      allow update: if (isOwner(userId) || isAdmin()) && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["loginCount", "lastLoginDate", "streakCount", "lastStreakDate", "username", "photoURL", "firstName", "lastName", "level", "description", "requirePasswordChange", "hasNewVocabulary", "hasNewLesson", "hasNewHomework", "dismissedNotifications", "translatedSentencesCount", "aiPrompt", "frequentErrors", "tempPassword", "tempPasswordLogins", "onboardingCompleted"]) || isAdmin());
+      allow update: if (isOwner(userId) || isAdmin()) && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["loginCount", "lastLoginDate", "streakCount", "lastStreakDate", "streakHidden", "username", "photoURL", "firstName", "lastName", "level", "description", "requirePasswordChange", "hasNewVocabulary", "hasNewLesson", "hasNewHomework", "dismissedNotifications", "translatedSentencesCount", "aiPrompt", "frequentErrors", "tempPassword", "tempPasswordLogins", "onboardingCompleted"]) || isAdmin());
       allow delete: if isAdmin();
 
       match /words/{wordId} {
@@ -282,6 +302,15 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isAdmin();
         allow update: if isAdmin();
+        allow delete: if isAdmin();
+      }
+
+      // Krzywa uczenia — jeden dokument (`learningCurve`) na kursanta.
+      // Kursant zapisuje własny postęp, lektor czyta go jako raport.
+      match /profile/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if (isOwner(userId) || isAdmin()) && docId == 'learningCurve' && isValidLearningProfile(userId, request.resource.data);
+        allow update: if (isOwner(userId) || isAdmin()) && docId == 'learningCurve' && isValidLearningProfile(userId, request.resource.data);
         allow delete: if isAdmin();
       }
 

@@ -14,6 +14,8 @@ import TTSButtons from '../flashcards/TTSButtons';
 import { TranslationExercise, TranslationEvaluationResult, FlashcardSet, LessonRecord, VocabularySet, PracticeLog, canUserViewAiMonitor } from '../../types';
 import { studentTasksQuery } from '../../utils/homework';
 import { getApprovedVocabularyText } from '../../utils/vocabulary';
+import { recordExerciseResults, getStudentAiContext } from '../../services/learningProfile';
+import { normalizeLevel } from '../../utils/learningCurve';
 
 export interface CachedExerciseSet {
   id: string;
@@ -1506,12 +1508,19 @@ const AIExerciseGeneratorScreen: React.FC<AIExerciseGeneratorScreenProps> = ({ i
       addLog('fetchPromises resolved');
 
       // Call Gemini API service function
+      // Krzywa uczenia dokłada do opisu od lektora twarde dane: skuteczność,
+      // poziom wyliczony z wyników i ostatnie błędy. Nieudany odczyt profilu
+      // nie może zablokować ćwiczenia — wtedy zostaje sam opis lektora.
+      const learningContext = await getStudentAiContext(user?.id || '', level).catch(() => null);
+
       const studentProfileContext = `
 Spersonalizowany Prompt Kursanta (ŻELAZNE WSKAZÓWKI AI DLA KURSANTA):
 ${user?.aiPrompt ? user.aiPrompt : 'Brak dodatkowych wskazówek.'}
 
 Profil i tło kursanta:
 ${user?.description ? user.description : 'Brak dodatkowego opisu.'}
+
+${learningContext?.briefing || ''}
 `;
       
       let userProfileStr = user?.description || "Brak danych";
@@ -1542,8 +1551,10 @@ ${user?.description ? user.description : 'Brak dodatkowego opisu.'}
       addLog('Calling generateTranslationExercises');
       setLastUsedWords(wordsToUse);
       const generated = await generateTranslationExercises(
-        level, 
-        wordsToUse, 
+        // Poziom z krzywej uczenia bierze górę nad ustawionym ręcznie: zna
+        // ostatnie wyniki, a suwak zna tylko to, co kursant kiedyś wybrał.
+        learningContext?.level || level,
+        wordsToUse,
         resolvedGenPrompt, 
         lessonContextString, 
         studentProfileContext, 
@@ -1884,6 +1895,25 @@ ${user?.description ? user.description : 'Brak dodatkowego opisu.'}
         if (allMistakes.length > 0) {
           await logMistakesToFirebase(user.id, allMistakes);
         }
+
+        // Do krzywej uczenia idą tylko odpowiedzi realnie oceniane. Układanka
+        // (`puzzle`) zostaje poza nią celowo: kursant przestawia klocki aż
+        // ułoży poprawnie, więc jej stuprocentowy wynik nie mówi nic o poziomie
+        // i tylko podbijałby trudność kolejnych zadań.
+        recordExerciseResults(
+          user.id,
+          results.map((r) => ({
+            prompt: r.polishSentence,
+            expected: r.correctTranslation,
+            given: r.studentAnswer,
+            isCorrect: r.isCorrect,
+            score: Number.isFinite(Number(r.score)) ? Number(r.score) : 0,
+            level: normalizeLevel(user.level),
+            exerciseType: 'translation',
+            date: new Date().toISOString(),
+          })),
+          user.level
+        ).catch(console.error);
 
         const newSentencesCount = (user?.translatedSentencesCount || translatedSentencesCount || 0) + results.length;
         setTranslatedSentencesCount(newSentencesCount);

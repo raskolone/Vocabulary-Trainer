@@ -1,5 +1,6 @@
 import { db } from '../firebase';
 import {
+  addDoc,
   collection,
   doc,
   getDocs,
@@ -196,6 +197,64 @@ export async function recordRetrievalAttempt(
   });
 
   return attempt;
+}
+
+/**
+ * Element jest „utrwalony", gdy ostatnia próba wypadła pewnie.
+ *
+ * To jedyny sygnał, jaki mamy o retencji — interwał po `confident` jest
+ * najdłuższy (patrz `scheduleNextDue`), więc pewna ostatnia próba znaczy
+ * realny odstęp od poprzedniej, nie zgadywankę sprzed dnia.
+ */
+export function isConsolidated(item: RecallItem): boolean {
+  const history = item.retrievalHistory || [];
+  if (history.length === 0) return false;
+  return history[history.length - 1].result === 'confident';
+}
+
+/**
+ * Zapisuje skończoną sesję powtórek do historii ćwiczeń kursanta.
+ *
+ * Bez tego wpisu powtórki były jedynym rodzajem ćwiczenia niewidocznym w
+ * „Moich sesjach" i w statystykach: `recordRetrievalAttempt` zmienia tylko
+ * sam element do powtórek, nigdy nie trafiając do `practiceLogs`.
+ */
+export async function logReviewSession(
+  studentId: string,
+  reviewedItems: RecallItem[],
+  results: RetrievalResult[]
+): Promise<void> {
+  if (!studentId || results.length === 0) return;
+
+  const rows = reviewedItems.slice(0, results.length).map((item, i) => {
+    const result = results[i];
+    return {
+      polishSentence: item.meaningOrFunction,
+      correctTranslation: item.targetForm,
+      studentAnswer: '',
+      isCorrect: result !== 'fail',
+      score: result === 'confident' ? 100 : result === 'effort' ? 60 : 0,
+      explanation:
+        result === 'confident'
+          ? 'Zapamiętane pewnie.'
+          : result === 'effort'
+          ? 'Przypomniane z trudem.'
+          : 'Nie udało się przypomnieć — element wraca jutro.',
+    };
+  });
+
+  const average = Math.round(rows.reduce((sum, r) => sum + r.score, 0) / rows.length);
+
+  await addDoc(collection(db, `users/${studentId}/practiceLogs`), {
+    exerciseType: 'recall',
+    date: new Date().toISOString(),
+    isRevisionMode: true,
+    score: average,
+    totalWords: rows.length,
+    testName: 'Powtórki',
+    setDisplayName: 'Powtórki',
+    exercisesData: rows,
+  });
 }
 
 /** Zmiana statusu pojedynczego elementu z panelu lektora. */

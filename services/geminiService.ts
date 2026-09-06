@@ -8,6 +8,7 @@ import { db } from '../firebase';
 import { Type, Modality } from "@google/genai";
 import { Language, Difficulty, Word, AISuggestion, AudioVocabulary, TranslationExercise, TranslationEvaluationResult, RecallCandidate, RecallLearningType } from '../types';
 import { aiMonitor } from './aiMonitorService';
+import { AI_MODEL_CASCADE, PRIMARY_MODEL, SECONDARY_MODEL, TERTIARY_MODEL } from './aiModels';
 
 
 export const extractJSON = (text: string): string => {
@@ -309,17 +310,13 @@ const callOpenAI = async (prompt: string, systemInstruction: string, model: stri
   }
 };
 
-export const PREFERRED_AI_MODELS = [
-  'openai/gpt-4o-mini',
-  'openai/gpt-4o',
-  'openai/gpt-4-turbo',
-  'openai/gpt-3.5-turbo',
-  'gemini-3.7-flash',
-  'gemini-2.5-flash'
-];
+/** Kolejność schodzenia po modelach — definicja w services/aiModels.ts. */
+export const PREFERRED_AI_MODELS = AI_MODEL_CASCADE;
 
 export const formatAIModelName = (model?: string): string => {
   if (!model) return 'OpenAI (GPT-4o mini)';
+  if (model.includes('gpt-5.6-luna')) return 'OpenAI (GPT-5.6 Luna)';
+  if (model.includes('gemini-3.8')) return 'Gemini 3.8 Flash';
   if (model.includes('tts-1-hd')) return 'OpenAI (TTS-1 HD)';
   if (model.includes('tts-1') || model === 'openai-tts-1') return 'OpenAI (TTS-1 Audio)';
   if (model.includes('gpt-4o-mini-audio')) return 'OpenAI (GPT-4o mini Audio)';
@@ -1786,7 +1783,7 @@ Zwróć WYŁĄCZNIE poprawny obiekt JSON o strukturze:
 
     const response = await generateContentWithFallback({
       contents,
-      preferredModels: ['openai/gpt-4o-mini', 'gemini-2.5-flash'],
+      preferredModels: AI_MODEL_CASCADE,
       config: {
         responseMimeType: "application/json",
       }
@@ -2003,7 +2000,9 @@ Zwróć wynik WYŁĄCZNIE w formacie JSON:
     const geminiRes = await generateTextWithUnifiedFallback(
       geminiVerificationPrompt,
       geminiSystemInstruction,
-      ['gemini-2.5-flash', 'gemini-1.5-flash', 'openai/gpt-4o-mini'],
+      // Weryfikację prowadzi celowo drugi dostawca, więc kaskada startuje od
+      // Gemini — model nie sprawdza tu własnej pracy sprzed chwili.
+      [SECONDARY_MODEL, TERTIARY_MODEL, PRIMARY_MODEL],
       { responseMimeType: "application/json" }
     );
 

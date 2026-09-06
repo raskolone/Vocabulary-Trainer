@@ -114,6 +114,16 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, []);
 
+  // Atrybut lang na <html> musi iść za wyborem języka, nie zostawać na „en"
+  // z index.html. Przeglądarka bierze stąd wzorce dzielenia wyrazów, a panel
+  // kursanta justuje tekst — po angielsku „obowiązkach" łamie się na
+  // „obow-iązkach". Ta sama informacja steruje czytnikami ekranu.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = language;
+    }
+  }, [language]);
+
   const handleSetLanguage = (lang: Language) => {
     setLanguage(lang);
     (function(){ try { localStorage.setItem('app_language', lang); } catch(e) {} })();

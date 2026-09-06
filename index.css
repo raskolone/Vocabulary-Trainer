@@ -307,3 +307,126 @@ tr.liquid-glass-hover:hover {
 .animate-shine {
   animation: shine 2.5s infinite ease-in-out;
 }
+
+/* Tekst ciągły w panelu kursanta jest justowany — decyzja z briefu.
+   Listy zostają wyrównane do lewej: justowanie krótkich pozycji listy
+   rozstrzeliwuje pojedyncze słowa na całą szerokość i psuje rytm czytania.
+   Dzielenie wyrazów włączone, bo bez niego justowanie na wąskim ekranie
+   telefonu robi rzeki białych przerw między słowami. */
+.prose-justified {
+  text-align: justify;
+}
+/* Dzielenie wyrazów tylko na wąskiej kolumnie. Justowanie bez niego robi na
+   telefonie rzeki białych przerw między długimi polskimi słowami; przy szerokim
+   wierszu tekst układa się sam i przenoszenie jest zbędnym ryzykiem. */
+@media (max-width: 640px) {
+  .prose-justified {
+    hyphens: auto;
+    -webkit-hyphens: auto;
+  }
+}
+.prose-justified ul,
+.prose-justified ol,
+.prose-justified li,
+.prose-justified h1,
+.prose-justified h2,
+.prose-justified h3,
+.prose-justified h4 {
+  text-align: left;
+  hyphens: manual;
+  -webkit-hyphens: manual;
+}
+.prose-justified p {
+  margin-bottom: 0.65em;
+}
+.prose-justified p:last-child {
+  margin-bottom: 0;
+}
+.prose-justified ul {
+  list-style: disc;
+  padding-left: 1.15rem;
+  margin: 0.35em 0;
+}
+.prose-justified ol {
+  list-style: decimal;
+  padding-left: 1.3rem;
+  margin: 0.35em 0;
+}
+.prose-justified li {
+  margin-bottom: 0.2em;
+}
+.prose-justified strong {
+  color: var(--text-hi, #fff);
+  font-weight: 700;
+}
+
+
+/* Neon panelu kursanta.
+   `neon-still` wyróżnia ostatnią lekcję spośród zwiniętych pasków — ma być
+   jaśniejsza od reszty, ale nie ruchoma, bo nie wzywa do działania, tylko
+   mówi „to jest najnowsze".
+   `neon-breathe` zostaje dla jedynej rzeczy, która czeka na decyzję kursanta,
+   gdy lektor nic nie zadał: wejścia w praktykę dodatkową. Ruch w interfejsie
+   jest walutą uwagi, więc w panelu może go używać najwyżej jeden element. */
+.neon-still {
+  box-shadow: 0 0 0 1px rgba(114, 240, 180, 0.22), 0 0 28px rgba(114, 240, 180, 0.13);
+}
+
+@keyframes neonBreathe {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(114, 240, 180, 0.22), 0 0 16px rgba(114, 240, 180, 0.08);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(114, 240, 180, 0.48), 0 0 34px rgba(114, 240, 180, 0.22);
+  }
+}
+.neon-breathe {
+  animation: neonBreathe 3.4s ease-in-out infinite;
+}
+
+/* Pulsowanie znika przy włączonym ograniczeniu ruchu — zostaje sama poświata,
+   więc element nadal jest wyróżniony, tylko nieruchomy. */
+@media (prefers-reduced-motion: reduce) {
+  .neon-breathe {
+    animation: none;
+    box-shadow: 0 0 0 1px rgba(114, 240, 180, 0.4), 0 0 24px rgba(114, 240, 180, 0.16);
+  }
+}
+
+/* Pasek postępu na szczycie panelu.
+   Nie jest ani lekcją, ani zadaniem do zrobienia — jest podsumowaniem tego, co
+   kursant już ma za sobą, więc musi odróżniać się od rzędu zwiniętych sekcji
+   pod nim. Wyróżnia go ramka i poświata mocniejsza niż `neon-still`, ale
+   nieruchoma: ruch w panelu zostaje zarezerwowany dla `neon-breathe`, czyli dla
+   jedynej rzeczy, która czeka na decyzję. */
+.stats-rail {
+  border-color: rgba(114, 240, 180, 0.34);
+  background-image: linear-gradient(
+    100deg,
+    rgba(114, 240, 180, 0.12) 0%,
+    rgba(114, 240, 180, 0.04) 42%,
+    rgba(114, 240, 180, 0) 78%
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(114, 240, 180, 0.16),
+    0 0 30px rgba(114, 240, 180, 0.16);
+}
+
+/* Kursor maszyny do pisania w komentarzu AI. Miga tylko wtedy, gdy tekst stoi;
+   podczas pisania i tak zmienia pozycję co kilkadziesiąt milisekund. */
+@keyframes caretBlink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+.typewriter-caret {
+  display: inline-block;
+  width: 0.5ch;
+  animation: caretBlink 1.05s steps(1, end) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .typewriter-caret {
+    animation: none;
+    opacity: 0;
+  }
+}

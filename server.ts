@@ -41,6 +41,7 @@ import { getAuth } from "firebase-admin/auth";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { GoogleGenAI, Type } from "@google/genai";
 import defaultFirebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+import { AI_MODEL_CASCADE, GEMINI_MODEL_CASCADE, openAiModelsFor } from "./services/aiModels";
 let pdfParse: any;
 try {
   const loadedPdf = typeof require !== "undefined" ? require("pdf-parse") : null;
@@ -52,11 +53,7 @@ try {
 }
 
 async function generateContentWithRetry(aiClient: any, contents: any, config: any, customModels?: string[]) {
-  const models = customModels || [
-    'openai/gpt-4o-mini',
-    'gemini-3.7-flash',
-    'gemini-2.5-flash'
-  ];
+  const models = customModels || AI_MODEL_CASCADE;
   let lastError;
   const errors: string[] = [];
   
@@ -779,7 +776,7 @@ Przeanalizuj CAŁĄ treść dokładnie i nie pomijaj żadnej lekcji. Zwróć wy�
           responseSchema: schema,
           temperature: 0.2
         },
-        ['openai/gpt-4o-mini', 'gemini-2.5-flash']
+        AI_MODEL_CASCADE
       );
 
       const responseText = response.text;
@@ -1024,7 +1021,7 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
           },
           required: ["overallTeacherCommentary", "keyStrengths", "areasToImprove", "pedagogicalTip"]
         }
-      }, ['openai/gpt-4o-mini', 'gemini-3.7-flash', 'gemini-2.5-flash']);
+      }, AI_MODEL_CASCADE);
       
       if (!response.text) throw new Error("No response from AI");
       
@@ -1332,14 +1329,7 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
         ];
       }
 
-      const requestedModel = model ? String(model).replace('openai/', '') : null;
-      const openAiModels = Array.from(new Set([
-        requestedModel,
-        "gpt-4o-mini",
-        "gpt-4o",
-        "gpt-4-turbo",
-        "gpt-3.5-turbo"
-      ].filter((m): m is string => Boolean(m))));
+      const openAiModels = openAiModelsFor(model);
       let openAiSuccess = false;
       let resultText = "";
       let usedModel = "";
@@ -1413,7 +1403,7 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
       // Ultimate Fallback to Gemini 3.7 / 2.5 Flash
       console.log("OpenAI Fallback -> Przełączam na model Gemini. Key present:", Boolean(geminiKey));
       if (geminiKey) {
-        const geminiModels = ["gemini-3.7-flash", "gemini-2.5-flash"];
+        const geminiModels = GEMINI_MODEL_CASCADE;
         for (const gModel of geminiModels) {
           let gRetries = 2;
           while (gRetries > 0) {

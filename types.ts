@@ -58,6 +58,8 @@ export interface User {
   soundEngine?: SoundEngine;
   autoPlaySentence?: boolean;
   autoPlayFlashcards?: boolean;
+  /** Ukrywa ikonę passy w panelu kursanta. Passa sama w sobie liczy się dalej. */
+  streakHidden?: boolean;
 }
 
 /**
@@ -356,7 +358,40 @@ export interface ErrorCorrectionExercise {
   hint?: string;
 }
 
-export type HomeworkType = 'translation' | 'find_errors' | 'fill_in_the_blank';
+/**
+ * Rodzaje pracy domowej.
+ *
+ * `word_order` i `multiple_choice` są dopisane pod telefon: rozwiązuje się je
+ * samym dotykiem, bez klawiatury, i sprawdzają się deterministycznie — kursant
+ * zna wynik od razu, bez czekania na ocenę modelu.
+ */
+export type HomeworkType =
+  | 'translation'
+  | 'find_errors'
+  | 'fill_in_the_blank'
+  | 'word_order'
+  | 'multiple_choice';
+
+/** Ułóż zdanie z rozsypanych fragmentów. */
+export interface WordOrderExercise {
+  /** Fragmenty w kolejności do pokazania — już przetasowane. */
+  chunks: string[];
+  /** Poprawna kolejność jako gotowe zdanie; po niej sprawdzamy odpowiedź. */
+  correctSentence: string;
+  /** Polskie znaczenie, żeby zadanie miało sens, a nie było układanką liter. */
+  polishHint?: string;
+}
+
+/** Wybór poprawnej formy spośród kilku. */
+export interface MultipleChoiceExercise {
+  /** Zdanie z luką „___" albo pytanie. */
+  question: string;
+  options: string[];
+  /** Indeks poprawnej opcji w `options`. */
+  correctIndex: number;
+  /** Dlaczego ta, a nie tamta — pokazujemy po odpowiedzi. */
+  explanation?: string;
+}
 
 export interface FillInTheBlankExercise {
   sentenceWithBlank?: string;
