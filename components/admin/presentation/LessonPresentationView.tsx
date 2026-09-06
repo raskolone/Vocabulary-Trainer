@@ -28,6 +28,7 @@ import { ImportDeckModal } from './ImportDeckModal';
 import { AiGuidelinesModal } from './AiGuidelinesModal';
 import { SlideAiAssistantModal } from './SlideAiAssistantModal';
 import Whiteboard from './Whiteboard';
+import PresenterPanel from './PresenterPanel';
 import Button from '../../ui/Button';
 
 interface LessonPresentationViewProps {
@@ -523,6 +524,15 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
               isFullscreen={isFullscreen}
             />
           )}
+
+          {/* Panel prowadzącego: notatki, następny slajd i okno dla kursanta.
+              Stoi pod slajdem, bo lektor patrzy tu między jednym a drugim
+              przejściem dalej, a nie w trakcie mówienia. */}
+          <PresenterPanel
+            deck={currentDeck}
+            activeSlideIndex={activeSlideIndex}
+            onNavigate={setActiveSlideIndex}
+          />
 
           {/* SLIDE NAVIGATION CONTROLS */}
           <div className="p-3 rounded-2xl bg-base-200/90 border border-white/10 flex items-center justify-between gap-2 shadow-md">

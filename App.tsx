@@ -13,6 +13,7 @@ import GlobalErrorBoundary from './components/ui/GlobalErrorBoundary';
 import ConstellationBackground from './components/ui/ConstellationBackground';
 import StarterVocabularyApp from './components/starter/StarterVocabularyApp';
 import PublicTestScreen, { publicTestCodeFromLocation } from './components/tests/PublicTestScreen';
+import PresenterScreen from './components/admin/presentation/PresenterScreen';
 import { AdminAIActivityMonitor } from './components/admin/AdminAIActivityMonitor';
 import { handleGlobalEscape } from './utils/modalStack';
 
@@ -60,6 +61,13 @@ const AppContent: React.FC = () => {
   // najpierw spinner, a potem ekran logowania, którego nie potrzebuje.
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/test')) {
     return <PublicTestScreen initialCode={publicTestCodeFromLocation()} />;
+  }
+
+  // Okno prezentacji dla kursanta. Stoi przed sprawdzeniem logowania, bo jest
+  // otwierane w nowej karcie i ma pokazywać slajd od razu, bez ekranu logowania
+  // w środku lekcji.
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/present')) {
+    return <PresenterScreen />;
   }
 
   if (!isAuthReady) {
