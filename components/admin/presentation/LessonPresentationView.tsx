@@ -175,9 +175,34 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
       refreshSavedDecks();
       showToast('Zapisano prezentację i notatnik w pamięci!');
     } catch (e: any) {
-      alert('Błąd podczas zapisywania: ' + e.message);
+      showToast('Nie udało się zapisać: ' + (e?.message || 'nieznany błąd'));
     }
   };
+
+  /**
+   * Autozapis talii i notatnika.
+   *
+   * Zapis był wyłącznie ręczny, więc zamknięta karta albo odświeżenie w trakcie
+   * przygotowań kasowały całą pracę — a notatnik zapełnia się właśnie wtedy, gdy
+   * lektor prowadzi lekcję i najmniej myśli o klikaniu „Zapisz".
+   *
+   * Zapisujemy dwie sekundy po ostatniej zmianie, nie przy każdym naciśnięciu
+   * klawisza: notatnik live jest polem tekstowym, a zapis do Firestore przy
+   * każdej literze to setki zapisów na lekcję.
+   */
+  const isFirstDeckRender = useRef(true);
+  useEffect(() => {
+    if (isFirstDeckRender.current) {
+      isFirstDeckRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      savePresentationToStorage(currentDeck).catch((e) =>
+        console.warn('Autozapis prezentacji nie powiódł się:', e)
+      );
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [currentDeck]);
 
   // Slide CRUD
   const handleSaveSlide = (newSlide: PresentationSlide) => {
