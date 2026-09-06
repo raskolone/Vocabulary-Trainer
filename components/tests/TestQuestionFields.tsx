@@ -123,22 +123,27 @@ export const TestQuestionHeader: React.FC<{ question: TestQuestion }> = ({ quest
   const showPrompt =
     q.type !== 'translation' && q.type !== 'fill_in_blank' && q.type !== 'fill_in_blank_bank';
 
+  // Treść pytania pochodzi od modelu i bywa niekompletna — brak `prompt` albo
+  // `instruction` nie może wywalić całego testu, który kursant już otworzył.
+  const prompt = String(q.prompt || '');
+  const instruction = String(q.instruction || '');
+
   // Polecenie powtórzone w treści pytania czyta się jak usterka, więc pokazujemy
   // je tylko wtedy, gdy naprawdę wnosi coś ponad sam prompt.
   const showInstruction =
-    q.instruction &&
-    q.instruction.trim().toLowerCase() !== q.prompt.trim().toLowerCase() &&
-    !q.prompt.trim().toLowerCase().startsWith(q.instruction.trim().toLowerCase());
+    instruction.trim().length > 0 &&
+    instruction.trim().toLowerCase() !== prompt.trim().toLowerCase() &&
+    !prompt.trim().toLowerCase().startsWith(instruction.trim().toLowerCase());
 
   return (
     <div>
       <div className="text-sm font-bold text-content-muted mb-2 uppercase tracking-wider">
         {QUESTION_TYPE_LABELS[q.type] || QUESTION_TYPE_LABELS.translation}
       </div>
-      {showInstruction && <div className="font-bold text-primary text-lg mb-2">{q.instruction}</div>}
+      {showInstruction && <div className="font-bold text-primary text-lg mb-2">{instruction}</div>}
       {showPrompt && (
         <div className="font-medium text-xl leading-relaxed whitespace-pre-wrap">
-          {normalizePromptLines(q.prompt)}
+          {normalizePromptLines(prompt)}
         </div>
       )}
       {q.hint && (
@@ -182,7 +187,7 @@ const TestQuestionFields: React.FC<TestQuestionFieldsProps> = ({ question: q, an
   if (q.type === 'fill_in_blank_bank') {
     return (
       <WordBankFillInBlankTask
-        prompt={q.prompt}
+        prompt={String(q.prompt || '')}
         correctAnswer={q.correctAnswer}
         wordBank={q.wordBank}
         options={q.options}
@@ -194,7 +199,12 @@ const TestQuestionFields: React.FC<TestQuestionFieldsProps> = ({ question: q, an
 
   if (q.type === 'fill_in_blank' || q.type === 'translation') {
     return (
-      <SentenceListTask type={q.type} prompt={q.prompt} initialAnswer={answer} onChange={onChange} />
+      <SentenceListTask
+        type={q.type}
+        prompt={String(q.prompt || '')}
+        initialAnswer={answer}
+        onChange={onChange}
+      />
     );
   }
 
