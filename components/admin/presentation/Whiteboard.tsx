@@ -9,6 +9,7 @@ import {
   Shape,
   fitCanvasToDisplay,
   renderShapes,
+  translateShapes,
 } from './whiteboardShapes';
 
 /**
@@ -69,6 +70,13 @@ const Whiteboard: React.FC<WhiteboardProps> = ({
   onShapesChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /**
+   * Obszar, w którym leży slajd. Rysunek mierzymy względem niego, nie względem
+   * całego płótna: u lektora slajd ma wokół siebie margines, a w oknie kursanta
+   * wypełnia kadr. Bez wspólnego układu odniesienia strzałka wskazująca słowo
+   * trafiałaby u kursanta o kilkadziesiąt pikseli obok — czyli w inną linijkę.
+   */
+  const boardAreaRef = useRef<HTMLDivElement>(null);
   const [shapes, setShapes] = useState<Shape[]>([]);
   const [color, setColor] = useState(COLORS[0].value);
   const [tool, setTool] = useState<WhiteboardTool>('pen');
@@ -112,18 +120,45 @@ const Whiteboard: React.FC<WhiteboardProps> = ({
     redraw();
   }, [redraw]);
 
+  // Callback trzymamy w ref, a nie w zależnościach efektu. Rodzic przekazuje go
+  // zwykle jako funkcję tworzoną w locie, więc przy każdym renderze miałby nową
+  // tożsamość: efekt wołałby `setState` rodzica, ten renderowałby się od nowa,
+  // dawał nowy callback i uruchamiał efekt jeszcze raz — pętla bez końca,
+  // kończąca się „Maximum update depth exceeded" w chwili otwarcia tablicy.
+  const shapesListener = useRef(onShapesChange);
+  useEffect(() => {
+    shapesListener.current = onShapesChange;
+  }, [onShapesChange]);
+
   // Rysunek do okna kursanta wysyłamy po skończonej kresce, nie przy każdym
   // ruchu ręki: w trakcie rysowania byłoby to kilkadziesiąt wiadomości na
   // sekundę, a kursant i tak zobaczy linię dopiero, gdy będzie gotowa.
   useEffect(() => {
-    if (!onShapesChange) return;
-    const canvas = canvasRef.current;
-    const rect = canvas?.getBoundingClientRect();
-    onShapesChange(shapes, {
-      width: rect?.width || 0,
-      height: rect?.height || 0,
-    });
-  }, [shapes, onShapesChange]);
+    if (!shapesListener.current) return;
+
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    const slideRect = boardAreaRef.current?.getBoundingClientRect();
+
+    // Bez slajdu pod spodem (pusta tablica) nie ma czego wyrównywać — wysyłamy
+    // kształty tak, jak leżą na płótnie.
+    if (!slideRect || !canvasRect) {
+      shapesListener.current(shapes, {
+        width: canvasRect?.width || 0,
+        height: canvasRect?.height || 0,
+      });
+      return;
+    }
+
+    // Sprowadzenie do układu slajdu: (0,0) w jego lewym górnym rogu. Okno
+    // kursanta skaluje potem tylko względem własnego slajdu i trafia w to samo
+    // słowo, choć jego okno ma inne wymiary i inne marginesy.
+    const relative = translateShapes(
+      shapes,
+      canvasRect.left - slideRect.left,
+      canvasRect.top - slideRect.top
+    );
+    shapesListener.current(relative, { width: slideRect.width, height: slideRect.height });
+  }, [shapes]);
 
   const pointFrom = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -301,7 +336,11 @@ const Whiteboard: React.FC<WhiteboardProps> = ({
         {/* Slajd pod spodem. `pointer-events-none`, bo cała warstwa dotyku
             należy do płótna — inaczej przyciski slajdu łapałyby rysowanie. */}
         {backdrop && (
-          <div className="absolute inset-0 overflow-auto pointer-events-none">{backdrop}</div>
+          <div className="absolute inset-0 overflow-auto pointer-events-none">
+            {/* Mierzymy ten wrapper, nie kontener: obejmuje dokładnie slajd,
+                więc jego prostokąt jest wspólnym układem odniesienia dla obu okien. */}
+            <div ref={boardAreaRef}>{backdrop}</div>
+          </div>
         )}
 
         <canvas

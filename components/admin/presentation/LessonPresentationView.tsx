@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   Sparkles, Maximize2, Minimize2, ChevronLeft, ChevronRight, 
   Plus, Edit2, Trash2, Save, Download, Share2, Eye, EyeOff, 
@@ -176,6 +176,31 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentDeck.slides.length, isFullscreen]);
+
+  /**
+   * Obiekt notatnika w pamięci, nie tworzony przy każdym renderze.
+   *
+   * Trafia do zależności efektu wysyłającego stan do okna kursanta, więc świeża
+   * tożsamość przy każdym renderze znaczyła jedną wiadomość na render — a
+   * renderuje się tu także przy ruchu myszy ze wskaźnikiem laserowym i przy
+   * każdym znaku wpisywanym w notatniku. Każda taka wiadomość to serializacja
+   * całego slajdu z rysunkiem i zapis do schowka.
+   */
+  const liveNotebookForStudent = useMemo(
+    () => ({
+      vocab: currentDeck.liveVocab || [],
+      corrections: currentDeck.liveCorrections || [],
+    }),
+    [currentDeck.liveVocab, currentDeck.liveCorrections]
+  );
+
+  // Stabilna tożsamość callbacku tablicy — inaczej każdy render rodzica
+  // przekazywałby nową funkcję i uruchamiał efekt w Whiteboard od nowa.
+  const handleShapesChange = useCallback(
+    (shapes: Shape[], size: { width: number; height: number }) =>
+      setWhiteboardShapes({ shapes, width: size.width, height: size.height }),
+    []
+  );
 
   useEffect(() => {
     setSlideInteraction(EMPTY_SLIDE_INTERACTION);
@@ -575,10 +600,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
             onNavigate={setActiveSlideIndex}
             interaction={slideInteraction}
             whiteboard={whiteboardShapes}
-            liveNotebook={{
-              vocab: currentDeck.liveVocab || [],
-              corrections: currentDeck.liveCorrections || [],
-            }}
+            liveNotebook={liveNotebookForStudent}
           />
 
           {/* SLIDE NAVIGATION CONTROLS */}
@@ -764,9 +786,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
             setWhiteboardShapes(null);
           }}
           contextLabel={currentSlide?.title}
-          onShapesChange={(shapes, size) =>
-            setWhiteboardShapes({ shapes, width: size.width, height: size.height })
-          }
+          onShapesChange={handleShapesChange}
           backdrop={
             currentSlide ? (
               <div className="p-4 sm:p-8">

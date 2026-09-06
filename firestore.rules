@@ -310,12 +310,14 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
-      // Prezentacje przypisane do kursanta. Układa i zmienia je lektor, kursant
-      // może je czytać — dziś ogląda je przez udostępniony ekran, ale odczyt
-      // otwiera drogę do pokazania mu materiału po lekcji.
+      // Prezentacje przypisane do kursanta — wyłącznie dla lektora.
+      //
+      // Talia niesie `speakerNotes`, czyli notatki prowadzącego, oraz odpowiedzi
+      // do ćwiczeń, których kursant jeszcze nie widział. Kursant dostaje slajd
+      // przez okno prezentacji, kanałem między kartami, więc do odczytu z bazy
+      // nie ma powodu — a odczyt oddałby mu materiał przed lekcją.
       match /presentations/{presentationId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create, update, delete: if isAdmin();
+        allow read, create, update, delete: if isAdmin();
       }
 
       match /flashcardProgress/{progressId} {
@@ -471,11 +473,11 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Prezentacje nieprzypisane do żadnego kursanta — szablony i materiał
-    // ogólny. Czyta każdy zalogowany, zmienia wyłącznie lektor.
+    // Prezentacje nieprzypisane do kursanta — szablony i materiał ogólny.
+    // Tak samo jak wyżej: zawierają notatki prowadzącego i klucze odpowiedzi,
+    // więc czyta je wyłącznie lektor.
     match /globalPresentations/{presentationId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow read, create, update, delete: if isAdmin();
     }
 
     // ---------------------------------------------------------------

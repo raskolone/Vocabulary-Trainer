@@ -20,12 +20,18 @@ interface LiveNotesForStudentProps {
   corrections: LiveCorrectionItem[];
 }
 
-/** Ile ostatnich wpisów pokazujemy — reszta zasłoniłaby slajd. */
+/**
+ * Ile ostatnich wpisów pokazujemy — reszta zasłoniłaby slajd.
+ *
+ * Notatnik dokłada nowe pozycje na początek listy, więc najświeższe są tutaj,
+ * nie na końcu. Branie z końca pokazywałoby trzy pierwsze wpisy lekcji i tam
+ * zamarzało — kursant patrzyłby przez godzinę na to, co padło na starcie.
+ */
 const MAX_VISIBLE = 3;
 
 const LiveNotesForStudent: React.FC<LiveNotesForStudentProps> = ({ vocab, corrections }) => {
-  const lastVocab = vocab.slice(-MAX_VISIBLE);
-  const lastCorrections = corrections.slice(-MAX_VISIBLE);
+  const lastVocab = vocab.slice(0, MAX_VISIBLE);
+  const lastCorrections = corrections.slice(0, MAX_VISIBLE);
 
   if (lastVocab.length === 0 && lastCorrections.length === 0) return null;
 

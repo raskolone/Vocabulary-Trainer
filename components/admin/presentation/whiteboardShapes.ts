@@ -127,6 +127,25 @@ export function fitCanvasToDisplay(canvas: HTMLCanvasElement): void {
 }
 
 /**
+ * Przesuwa kształty o zadany wektor.
+ *
+ * Potrzebne, by sprowadzić rysunek do układu współrzędnych samego slajdu:
+ * u lektora slajd leży w środku płótna, z marginesem dookoła, a w oknie kursanta
+ * wypełnia kadr. Wspólnym punktem odniesienia jest lewy górny róg slajdu — bez
+ * tego przeliczenie rozmiaru nie wystarcza i rysunek ląduje przesunięty.
+ */
+export function translateShapes(shapes: Shape[], dx: number, dy: number): Shape[] {
+  if (dx === 0 && dy === 0) return shapes;
+  const move = (p: Point): Point => ({ x: p.x + dx, y: p.y + dy });
+
+  return shapes.map((shape) => {
+    if (shape.kind === 'stroke') return { ...shape, points: shape.points.map(move) };
+    if (shape.kind === 'arrow') return { ...shape, from: move(shape.from), to: move(shape.to) };
+    return { ...shape, at: move(shape.at) };
+  });
+}
+
+/**
  * Przelicza kształty na inny rozmiar płótna.
  *
  * Okno kursanta prawie nigdy nie ma tych samych wymiarów co karta lektora —
