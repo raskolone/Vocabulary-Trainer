@@ -430,3 +430,24 @@ tr.liquid-glass-hover:hover {
     opacity: 0;
   }
 }
+
+/* Ograniczenie ruchu — dla animacji Tailwinda.
+   Reguły wyżej wyłączają własne klasy tego projektu, ale `animate-pulse`,
+   `animate-ping` i `animate-bounce` przychodzą z Tailwinda i o tym ustawieniu
+   nic nie wiedzą. Bez tego bloku osoba, która wyłączyła animacje w systemie —
+   a robią to najczęściej ci, którym ruch realnie przeszkadza — dostawała
+   dokładnie tak samo pulsujący interfejs jak wszyscy: 87 miejsc w aplikacji.
+
+   Reguła stoi poza warstwami, więc wygrywa z warstwową kaskadą Tailwinda bez
+   `!important` (patrz komentarz przy imporcie tokenów na górze pliku).
+
+   `animate-spin` celowo zostaje: kręcący się wskaźnik to jedyny sygnał, że
+   aplikacja czeka na odpowiedź, a nie zawiesiła się. Zatrzymany wyglądałby
+   dokładnie jak awaria — to informacja, nie ozdoba. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-ping,
+  .animate-bounce {
+    animation: none;
+  }
+}

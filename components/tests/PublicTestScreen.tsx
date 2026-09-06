@@ -13,6 +13,7 @@ import {
   readAccessCodeFromPath,
 } from '../../utils/accessCode';
 import TestQuestionFields, { TestQuestionHeader } from './TestQuestionFields';
+import { useDraftAnswers } from '../../hooks/useDraftAnswers';
 
 /**
  * Test poziomujący dla kandydata, którego nie ma jeszcze w bazie.
@@ -60,7 +61,12 @@ const PublicTestScreen: React.FC<PublicTestScreenProps> = ({ initialCode = '' })
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Kandydat rozwiązuje test z linku, często na telefonie i bez konta — jeśli
+  // karta zostanie uśpiona, nie ma go jak poprosić o powtórzenie odpowiedzi.
+  const [answers, setAnswers, clearAnswers] = useDraftAnswers<Record<string, string>>(
+    test?.id ? `public-test-draft-${test.id}` : null,
+    {}
+  );
   const [index, setIndex] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
@@ -100,11 +106,12 @@ const PublicTestScreen: React.FC<PublicTestScreenProps> = ({ initialCode = '' })
         answers,
         submittedAt: new Date().toISOString(),
       });
+      clearAnswers();
       setPhase('sent');
     } catch (e: any) {
       console.error('Nie udało się wysłać testu:', e);
-      // Odpowiedzi zostają w stanie komponentu, więc ponowne wysłanie nie
-      // wymaga rozwiązywania testu od nowa.
+      // Szkic celowo nie jest tu czyszczony: odpowiedzi przetrwają nawet
+      // zamknięcie karty, więc kandydat wraca do nich, a nie rozwiązuje od nowa.
       setError('Nie udało się wysłać odpowiedzi. Sprawdź połączenie i spróbuj ponownie.');
     } finally {
       setIsSending(false);

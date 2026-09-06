@@ -19,6 +19,7 @@ import { studentTasksQuery } from '../../utils/homework';
 import { evaluateTranslations } from '../../services/geminiService';
 import { HOMEWORK_TYPE_LABELS } from '../../services/homeworkGenerator';
 import { recordExerciseResults } from '../../services/learningProfile';
+import { useDraftAnswers } from '../../hooks/useDraftAnswers';
 import { normalizeLevel } from '../../utils/learningCurve';
 import HomeworkExercise from './HomeworkExercise';
 
@@ -91,8 +92,17 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [activeTask, setActiveTask] = useState<SpecialTask | null>(null);
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, any>>({});
+  // Odpowiedzi przeżywają zamknięcie karty: zadanie robi się między innymi
+  // sprawami, a przerwanie nie może kasować dziesięciu rozwiązanych zdań.
+  const [answers, setAnswers, clearAnswers] = useDraftAnswers<Record<number, any>>(
+    activeTask?.id ? `homework-draft-${activeTask.id}` : null,
+    {}
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** Komunikat pod przyciskiem wysyłki — zamiast okna, które trzeba odklikać. */
+  const [notice, setNotice] = useState('');
+  /** Kursant zobaczył ostrzeżenie o pustych zadaniach i może wysłać mimo to. */
+  const [confirmedIncomplete, setConfirmedIncomplete] = useState(false);
   const [result, setResult] = useState<{ score: number; rows: EvaluationRow[] } | null>(null);
   const [openResultId, setOpenResultId] = useState<string | null>(null);
 
@@ -155,7 +165,10 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
           statusSubmitted: 'Czeka na ocenę',
           statusGraded: 'Ocenione',
           teacherFeedback: 'Komentarz lektora',
-          unanswered: (n: number) => `Nie odpowiedziałeś na ${n} zadań. Wysłać mimo to?`,
+          unanswered: (n: number) =>
+            `Nie odpowiedziałeś na ${n} zadań. Dotknij jeszcze raz, żeby wysłać mimo to.`,
+          sendFailed: 'Nie udało się wysłać pracy. Twoje odpowiedzi są zapisane — spróbuj ponownie.',
+          sendAnyway: 'Wyślij mimo to',
         }
       : {
           title: 'Homework',
@@ -179,7 +192,9 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
           statusSubmitted: 'Awaiting review',
           statusGraded: 'Graded',
           teacherFeedback: 'Teacher feedback',
-          unanswered: (n: number) => `${n} tasks are unanswered. Send anyway?`,
+          unanswered: (n: number) => `${n} tasks are unanswered. Tap again to send anyway.`,
+          sendFailed: 'Could not send your work. Your answers are saved — try again.',
+          sendAnyway: 'Send anyway',
         };
 
   const pending = useMemo(
@@ -194,8 +209,11 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   const startTask = (task: SpecialTask) => {
     setActiveTask(task);
     setIndex(0);
-    setAnswers({});
+    // Odpowiedzi wczyta hook szkicu, gdy zmieni się klucz zadania — czyszczenie
+    // ich tutaj kasowałoby właśnie odzyskaną, niedokończoną pracę.
     setResult(null);
+    setNotice('');
+    setConfirmedIncomplete(false);
   };
 
   const closeTask = () => {
@@ -258,8 +276,16 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
       return String(a || '').trim().length > 0;
     }).length;
 
-    if (answered < items.length && !window.confirm(L.unanswered(items.length - answered))) return;
+    // Zamiast okna systemowego: ostrzeżenie pod przyciskiem, a przycisk zmienia
+    // się w „wyślij mimo to". Kursant zostaje w zadaniu i widzi, czego brakuje,
+    // zamiast odklikiwać dialog, który zasłania treść.
+    if (answered < items.length && !confirmedIncomplete) {
+      setNotice(L.unanswered(items.length - answered));
+      setConfirmedIncomplete(true);
+      return;
+    }
 
+    setNotice('');
     setIsSubmitting(true);
     try {
       let rows: EvaluationRow[];
@@ -345,10 +371,15 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
 
       if (updateUserStreak) updateUserStreak().catch(console.error);
 
+      // Praca jest u lektora — szkic nie ma już czego chronić. Czyścimy dopiero
+      // tutaj, po udanym zapisie: przy błędzie odpowiedzi mają zostać.
+      clearAnswers();
+
       setResult({ score: average, rows });
     } catch (error: any) {
       console.error('Nie udało się wysłać pracy domowej:', error);
-      alert('Nie udało się wysłać pracy domowej. Spróbuj ponownie.');
+      // Odpowiedzi zostają w szkicu, więc ponowna próba nie kosztuje pracy.
+      setNotice(L.sendFailed);
     } finally {
       setIsSubmitting(false);
     }
@@ -449,6 +480,17 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
           />
         </div>
 
+        {/* Ostrzeżenia i błędy stoją przy przycisku, którego dotyczą — kursant
+            czyta je bez zasłaniania zadania i bez odklikiwania okna. */}
+        {notice && (
+          <p
+            role="status"
+            className="rounded-xl border border-warn/30 bg-warn/[0.08] p-3 text-[13px] text-warn leading-relaxed"
+          >
+            {notice}
+          </p>
+        )}
+
         <div className="flex gap-2">
           {index > 0 && (
             <button
@@ -462,7 +504,11 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="flex-1 min-h-[3.25rem] flex items-center justify-center gap-2 rounded-xl bg-primary text-accent-ink font-bold disabled:opacity-50"
+              className={`flex-1 min-h-[3.25rem] flex items-center justify-center gap-2 rounded-xl font-bold disabled:opacity-50 ${
+                confirmedIncomplete
+                  ? 'bg-warn text-accent-ink'
+                  : 'bg-primary text-accent-ink'
+              }`}
             >
               {isSubmitting ? (
                 <>
@@ -470,7 +516,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                 </>
               ) : (
                 <>
-                  <Send size={16} /> {L.submit}
+                  <Send size={16} /> {confirmedIncomplete ? L.sendAnyway : L.submit}
                 </>
               )}
             </button>

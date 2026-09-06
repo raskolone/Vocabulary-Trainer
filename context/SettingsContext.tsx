@@ -3,12 +3,22 @@ import { SoundSettings, TTSAccent, VoiceGender, VoiceSpeed, SoundEngine } from '
 import { auth, db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 
+/**
+ * Domyślne ustawienia dźwięku.
+ *
+ * Oba automatyczne odtwarzania są wyłączone. Dźwięk, który startuje sam, jest
+ * bodźcem, o który nikt nie prosił: kursant zatwierdza tłumaczenie i nagle
+ * słyszy głos — czasem w tramwaju, czasem na czyimś spotkaniu. Kto chce lektora,
+ * włącza go świadomie w ustawieniach i wtedy dźwięk jest jego decyzją, a nie
+ * niespodzianką. Dotąd te dwa bliźniacze ustawienia miały przeciwne wartości
+ * domyślne bez powodu.
+ */
 export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
   ttsAccent: 'en-US',
   voiceGender: 'male',
   voiceSpeed: 1.0,
   soundEngine: 'auto',
-  autoPlaySentence: true,
+  autoPlaySentence: false,
   autoPlayFlashcards: false,
   soundEffectsEnabled: true
 };
