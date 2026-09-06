@@ -154,6 +154,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { GoogleGenAI, Type } from "@google/genai";
 import defaultFirebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { AI_MODEL_CASCADE, GEMINI_MODEL_CASCADE, openAiModelsFor } from "./services/aiModels";
+import { normalizeImportedLessons } from "./utils/lessonImport";
 let pdfParse: any;
 try {
   const loadedPdf = typeof require !== "undefined" ? require("pdf-parse") : null;
@@ -785,6 +786,18 @@ Zwróć skorygowany wynik WYŁĄCZNIE jako poprawną tablicę JSON, zachowując 
           ]
         }];
       } else {
+        // Transkrypcje z zajęć potrafią mieć setki tysięcy znaków. Model urywa
+        // wtedy odpowiedź w połowie JSON-a, a import kończy się błędem parsowania
+        // zamiast informacją, że materiał był za długi. Ucinamy świadomie i
+        // mówimy o tym w logu, żeby dało się to rozpoznać po fakcie.
+        const MAX_SOURCE_CHARS = 120000;
+        if (parsedDocText.length > MAX_SOURCE_CHARS) {
+          console.warn(
+            `[import-lessons-batch] Materiał ma ${parsedDocText.length} znaków — ucinam do ${MAX_SOURCE_CHARS}.`
+          );
+          parsedDocText = parsedDocText.slice(0, MAX_SOURCE_CHARS);
+        }
+
         contents = [{
           role: 'user',
           parts: [
@@ -820,7 +833,12 @@ ${targetStudentId ? `Głównym kursantem jest: ${targetStudentName || targetStud
 - thingsToImprove (string): Wskazówki, błędy gramatyczne, wymowa i rzeczy do poprawy.
 - suggestedFollowUp (string): Praca domowa, ćwiczenia i zalecenia na przyszłość.
 
-Przeanalizuj CAŁĄ treść dokładnie i nie pomijaj żadnej lekcji. Zwróć wyłącznie poprawny obiekt JSON z tablicą "lessons".`;
+Przeanalizuj CAŁĄ treść dokładnie i nie pomijaj żadnej lekcji. Zwróć wyłącznie poprawny obiekt JSON z tablicą "lessons".
+
+# FORMAT ODPOWIEDZI
+Zwróć dokładnie taki kształt, bez komentarzy i bez bloku markdown:
+{"lessons":[{"date":"2024-03-12","studentId":"abc123","studentIds":["abc123"],"lessonTopic":"Present Perfect","revisionNotes":"...","vocabularyText":"deadline - termin\\nto meet - spotkać","studentSpeaking":"...","thingsToImprove":"...","suggestedFollowUp":"..."}]}
+Gdy w materiale nie ma żadnej lekcji, zwróć {"lessons":[]} — nigdy nie wymyślaj lekcji, których nie ma w tekście.`;
 
       const schema = {
         type: Type.OBJECT,
@@ -860,10 +878,26 @@ Przeanalizuj CAŁĄ treść dokładnie i nie pomijaj żadnej lekcji. Zwróć wy�
       );
 
       const responseText = response.text;
-      if (!responseText) throw new Error("No response from AI model");
-      
-      const json = JSON.parse(responseText);
-      res.json(json);
+      if (!responseText) throw new Error("Model nie zwrócił odpowiedzi.");
+
+      // `responseSchema` działa tylko dla Gemini — przy modelu OpenAI
+      // generateContentWithRetry przekazuje wyłącznie `response_format: json_object`,
+      // więc kształt odpowiedzi nie jest niczym wymuszony. Stąd tolerancyjne
+      // wyciąganie JSON-a (model lubi owinąć go w blok markdown) i walidacja niżej.
+      const json = extractJsonFromString(responseText);
+      if (!json) {
+        console.error('[import-lessons-batch] Odpowiedź bez poprawnego JSON:', responseText.slice(0, 400));
+        throw new Error('Model zwrócił odpowiedź, której nie da się odczytać jako JSON.');
+      }
+
+      const lessons = normalizeImportedLessons(json, {
+        today: new Date().toISOString().split('T')[0],
+        fallbackStudentId: typeof targetStudentId === 'string' ? targetStudentId : '',
+      });
+
+      const rawCount = Array.isArray(json?.lessons) ? json.lessons.length : 0;
+      console.log(`[import-lessons-batch] Model zwrócił ${rawCount} wpisów, po walidacji: ${lessons.length}`);
+      res.json({ lessons });
     } catch (error: any) {
       console.error('Error in import-lessons-batch:', error);
       res.status(500).json({ error: formatErrorString(error) });

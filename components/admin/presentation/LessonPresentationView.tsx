@@ -671,7 +671,28 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
         studentName={studentName}
       />
 
-      {isWhiteboardOpen && <Whiteboard onClose={() => setIsWhiteboardOpen(false)} />}
+      {/* Tablica otwiera się nad bieżącym slajdem, a nie jako pusta płachta:
+          na lekcji najczęściej pisze się po materiale, który kursant właśnie
+          widzi. Pusta tablica zostaje pod tym samym przyciskiem — wystarczy
+          przejść na slajd `freeform` albo wyczyścić deck. */}
+      {isWhiteboardOpen && (
+        <Whiteboard
+          onClose={() => setIsWhiteboardOpen(false)}
+          contextLabel={currentSlide?.title}
+          backdrop={
+            currentSlide ? (
+              <div className="p-4 sm:p-8">
+                <SlideCard
+                  slide={currentSlide}
+                  slideIndex={activeSlideIndex}
+                  totalSlides={currentDeck.slides.length}
+                  isFullscreen
+                />
+              </div>
+            ) : undefined
+          }
+        />
+      )}
     </div>
   );
 };
