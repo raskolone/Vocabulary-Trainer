@@ -1598,6 +1598,23 @@ ZADANIE:
 Wygeneruj spójny krótki tekst (opowiadanie, artykuł lub dialog) po angielsku na poziomie ${level || 'B1-B2'}.
 W tekście zastąp około ${numSentences} kluczowych słów lub wyrażeń specjalnymi znacznikami [BLANK_1], [BLANK_2], itd. (od 1 do ${numSentences}).
 
+ZASADY JAKOŚCI — OBOWIĄZKOWE:
+- TEKST MA BYĆ JEDNĄ CAŁOŚCIĄ. Zdania muszą po sobie następować logicznie i
+  opowiadać jedną sytuację od początku do końca — nie może to być zbiór zdań
+  połączonych wyłącznie tym, że zawierają zadane słownictwo.
+- KAŻDA LUKA MA JEDNO ROZWIĄZANIE. Zdanie wokół luki musi dawać dość kontekstu,
+  żeby pasowało dokładnie jedno słowo. Jeśli w lukę da się wstawić kilka
+  poprawnych słów, przebuduj zdanie albo wybierz inne miejsce na lukę.
+- LUKI ROZŁÓŻ RÓWNOMIERNIE. Nie stawiaj dwóch luk w jednym zdaniu ani obok
+  siebie — kursant traci wtedy kontekst potrzebny do odgadnięcia obu.
+- NIE USUWAJ SŁÓW FUNKCYJNYCH bez powodu (przedimków, spójników), chyba że to
+  właśnie one są przerabianym materiałem. Luka ma sprawdzać znajomość
+  słownictwa albo formy, a nie spostrzegawczość.
+- SENS PRZED SŁOWNICTWEM: zdanie poprawne gramatycznie, ale bezsensowne
+  znaczeniowo, jest błędem. Sytuacja opisana w tekście ma być możliwa.
+- DYSTRAKTORY w polu availableWords muszą być tego samego rodzaju co odpowiedzi
+  (ta sama część mowy, podobna długość), żeby nie dało się ich odsiać na oko.
+
 ${topicOrWords ? `TEMAT / SŁOWNICTWO, na którym ma się opierać tekst: ${topicOrWords}` : ''}
 ${customPrompt ? `DODATKOWE INSTRUKCJE OD NAUCZYCIELA: ${customPrompt}` : ''}
 

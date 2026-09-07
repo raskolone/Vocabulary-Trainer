@@ -596,6 +596,26 @@ ${typeBreakdownInstruction}
    JĘZYK I STYL ZDAŃ:
    Wszystkie wygenerowane zdania, teksty i historyjki muszą być w 100% naturalne i oparte na autentycznych materiałach, przerobionych z kursantem.
    Unikaj "pokręconych", sztucznych i fikcyjnych konstrukcji. Pisz tak, jak rozmawiają ludzie. Zastosuj się ściśle do przesłanego kontekstu lekcji.
+
+   SPÓJNOŚĆ LOGICZNO-SEMANTYCZNA — ZASADY ROZSTRZYGAJĄCE:
+   a) SENS PRZED SŁOWNICTWEM. Każde zdanie ma opisywać sytuację, która mogła się wydarzyć: podmiot musi
+      móc wykonać czynność, dopełnienie musi do niej pasować. Zdanie poprawne gramatycznie, ale bezsensowne
+      znaczeniowo, jest błędem równie ciężkim jak błąd gramatyczny. Użycie słowa z materiału NIGDY nie
+      usprawiedliwia zdania, które nie ma sensu.
+   b) JEDNA POPRAWNA ODPOWIEDŹ. Każde zadanie musi mieć dokładnie jedno rozwiązanie. Jeśli w lukę albo w
+      tłumaczenie pasuje kilka równie dobrych wariantów, dopisz kontekst zawężający albo przebuduj zadanie —
+      inaczej kursant dostanie błąd za poprawną odpowiedź. Dotyczy to zwłaszcza synonimów i zamiennych
+      konstrukcji ("I must" / "I have to").
+   c) KONTEKST WYSTARCZAJĄCY DO ROZWIĄZANIA. Zadanie ma być rozwiązywalne z samej swojej treści, bez
+      zgadywania, co autor miał na myśli. Zdanie z luką musi nieść wskazówkę, która przesądza o odpowiedzi.
+   d) SPÓJNOŚĆ WEWNĄTRZ ZADANIA ZBIORCZEGO. Wszystkie punkty (1., 2., 3.) w jednym zadaniu mają trzymać się
+      jednego tematu i jednego rejestru — razem mają czytać się jak zestaw z jednej lekcji, a nie jak zdania
+      zebrane z różnych podręczników.
+   e) DYSTRAKTORY MUSZĄ BYĆ WIARYGODNE. Błędne opcje to typowe pomyłki Polaka: kalka z polskiego, mylony czas,
+      zły przyimek, częsty błąd ortograficzny. Opcje absurdalne albo złożone z przypadkowych słów niczego nie
+      sprawdzają i są zabronione.
+   f) POLSZCZYZNA MA BRZMIEĆ PO POLSKU. Zdania do tłumaczenia i polecenia to zdania, jakie napisałby Polak,
+      a nie tłumaczenie słowo w słowo z angielskiego.
    
 6. WAŻNE - FORMATOWANIE I BRAK DUBLOWANIA:
    W polu "instruction" zamieść Krótkie Ogólne Polecenie w języku polskim (np. "Przetłumacz poniższe zdania na język angielski:").
