@@ -49,6 +49,15 @@ const todayPlusDays = (days: number): string => {
   return date.toISOString().split('T')[0];
 };
 
+/** Polska odmiana po liczebniku: 1 ćwiczenie, 2–4 ćwiczenia, 5+ ćwiczeń. */
+const exerciseNoun = (n: number): string => {
+  if (n === 1) return 'ćwiczenie';
+  const rest10 = n % 10;
+  const rest100 = n % 100;
+  if (rest10 >= 2 && rest10 <= 4 && !(rest100 >= 12 && rest100 <= 14)) return 'ćwiczenia';
+  return 'ćwiczeń';
+};
+
 const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, onAssigned }) => {
   const [students, setStudents] = useState<User[]>([]);
   const [studentId, setStudentId] = useState(initialStudentId || '');
@@ -174,22 +183,43 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
           : '';
 
       const usable = sections.filter((section) => section.items.length > 0);
-      for (const section of usable) {
-        const label = HOMEWORK_TYPE_LABELS[section.type].pl;
-        await addDoc(collection(db, 'specialTasks'), {
-          ...taskOwnerFields(studentId),
-          studentName: student ? studentLabel(student) : 'Kursant',
-          studentEmail: student?.email || '',
-          studentUsername: student?.username || '',
-          title: sourceLabel ? `${label}: ${sourceLabel}` : label,
-          type: section.type,
-          instructions: HOMEWORK_TYPE_LABELS[section.type].hint.pl,
-          createdAt: nowIso,
-          dueDate,
-          status: 'pending',
-          sentences: section.items,
-        });
-      }
+
+      // Jedno przypisanie, nie jedno na rodzaj zadania. Rodzaj niesie teraz
+      // element, dzięki czemu kursant dostaje jedną pracę domową do zrobienia
+      // od początku do końca, a nie trzy osobne pozycje na liście. Ma to też
+      // drugi skutek: powiadomienie e-mail wychodzi raz, bo wyzwala je
+      // utworzenie dokumentu (functions/src/index.ts).
+      const items = usable.flatMap((section) =>
+        section.items.map((item: any) => ({ ...item, type: section.type }))
+      );
+      const labels = usable.map((section) => HOMEWORK_TYPE_LABELS[section.type].pl);
+      const singleType = usable.length === 1 ? usable[0].type : undefined;
+      const title = singleType
+        ? sourceLabel
+          ? `${labels[0]}: ${sourceLabel}`
+          : labels[0]
+        : sourceLabel
+        ? `Praca domowa: ${sourceLabel}`
+        : 'Praca domowa';
+
+      await addDoc(collection(db, 'specialTasks'), {
+        ...taskOwnerFields(studentId),
+        studentName: student ? studentLabel(student) : 'Kursant',
+        studentEmail: student?.email || '',
+        studentUsername: student?.username || '',
+        title,
+        // `type` zostaje dla widoków sprzed scalenia, które czytają jedno pole.
+        // Przy pracy mieszanej jest tylko etykietą — rozstrzyga `type` elementu.
+        type: usable[0].type,
+        types: usable.map((section) => section.type),
+        instructions: usable
+          .map((section) => HOMEWORK_TYPE_LABELS[section.type].hint.pl)
+          .join(' '),
+        createdAt: nowIso,
+        dueDate,
+        status: 'pending',
+        sentences: items,
+      });
 
       try {
         await updateDoc(doc(db, 'users', studentId), { hasNewHomework: true });
@@ -198,7 +228,7 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
         console.warn('Nie udało się ustawić flagi hasNewHomework:', e);
       }
 
-      setAssignedCount(usable.length);
+      setAssignedCount(items.length);
       setSections([]);
       if (onAssigned) onAssigned();
     } catch (e: any) {
@@ -398,7 +428,7 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
       {assignedCount > 0 && (
         <div className="rounded-xl border border-primary/30 bg-primary/10 p-3 flex items-center gap-2 text-sm text-primary">
           <Check size={16} />
-          Przypisano {assignedCount === 1 ? 'zadanie' : `${assignedCount} zadania`} kursantowi.
+          Przypisano jedną pracę domową — {assignedCount} {exerciseNoun(assignedCount)}.
         </div>
       )}
 

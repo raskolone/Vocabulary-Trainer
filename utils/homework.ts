@@ -1,5 +1,5 @@
 import { collection, query, where } from 'firebase/firestore';
-import { SpecialTask, User } from '../types';
+import { HomeworkType, SpecialTask, User } from '../types';
 import { auth, db } from '../firebase';
 
 /**
@@ -37,6 +37,56 @@ export const taskOwnerFields = (studentUid: string) => ({
  */
 export const studentTasksQuery = (uid: string) =>
   query(collection(db, 'specialTasks'), where(TASK_OWNER_FIELD, '==', uid));
+
+/**
+ * Typ pojedynczego ćwiczenia w pracy domowej.
+ *
+ * Jedna praca domowa mieści kilka rodzajów zadań naraz, więc rodzaj trzyma
+ * element, a nie dokument. `task.type` zostaje wartością zapasową dla zadań
+ * przypisanych zanim kreator zaczął scalać sekcje w jeden dokument — tam
+ * wszystkie elementy były jednego rodzaju i pole dokumentu mówiło prawdę.
+ */
+export const homeworkItemType = (
+  item: any,
+  task?: { type?: HomeworkType } | null
+): HomeworkType => (item?.type as HomeworkType) || (task?.type as HomeworkType) || 'translation';
+
+/**
+ * Praca domowa w podziale na bloki jednego rodzaju.
+ *
+ * Kreator scala rodzaje w jeden dokument, żeby kursant dostał jedną pracę
+ * domową zamiast trzech pozycji na liście. Bloki są tylko widokiem tego samego
+ * ciągu ćwiczeń: pilnują, żeby „jedno" nie zamieniło się w nieczytelną sieczkę,
+ * i dają pozycje, po których widać, ile jeszcze zostało w bieżącym rodzaju.
+ *
+ * Kolejność ćwiczeń zostaje nietknięta — bloki powstają z następujących po
+ * sobie elementów tego samego rodzaju, a `from` wskazuje pozycję w całości.
+ */
+export interface HomeworkBlock {
+  type: HomeworkType;
+  /** Indeks pierwszego ćwiczenia bloku w `task.sentences`. */
+  from: number;
+  count: number;
+}
+
+export const homeworkBlocks = (
+  task?: { type?: HomeworkType; sentences?: any[] } | null
+): HomeworkBlock[] => {
+  const items = task?.sentences || [];
+  const blocks: HomeworkBlock[] = [];
+
+  items.forEach((item, index) => {
+    const type = homeworkItemType(item, task);
+    const last = blocks[blocks.length - 1];
+    if (last && last.type === type) {
+      last.count += 1;
+    } else {
+      blocks.push({ type, from: index, count: 1 });
+    }
+  });
+
+  return blocks;
+};
 
 /**
  * Normalizes text for comparison: lowercase, trim, remove accents/diacritics, normalize separators
