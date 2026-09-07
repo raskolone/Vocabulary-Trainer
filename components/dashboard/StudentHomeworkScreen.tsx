@@ -42,6 +42,8 @@ import HomeworkExercise from './HomeworkExercise';
 interface StudentHomeworkScreenProps {
   /** Zadanie do otwarcia od razu — np. z banera w panelu. */
   initialTaskId?: string | null;
+  /** Podgląd prac konkretnego kursanta (lektor). Domyślnie własne konto. */
+  studentId?: string;
   onBack?: () => void;
 }
 
@@ -83,10 +85,16 @@ const answerToText = (type: HomeworkType, item: any, answer: any): string => {
 
 const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   initialTaskId = null,
+  studentId,
   onBack,
 }) => {
   const { user, updateUserStreak } = useAuth();
   const { language } = useLanguage();
+  const targetId = studentId || user?.id || '';
+  // Lektor przegląda cudzą pracę domową wyłącznie po to, żeby zobaczyć, co
+  // dostał kursant — rozwiązanie za niego nadpisałoby jego prawdziwą próbę,
+  // a zapis i tak poszedłby na konto lektora (patrz handleSubmit).
+  const isPreview = Boolean(studentId && studentId !== user?.id);
 
   const [tasks, setTasks] = useState<SpecialTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -107,12 +115,12 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   const [openResultId, setOpenResultId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user?.id) {
+    if (!targetId) {
       setIsLoading(false);
       return;
     }
     const unsubscribe = onSnapshot(
-      studentTasksQuery(user.id),
+      studentTasksQuery(targetId),
       (snapshot) => {
         const list = snapshot.docs
           .map((d) => ({ id: d.id, ...d.data() } as SpecialTask))
@@ -126,7 +134,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
       }
     );
     return () => unsubscribe();
-  }, [user?.id]);
+  }, [targetId]);
 
   useEffect(() => {
     if (user?.hasNewHomework && user?.id) {
@@ -135,11 +143,11 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   }, [user?.id, user?.hasNewHomework]);
 
   useEffect(() => {
-    if (!initialTaskId || activeTask) return;
+    if (!initialTaskId || activeTask || isPreview) return;
     const found = tasks.find((t) => t.id === initialTaskId);
     if (found && (found.status === 'pending' || !found.status)) startTask(found);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTaskId, tasks]);
+  }, [initialTaskId, tasks, isPreview]);
 
   const L =
     language === 'pl'
@@ -568,8 +576,9 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                 {pending.map((task) => (
                   <li key={task.id}>
                     <button
-                      onClick={() => startTask(task)}
-                      className="neon-still w-full min-h-[4rem] flex items-center gap-3 px-4 py-3 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/[0.08] to-base-200/50 text-left active:scale-[0.99] transition-transform"
+                      onClick={() => !isPreview && startTask(task)}
+                      disabled={isPreview}
+                      className={`neon-still w-full min-h-[4rem] flex items-center gap-3 px-4 py-3 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/[0.08] to-base-200/50 text-left transition-transform ${isPreview ? 'opacity-70 cursor-default' : 'active:scale-[0.99]'}`}
                     >
                       <div className="min-w-0 flex-1">
                         <span className="block font-bold text-white text-[15px] leading-snug truncate">
@@ -586,7 +595,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                           )}
                         </span>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-primary shrink-0" />
+                      {!isPreview && <ChevronRight className="w-5 h-5 text-primary shrink-0" />}
                     </button>
                   </li>
                 ))}

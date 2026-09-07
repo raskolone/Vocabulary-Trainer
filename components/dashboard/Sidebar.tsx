@@ -25,19 +25,20 @@ import {
   LayoutDashboard, 
   Library, 
   History, 
-  ClipboardList, 
+  ClipboardList,
   BookOpen,
-  Mail,
-  Settings, 
+  Settings,
   ShieldAlert, 
   BarChart2, 
   User, 
   Menu,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   HelpCircle,
-  FlaskConical
+  FlaskConical,
+  Eye
 } from 'lucide-react';
 import BrandLogo from '../ui/BrandLogo';
 import { isModuleVisible } from '../../config/featureFlags';
@@ -90,6 +91,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
   const isTeacher = user?.role === 'admin' || user?.role === 'teacher';
   const isAdmin = user?.role === 'admin';
   const [isAdminExpanded, setIsAdminExpanded] = useState(currentView.startsWith('admin'));
+  const isPreviewView =
+    currentView === 'student-today' ||
+    currentView === 'extra-practice' ||
+    currentView.startsWith('preview-');
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(isPreviewView);
   const [newBugsCount, setNewBugsCount] = useState(0);
   const [unreadTestsCount, setUnreadTestsCount] = useState(0);
   const [pendingHomeworkCount, setPendingHomeworkCount] = useState(0);
@@ -139,6 +145,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
   React.useEffect(() => {
     if (currentView.startsWith('admin')) setIsAdminExpanded(true);
   }, [currentView]);
+
+  React.useEffect(() => {
+    if (isPreviewView) setIsPreviewExpanded(true);
+  }, [isPreviewView]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -278,14 +288,59 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
           </NavLink>
 
           {isTeacher && (
-            <NavLink icon={<Sparkles size={20} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('student-today')} isActive={currentView === 'student-today'}>
-                {language === 'pl' ? 'Panel kursanta' : 'Student View'}
-            </NavLink>
+            <div className="pt-3 mt-1 border-t border-base-300">
+              <NavLink
+                icon={<Eye size={20} />}
+                isCollapsed={isDesktopCollapsed}
+                onClick={() => setIsPreviewExpanded((v) => !v)}
+                isActive={isPreviewView}
+                badge={
+                  !isDesktopCollapsed ? (
+                    isPreviewExpanded ? (
+                      <ChevronDown size={16} className="text-content-muted" />
+                    ) : (
+                      <ChevronRight size={16} className="text-content-muted" />
+                    )
+                  ) : undefined
+                }
+              >
+                {language === 'pl' ? 'Widok kursanta' : 'Student View'}
+              </NavLink>
+
+              {isPreviewExpanded && (
+                <div className={`mt-1 space-y-1 ${isDesktopCollapsed ? '' : 'ml-4 pl-3 border-l border-white/10'}`}>
+                  <NavLink icon={<Sparkles size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('student-today')} isActive={currentView === 'student-today'}>
+                      {language === 'pl' ? 'Mój panel' : 'My panel'}
+                  </NavLink>
+                  {/* Generator zdań nie czyta konta kursanta — to narzędzie, nie
+                      jego dane — więc otwiera się bez wyboru kursanta, na koncie
+                      lektora. Kolejność kafelków odpowiada menu kursanta. */}
+                  {isModuleVisible('extraPractice') && (
+                    <NavLink icon={<FlaskConical size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('extra-practice')} isActive={currentView === 'extra-practice'}>
+                        {language === 'pl' ? 'Praktyka dodatkowa' : 'Extra Practice'}
+                    </NavLink>
+                  )}
+                  <NavLink icon={<Library size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-vocab')} isActive={currentView === 'preview-vocab'}>
+                      {language === 'pl' ? 'Moje słownictwo' : 'My Word Lists'}
+                  </NavLink>
+                  <NavLink icon={<BookOpen size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-homework')} isActive={currentView === 'preview-homework'}>
+                      {language === 'pl' ? 'Praca domowa' : 'Homework'}
+                  </NavLink>
+                  <NavLink icon={<History size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-history')} isActive={currentView === 'preview-history'}>
+                      {language === 'pl' ? 'Historia lekcji' : 'Lesson History'}
+                  </NavLink>
+                  <NavLink icon={<ClipboardList size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-tests')} isActive={currentView === 'preview-tests'}>
+                      {language === 'pl' ? 'Testy' : 'Tests'}
+                  </NavLink>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Otwarty generator zdań. Zostaje dostępny, ale nigdy nie jest
-              domyślnym wejściem — patrz config/featureFlags.ts. */}
-          {isModuleVisible('extraPractice') && (
+              domyślnym wejściem — patrz config/featureFlags.ts. U lektora ta
+              sama pozycja siedzi w „Widoku kursanta", więc tutaj tylko kursant. */}
+          {!isTeacher && isModuleVisible('extraPractice') && (
             <NavLink
               icon={<FlaskConical size={20} />}
               isCollapsed={isDesktopCollapsed}
@@ -298,24 +353,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
 
 
           
-          <NavLink 
-            id="tour-flashcards" 
-            
-            icon={
-              <div className="relative">
-                <Library size={20} />
-                
-              </div>
-            }
-            
-            isCollapsed={isDesktopCollapsed} 
-            onClick={() => handleNavigate('flashcard-sets')} 
-            isActive={currentView === 'flashcard-sets'}
-          >
-            <span>
-              {language === 'pl' ? 'Moje słownictwo' : 'My Word Lists'}
-            </span>
-          </NavLink>
+          {!isTeacher && (
+            <NavLink
+              id="tour-flashcards"
+              icon={<Library size={20} />}
+              isCollapsed={isDesktopCollapsed}
+              onClick={() => handleNavigate('flashcard-sets')}
+              isActive={currentView === 'flashcard-sets'}
+            >
+              <span>
+                {language === 'pl' ? 'Moje słownictwo' : 'My Word Lists'}
+              </span>
+            </NavLink>
+          )}
 
           {!isTeacher && (
             <NavLink 
@@ -352,58 +402,43 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
 
 
 
-          <NavLink 
-            id="tour-history" 
-            
-            icon={
-              <div className="relative">
-                <History size={20} />
-                
-              </div>
-            } 
-            
-            isCollapsed={isDesktopCollapsed} 
-            onClick={() => handleNavigate('lesson-history')} 
-            isActive={currentView === 'lesson-history'}
-          >
-            <span>
-              {language === 'pl' ? 'Historia lekcji' : 'Lesson History'}
-            </span>
-          </NavLink>
-          <NavLink 
-            icon={
-              <div className="relative">
-                <ClipboardList size={20} className={unreadTestsCount > 0 ? "text-primary animate-bounce" : ""} />
-                {unreadTestsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-danger border border-black"></span>
-                  </span>
-                )}
-              </div>
-            } 
-            isCollapsed={isDesktopCollapsed} 
-            onClick={() => handleNavigate('tests')} 
-            isActive={currentView === 'tests'}
-          >
-            <span className={unreadTestsCount > 0 ? "text-primary font-bold" : ""}>
-              {language === 'pl' ? 'Testy' : 'Tests'}
-              {unreadTestsCount > 0 && ` (${unreadTestsCount})`}
-            </span>
-          </NavLink>
+          {!isTeacher && (
+            <NavLink
+              id="tour-history"
+              icon={<History size={20} />}
+              isCollapsed={isDesktopCollapsed}
+              onClick={() => handleNavigate('lesson-history')}
+              isActive={currentView === 'lesson-history'}
+            >
+              <span>
+                {language === 'pl' ? 'Historia lekcji' : 'Lesson History'}
+              </span>
+            </NavLink>
+          )}
+          {!isTeacher && (
+            <NavLink
+              icon={
+                <div className="relative">
+                  <ClipboardList size={20} className={unreadTestsCount > 0 ? "text-primary animate-bounce" : ""} />
+                  {unreadTestsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-danger border border-black"></span>
+                    </span>
+                  )}
+                </div>
+              }
+              isCollapsed={isDesktopCollapsed}
+              onClick={() => handleNavigate('tests')}
+              isActive={currentView === 'tests'}
+            >
+              <span className={unreadTestsCount > 0 ? "text-primary font-bold" : ""}>
+                {language === 'pl' ? 'Testy' : 'Tests'}
+                {unreadTestsCount > 0 && ` (${unreadTestsCount})`}
+              </span>
+            </NavLink>
+          )}
 
-          <NavLink 
-            id="tour-gmail"
-            icon={<Mail size={20} />} 
-            isCollapsed={isDesktopCollapsed} 
-            onClick={() => handleNavigate('gmail')} 
-            isActive={currentView === 'gmail'}
-          >
-            <span>
-              Gmail
-            </span>
-          </NavLink>
-          
           <div className="pt-4 mt-4 border-t border-base-300">
             {isAdmin && (
             <div className="relative">

@@ -21,13 +21,14 @@ import { ChevronDown, Sparkles, Menu } from 'lucide-react';
 import AssignedTasks from './AssignedTasks';
 import i18n from "i18next";
 
-type View = 'dashboard' | 'extra-practice' | 'student-today' | 'practice' | 'settings' | 'flashcard-sets' | 'flashcard-edit' | 'flashcard-study' | 'flashcard-stats' | 'admin' | 'admin-stats' | 'admin-history' | 'admin-profile' | 'admin-tests' | 'admin-debugging' | 'presentation' | 'ai-generator' | 'lesson-history' | 'tests' | 'topic-database' | 'student-stats' | 'homework';
+type View = 'dashboard' | 'extra-practice' | 'student-today' | 'preview-vocab' | 'preview-homework' | 'preview-history' | 'preview-tests' | 'practice' | 'settings' | 'flashcard-sets' | 'flashcard-edit' | 'flashcard-study' | 'flashcard-stats' | 'admin' | 'admin-stats' | 'admin-history' | 'admin-profile' | 'admin-tests' | 'admin-debugging' | 'presentation' | 'ai-generator' | 'lesson-history' | 'tests' | 'topic-database' | 'student-stats' | 'homework';
 
 import AdminPanel from '../admin/AdminPanel';
 import StudentStatsScreen from './StudentStatsScreen';
 import LessonHistoryScreen from './LessonHistoryScreen';
 import TodayScreen from './TodayScreen';
-import StudentPanelPreview from './StudentPanelPreview';
+import StudentPreviewFrame from './StudentPreviewFrame';
+import StudentVocabPreview from './StudentVocabPreview';
 import { isModuleVisible } from '../../config/featureFlags';
 import StudentTestsScreen from '../tests/StudentTestsScreen';
 import AdminStatsScreen from '../admin/AdminStatsScreen';
@@ -64,6 +65,9 @@ const Dashboard: React.FC = () => {
   });
   const [slogan, setSlogan] = useState('');
   const [activeSetId, setActiveSetId] = useState<string | null>(null);
+  // Wybór kursanta we wszystkich kafelkach „Widoku kursanta" naraz — bez
+  // tego przełączenie się między kafelkami zerowałoby wybór za każdym razem.
+  const [previewStudentId, setPreviewStudentId] = useState<string>('');
 
   // Handle browser back button
   useEffect(() => {
@@ -300,6 +304,61 @@ const Dashboard: React.FC = () => {
       return <AdminPanel />;
     }
 
+    // „Widok kursanta" — pięć kafelków lektora, każdy dokładnie ten sam
+    // ekran, który dostaje kursant. Wybór kursanta jest jeden na całą sekcję
+    // (previewStudentId), więc przełączanie kafelków go nie zeruje.
+    if (view === 'student-today') {
+      return (
+        <StudentPreviewFrame studentId={previewStudentId} onStudentIdChange={setPreviewStudentId}>
+          {(id) => (
+            <TodayScreen
+              studentId={id}
+              onOpenExtraPractice={() => handleNavigate('extra-practice')}
+              onOpenHomework={(taskId) => handleNavigate('homework', taskId ? { taskId } : undefined)}
+              onStudySet={(setId) => {
+                (window as any)._initialStudyMode = 'flashcards';
+                handleNavigate('flashcard-study', { setId });
+              }}
+              onPracticeAI={(setId) => handleNavigate('ai-generator', { setId })}
+            />
+          )}
+        </StudentPreviewFrame>
+      );
+    }
+    if (view === 'preview-vocab') {
+      return (
+        <StudentPreviewFrame studentId={previewStudentId} onStudentIdChange={setPreviewStudentId}>
+          {(id) => <StudentVocabPreview studentId={id} />}
+        </StudentPreviewFrame>
+      );
+    }
+    if (view === 'preview-history') {
+      return (
+        <StudentPreviewFrame studentId={previewStudentId} onStudentIdChange={setPreviewStudentId}>
+          {(id) => (
+            <LessonHistoryScreen
+              studentId={id}
+              onNavigate={(v: any, extra?: any) => handleNavigate(v as View, extra)}
+            />
+          )}
+        </StudentPreviewFrame>
+      );
+    }
+    if (view === 'preview-tests') {
+      return (
+        <StudentPreviewFrame studentId={previewStudentId} onStudentIdChange={setPreviewStudentId}>
+          {(id) => <StudentTestsScreen studentId={id} onBack={() => handleNavigate('dashboard')} />}
+        </StudentPreviewFrame>
+      );
+    }
+    if (view === 'preview-homework') {
+      return (
+        <StudentPreviewFrame studentId={previewStudentId} onStudentIdChange={setPreviewStudentId}>
+          {(id) => <StudentHomeworkScreen studentId={id} onBack={() => handleNavigate('dashboard')} />}
+        </StudentPreviewFrame>
+      );
+    }
+
     // Domyślne wejście kursanta to jego panel, nie generator. Generator nadal
     // istnieje i działa pod dwoma wejściami: „Praktyka dodatkowa" w menu oraz
     // `ai-generator`, którego używają przyciski „Przećwicz w zdaniach AI"
@@ -317,12 +376,8 @@ const Dashboard: React.FC = () => {
         onPracticeAI: (setId: string) => handleNavigate('ai-generator', { setId }),
       };
 
-      // Lektor w „Panelu kursanta" ogląda konto wybranego kursanta; bez tego
-      // czytałby własne, puste lekcje i widział panel, którego nikt nie dostaje.
-      if (isTeacher) {
-        return <StudentPanelPreview {...panelProps} />;
-      }
-
+      // Lektor ląduje wcześniej, w bloku 'admin' | 'dashboard' powyżej —
+      // ten fallback obsługuje wyłącznie panel własny kursanta.
       return <TodayScreen {...panelProps} />;
     }
 

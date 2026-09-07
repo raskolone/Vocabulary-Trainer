@@ -4,25 +4,20 @@ import { Eye } from 'lucide-react';
 import { db } from '../../firebase';
 import { User } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
-import TodayScreen from './TodayScreen';
 
 /**
- * „Panel kursanta" w menu lektora — podgląd, nie druga wersja panelu.
+ * Wspólna ramka dla wszystkich kafelków „Widoku kursanta" w menu lektora.
  *
- * Lektor ma własne konto, więc bez wyboru kursanta ten ekran czytał jego
- * własne (puste) lekcje i pokazywał panel, którego żaden kursant nigdy nie
- * zobaczy. Wybór z listy podstawia konto kursanta i renderuje dokładnie ten
- * sam `TodayScreen`, który dostaje kursant po zalogowaniu.
- *
- * Powtórki są w podglądzie wyłączone (patrz TodayScreen): sesja zapisywałaby
- * wyniki prób na koncie kursanta.
+ * Wybór kursanta jest jeden na całą sekcję — trzyma go Dashboard, nie ta
+ * ramka — więc przełączanie się między kafelkami (Mój panel, Słownictwo,
+ * Testy…) nie zeruje wyboru przy każdym wejściu.
  */
 
-interface StudentPanelPreviewProps {
-  onOpenExtraPractice: () => void;
-  onOpenHomework: (taskId?: string) => void;
-  onStudySet: (setId: string) => void;
-  onPracticeAI: (setId: string) => void;
+interface StudentPreviewFrameProps {
+  studentId: string;
+  onStudentIdChange: (id: string) => void;
+  hint?: string;
+  children: (studentId: string) => React.ReactNode;
 }
 
 const studentLabel = (student: User): string => {
@@ -30,10 +25,14 @@ const studentLabel = (student: User): string => {
   return name || student.username || student.email || student.id;
 };
 
-const StudentPanelPreview: React.FC<StudentPanelPreviewProps> = (props) => {
+const StudentPreviewFrame: React.FC<StudentPreviewFrameProps> = ({
+  studentId,
+  onStudentIdChange,
+  hint,
+  children,
+}) => {
   const { language } = useLanguage();
   const [students, setStudents] = useState<User[]>([]);
-  const [selectedId, setSelectedId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -48,7 +47,7 @@ const StudentPanelPreview: React.FC<StudentPanelPreviewProps> = (props) => {
         });
         list.sort((a, b) => studentLabel(a).localeCompare(studentLabel(b)));
         setStudents(list);
-        setSelectedId((current) => current || list[0]?.id || '');
+        if (!studentId && list[0]?.id) onStudentIdChange(list[0].id);
       })
       .catch((error) => console.error('Nie udało się wczytać listy kursantów:', error))
       .finally(() => {
@@ -57,18 +56,19 @@ const StudentPanelPreview: React.FC<StudentPanelPreviewProps> = (props) => {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const L =
     language === 'pl'
       ? {
-          label: 'Podgląd panelu kursanta',
-          hint: 'Widok dokładnie taki, jaki po zalogowaniu ma kursant. Powtórki wyłączone.',
+          label: 'Widok kursanta',
+          hint: hint || 'Widok dokładnie taki, jaki po zalogowaniu ma kursant.',
           empty: 'Brak kursantów na koncie.',
         }
       : {
-          label: 'Student panel preview',
-          hint: 'Exactly what the student sees after logging in. Reviews are disabled here.',
+          label: 'Student view',
+          hint: hint || 'Exactly what the student sees after logging in.',
           empty: 'No students on this account yet.',
         };
 
@@ -87,8 +87,8 @@ const StudentPanelPreview: React.FC<StudentPanelPreviewProps> = (props) => {
           ) : (
             <>
               <select
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
+                value={studentId}
+                onChange={(e) => onStudentIdChange(e.target.value)}
                 className="w-full min-h-[3rem] px-3 bg-base-100 text-white border border-white/15 rounded-xl text-sm font-semibold focus:border-info focus:outline-none"
               >
                 {students.map((student) => (
@@ -103,9 +103,9 @@ const StudentPanelPreview: React.FC<StudentPanelPreviewProps> = (props) => {
         </div>
       </div>
 
-      {selectedId && <TodayScreen {...props} studentId={selectedId} />}
+      {studentId && children(studentId)}
     </div>
   );
 };
 
-export default StudentPanelPreview;
+export default StudentPreviewFrame;

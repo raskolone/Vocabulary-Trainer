@@ -13,14 +13,20 @@ import { Download, Eye, X } from "lucide-react";
 import Markdown from 'react-markdown';
 import { useEscapeModal } from '../../hooks/useEscapeModal';
 interface StudentTestsScreenProps {
+  /** Podgląd testów konkretnego kursanta (lektor). Domyślnie własne konto. */
+  studentId?: string;
   onBack: () => void;
 }
 
-const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ onBack }) => {
+const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ studentId, onBack }) => {
   const { user } = useAuth();
+  const targetId = studentId || user?.id || '';
+  // Lektor ogląda cudzy test tylko po to, żeby zobaczyć, co dostał kursant —
+  // rozwiązanie za niego nadpisałoby jego prawdziwą próbę.
+  const isPreview = Boolean(studentId && studentId !== user?.id);
   const [tests, setTests] = useState<StudentTest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [activeTest, setActiveTest] = useState<StudentTest | null>(null);
   const [feedbackTest, setFeedbackTest] = useState<StudentTest | null>(null);
 
@@ -28,12 +34,13 @@ const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ onBack }) => {
 
   useEffect(() => {
     fetchTests();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId]);
 
   const fetchTests = async () => {
-    if (!user?.id) return;
+    if (!targetId) return;
     try {
-      const q = query(collection(db, `users/${user.id}/tests`), orderBy('createdAt', 'desc'));
+      const q = query(collection(db, `users/${targetId}/tests`), orderBy('createdAt', 'desc'));
       const snap = await getDocs(q);
       setTests(snap.docs.map(d => ({ id: d.id, ...d.data() } as StudentTest)));
     } catch (err) {
@@ -43,7 +50,7 @@ const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ onBack }) => {
     }
   };
 
-  if (activeTest) {
+  if (activeTest && !isPreview) {
     return <TakeTestScreen test={activeTest} onBack={() => { setActiveTest(null); fetchTests(); }} />;
   }
 
@@ -103,9 +110,15 @@ const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ onBack }) => {
               <div className="flex-shrink-0 text-center">
                 {(test.status === 'pending' || (test.attemptsLimit && (test.attemptsUsed || 0) < test.attemptsLimit)) ? (
                   <div className="flex flex-col items-center gap-2">
-                    <Button onClick={() => setActiveTest(test)} className="bg-primary text-accent-ink hover:bg-primary/90 font-bold w-full md:w-auto">
-                      {test.status === 'pending' ? 'Rozpocznij Test' : 'Spróbuj ponownie'}
-                    </Button>
+                    {isPreview ? (
+                      <span className="min-h-[2.75rem] px-4 flex items-center justify-center rounded-lg border border-white/10 text-content-muted text-xs font-semibold w-full md:w-auto">
+                        {i18n.t("Podgląd — bez rozwiązywania")}
+                      </span>
+                    ) : (
+                      <Button onClick={() => setActiveTest(test)} className="bg-primary text-accent-ink hover:bg-primary/90 font-bold w-full md:w-auto">
+                        {test.status === 'pending' ? 'Rozpocznij Test' : 'Spróbuj ponownie'}
+                      </Button>
+                    )}
                     {test.attemptsLimit && test.attemptsLimit < 999 && (
                       <span className="text-xs text-content-muted">
                         

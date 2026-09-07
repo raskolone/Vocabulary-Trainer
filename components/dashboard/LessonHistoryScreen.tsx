@@ -17,14 +17,17 @@ import PracticeSessionsSection from './PracticeSessionsSection';
  */
 
 interface LessonHistoryScreenProps {
+  /** Podgląd historii konkretnego kursanta (lektor). Domyślnie własne konto. */
+  studentId?: string;
   onStudySet?: (setId: string) => void;
   onNavigate?: (view: string, extra?: any) => void;
 }
 
-const LessonHistoryScreen: React.FC<LessonHistoryScreenProps> = ({ onStudySet, onNavigate }) => {
+const LessonHistoryScreen: React.FC<LessonHistoryScreenProps> = ({ studentId, onStudySet, onNavigate }) => {
   const { user } = useAuth();
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'lessons' | 'sessions'>('lessons');
+  const targetId = studentId || user?.id || '';
 
   const tabClass = (tab: 'lessons' | 'sessions') =>
     `px-4 min-h-[2.75rem] rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${
@@ -57,14 +60,14 @@ const LessonHistoryScreen: React.FC<LessonHistoryScreenProps> = ({ onStudySet, o
       <div className="max-w-2xl mx-auto">
         {activeTab === 'lessons' ? (
           <StudentLessonPanel
-            studentId={user?.id || ''}
+            studentId={targetId}
             variant="history"
             onStudySet={onStudySet}
             onPracticeAI={(setId) => onNavigate && onNavigate('ai-generator', { setId })}
           />
         ) : (
           <div className="rounded-2xl border border-white/10 bg-base-200/40 overflow-hidden">
-            <PracticeSessionsSection studentId={user?.id || ''} asSection={false} />
+            <PracticeSessionsSection studentId={targetId} asSection={false} />
           </div>
         )}
       </div>
