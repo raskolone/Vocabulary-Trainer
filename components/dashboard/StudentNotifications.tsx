@@ -60,9 +60,9 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
     };
   }, [user]);
 
-  if (loading || !user || user.role !== 'user') return null;
+  const isStudentView = !loading && !!user && user.role === 'user';
 
-  const dismissed = Array.from(new Set([...(user.dismissedNotifications || []), ...localDismissed]));
+  const dismissed = Array.from(new Set([...(user?.dismissedNotifications || []), ...localDismissed]));
 
   // Filter pending homework tasks not dismissed
   const assignedHomework = homeworkTasks.filter(t => {
@@ -73,7 +73,7 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
   });
 
   // Fallback if hasNewHomework flag is set on user profile but specific task not listed in query
-  const shouldShowGenericHomework = user.hasNewHomework && assignedHomework.length === 0 && !dismissed.includes('generic_homework_' + user.id) && !dismissed.includes('hasNewHomework');
+  const shouldShowGenericHomework = !!user?.hasNewHomework && assignedHomework.length === 0 && !dismissed.includes('generic_homework_' + user?.id) && !dismissed.includes('hasNewHomework');
 
   // Filter out sets assigned by teacher that haven't been dismissed
   const assignedSets = sets.filter(s => s.assignedByTeacher && !dismissed.includes(s.id));
@@ -135,7 +135,7 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
       ...localDismissed,
       hwId,
       'hw_' + hwId,
-      'generic_homework_' + user.id,
+      'generic_homework_' + user?.id,
       'hasNewHomework'
     ]));
 
@@ -167,12 +167,14 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
   };
 
   const currentHomework = assignedHomework[0];
-  const isHomeworkModalOpen = assignedHomework.length > 0 || shouldShowGenericHomework;
+  const isHomeworkModalOpen = isStudentView && (assignedHomework.length > 0 || shouldShowGenericHomework);
 
   useEscapeModal(isHomeworkModalOpen, () => {
     const hwId = currentHomework?.id || ('generic_homework_' + (user?.id || ''));
     handleHomeworkAction(hwId, false);
   });
+
+  if (!isStudentView) return null;
 
   return (
     <>
