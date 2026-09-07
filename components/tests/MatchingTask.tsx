@@ -18,8 +18,11 @@ export const MatchingTask: React.FC<MatchingTaskProps> = ({ options, onChange, i
     const left: {id: string, text: string}[] = [];
     const right: {id: string, text: string}[] = [];
     
+    // Pary przychodzą prosto z modelu, więc w tablicy potrafi wylądować null
+    // albo liczba. Bez tego rzutowania jedno takie pole wywracało cały ekran
+    // testu wyjątkiem na .split — a kursant widział tylko ekran awarii.
     options.forEach((opt, idx) => {
-      const parts = opt.split('=');
+      const parts = String(opt ?? '').split('=');
       if (parts.length >= 2) {
         left.push({ id: `L${idx}`, text: parts[0].trim() });
         right.push({ id: `R${idx}`, text: parts[1].trim() });
@@ -32,7 +35,7 @@ export const MatchingTask: React.FC<MatchingTaskProps> = ({ options, onChange, i
     
     if (initialAnswer) {
       const parsedMatches: Record<string, string> = {};
-      const lines = initialAnswer.split('\n');
+      const lines = String(initialAnswer).split('\n');
       lines.forEach(line => {
         const parts = line.split('=');
         if (parts.length >= 2) {

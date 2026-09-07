@@ -35,7 +35,7 @@ export const WordBankFillInBlankTask: React.FC<WordBankFillInBlankTaskProps> = (
   const { sentenceStructures, gapCount } = useMemo(() => {
     let globalIndex = 0;
     const structures = sentences.map(s => {
-      const parts = s.text.split(gapRegex);
+      const parts = String(s.text ?? '').split(gapRegex);
       const gapIndexes: number[] = [];
       const gapsInThisSentence = Math.max(0, parts.length - 1);
       for (let i = 0; i < gapsInThisSentence; i++) {
@@ -83,7 +83,7 @@ export const WordBankFillInBlankTask: React.FC<WordBankFillInBlankTaskProps> = (
     setBankWords(shuffled);
 
     if (initialAnswer) {
-      const initialParts = initialAnswer.split(/[,|\n|;]/).map(s => s.replace(/^\d+[\.\)]\s*/, '').trim());
+      const initialParts = String(initialAnswer).split(/[,|\n|;]/).map(s => s.replace(/^\d+[\.\)]\s*/, '').trim());
       const initialPlaced: Record<number, { id: string; text: string }> = {};
       const remainingBank = [...shuffled];
 
