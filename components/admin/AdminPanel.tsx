@@ -31,6 +31,7 @@ import { isTaskForStudent } from '../../utils/homework';
 import TeacherOverview from './TeacherOverview';
 import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
+import NotionSyncButton from './NotionSyncButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   Trash2, Download, Printer, FileText, CheckCircle2, AlertCircle,
@@ -1803,6 +1804,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
           {activeTab === 'history' && (
             <div className="space-y-8">
+              <NotionSyncButton />
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-4">

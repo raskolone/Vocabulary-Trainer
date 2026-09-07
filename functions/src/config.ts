@@ -58,3 +58,14 @@ export const PLACEHOLDER_EMAIL_DOMAINS = ['student.vocabboost.com'];
  * podmienić tę stałą — nic innego nie odwołuje się do adresu.
  */
 export const APP_URL = 'https://app.maciej.pro';
+
+/**
+ * Bazy Notion, z których czyta synchronizacja.
+ *
+ * Identyfikatory pochodzą z adresów baz w „Teacher HQ”. Obie muszą być
+ * udostępnione integracji (w Notion: „...” → Connections → nazwa integracji),
+ * inaczej API odpowiada 404 — Notion nie odróżnia „nie istnieje” od
+ * „nie masz dostępu”.
+ */
+export const NOTION_LESSONS_DB = '5c6d910b-31b7-83b8-810c-0187aa513b51';
+export const NOTION_STUDENTS_DB = 'ca88a293-bd34-4cc7-b09e-f6bd3901ef96';

@@ -1,4 +1,5 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import * as logger from 'firebase-functions/logger';
 import { initializeApp } from 'firebase-admin/app';
@@ -11,6 +12,7 @@ import {
 } from './config';
 import { buildHomeworkEmail } from './emailTemplate';
 import { sendEmail } from './resend';
+import { syncLessons } from './notion/sync';
 
 /**
  * Powiadomienie e-mail o nowej pracy domowej.
@@ -22,6 +24,7 @@ import { sendEmail } from './resend';
  */
 
 const RESEND_API_KEY = defineSecret('RESEND_API_KEY');
+const NOTION_TOKEN = defineSecret('NOTION_TOKEN');
 
 initializeApp();
 const db = getFirestore(DATABASE_ID);
@@ -135,6 +138,50 @@ export const notifyStudentOnHomework = onDocumentCreated(
       });
     } catch (err) {
       logger.warn('Nie udało się zapisać znacznika wysyłki', { taskId, err });
+    }
+  }
+);
+
+/**
+ * Ręczna synchronizacja historii lekcji z Notion.
+ *
+ * Wywoływana z panelu lektora, a nie z harmonogramu — dopóki import nie zostanie
+ * sprawdzony na prawdziwych lekcjach, lepiej, żeby ktoś patrzył na wynik. Gdy
+ * okaże się nudny i przewidywalny, wystarczy dołożyć obok wyzwalacz czasowy;
+ * cała logika siedzi w `syncLessons` i nie zależy od tego, kto ją uruchomił.
+ *
+ * Limit czasu jest podniesiony, bo import czyta treść każdej lekcji osobnym
+ * zapytaniem do Notion — przy kilkudziesięciu lekcjach domyślna minuta to za mało.
+ */
+export const syncNotionLessons = onCall(
+  {
+    region: FUNCTION_REGION,
+    secrets: [NOTION_TOKEN],
+    timeoutSeconds: 540,
+    memory: '512MiB',
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError('unauthenticated', 'Wymagane zalogowanie.');
+    }
+
+    // Historia lekcji dotyczy wszystkich kursantów, więc uruchomić może ją
+    // wyłącznie nauczyciel. Rola jest czytana z bazy, nie z żądania.
+    const profile = await db.collection('users').doc(uid).get();
+    const role = profile.data()?.role;
+    if (role !== 'admin' && role !== 'teacher') {
+      throw new HttpsError('permission-denied', 'Tylko lektor może synchronizować lekcje.');
+    }
+
+    try {
+      const report = await syncLessons(NOTION_TOKEN.value());
+      logger.info('Synchronizacja z Notion zakończona', { uid, ...report });
+      return report;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Synchronizacja z Notion nie powiodła się', { uid, error: message });
+      throw new HttpsError('internal', message);
     }
   }
 );
