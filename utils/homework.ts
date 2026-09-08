@@ -45,10 +45,16 @@ export const normalizeText = (text: string | null | undefined): string => {
   if (!text) return '';
   return text
     .toString()
-    .trim()
     .toLowerCase()
+    // Ł to osobna litera alfabetu, a nie L z ozdobnikiem — rozkład NFD jej nie
+    // rusza. Bez jawnej podmiany „Kołłątaj” nie równa się zapisowi „Kollataj”,
+    // który trafia do bazy przy koncie zakładanym z klawiatury bez polskich
+    // znaków, i praca domowa nie zostaje rozpoznana jako własna.
+    .replace(/ł/g, 'l')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 const cleanSeparators = (text: string): string => {

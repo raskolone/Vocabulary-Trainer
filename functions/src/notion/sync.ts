@@ -24,13 +24,27 @@ import { parseLessonSummary } from './parse';
 const isRealEmail = (email: string): boolean =>
   !!email && email.includes('@') && !email.endsWith('@student.vocabboost.com');
 
+/**
+ * Sprowadza tekst do postaci porównywalnej.
+ *
+ * `normalize('NFD')` rozkłada litery z kreskami i ogonkami na znak bazowy plus
+ * znak łączący, ale nie dotyczy przekreślonego Ł — to osobna litera alfabetu,
+ * a nie L z ozdobnikiem. Bez jawnej podmiany „Bartłomiej” nie równałby się
+ * zapisowi „Bartlomiej”, który trafia do bazy przy kontach zakładanych ręcznie
+ * albo z klawiatury bez polskich znaków.
+ *
+ * Białe znaki zwijamy z tego samego powodu: podwójna spacja w nazwie karty nie
+ * może decydować o tym, czy kursant zostanie rozpoznany.
+ */
 const normalize = (value: string): string =>
   (value || '')
     .toString()
-    .trim()
     .toLowerCase()
+    .replace(/ł/g, 'l')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /** Wartość właściwości Notion jako tekst, niezależnie od jej typu. */
 const propText = (page: NotionPage, name: string): string => {
@@ -219,39 +233,73 @@ export const previewSync = async (token: string): Promise<PreviewResult> => {
   };
 };
 
+/** Profil sprowadzony do pól, po których wolno rozpoznawać kursanta. */
+export interface AccountFingerprint {
+  id: string;
+  email?: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  notionPageId?: string;
+}
+
 /**
  * Szuka konta odpowiadającego karcie z Notion.
  *
- * Kolejność jest kolejnością pewności: zapisane powiązanie, potem adres e-mail,
- * dopiero na końcu imię i nazwisko. Nazwisko bywa zapisane na kilka sposobów,
- * więc nigdy nie jest pierwszym kryterium — ale bez niego pierwszy import nie
- * miałby po czym rozpoznać kont założonych ręcznie.
+ * Kolejność kryteriów jest kolejnością pewności: zapisane powiązanie, potem
+ * adres e-mail, dopiero na końcu imię i nazwisko oraz nazwa użytkownika.
+ * Nazwisko nigdy nie jest pierwszym kryterium, bo bywa zapisane na kilka
+ * sposobów — ale bez niego pierwszy import nie miałby po czym rozpoznać kont
+ * założonych ręcznie, zanim jakiekolwiek powiązanie powstało.
+ *
+ * Pomyłka tutaj jest droga: lekcje jednego kursanta trafiłyby do drugiego,
+ * a zobaczyłby to dopiero człowiek. Dlatego funkcja jest czysta i pokryta
+ * testami (tests/notionMatch.test.ts), a wynik niesie powód dopasowania,
+ * który panel pokazuje lektorowi przed importem.
  */
+export const matchAccount = (
+  accounts: AccountFingerprint[],
+  notionId: string,
+  emails: string[],
+  name: string
+): { id: string; reason: MatchReason } | null => {
+  const emailSet = new Set(emails.map(normalize).filter(Boolean));
+  const nameNorm = normalize(name);
+
+  const byNotion = accounts.find((a) => a.notionPageId && a.notionPageId === notionId);
+  if (byNotion) return { id: byNotion.id, reason: 'notion' };
+
+  const byEmail = emailSet.size
+    ? accounts.find((a) => a.email && emailSet.has(normalize(a.email)))
+    : undefined;
+  if (byEmail) return { id: byEmail.id, reason: 'email' };
+
+  // Puste imię i nazwisko dałyby pusty ciąg pasujący do wszystkiego naraz.
+  if (!nameNorm) return null;
+
+  const byName = accounts.find(
+    (a) => normalize(`${a.firstName || ''} ${a.lastName || ''}`) === nameNorm
+  );
+  if (byName) return { id: byName.id, reason: 'name' };
+
+  const byUsername = accounts.find((a) => a.username && normalize(a.username) === nameNorm);
+  if (byUsername) return { id: byUsername.id, reason: 'username' };
+
+  return null;
+};
+
+/** Most między dokumentami Firestore a czystą funkcją dopasowania. */
 const findAccount = (
   docs: FirebaseFirestore.QueryDocumentSnapshot[],
   notionId: string,
   emails: string[],
   name: string
 ): { doc: FirebaseFirestore.QueryDocumentSnapshot; reason: MatchReason } | null => {
-  const emailSet = new Set(emails.map(normalize).filter(Boolean));
-  const nameNorm = normalize(name);
-
-  const byNotion = docs.find((d) => d.data()?.notionPageId === notionId);
-  if (byNotion) return { doc: byNotion, reason: 'notion' };
-
-  const byEmail = docs.find((d) => emailSet.has(normalize(d.data()?.email || '')));
-  if (byEmail) return { doc: byEmail, reason: 'email' };
-
-  const byName = docs.find((d) => {
-    const data = d.data() || {};
-    return normalize(`${data.firstName || ''} ${data.lastName || ''}`) === nameNorm;
-  });
-  if (byName) return { doc: byName, reason: 'name' };
-
-  const byUsername = docs.find((d) => normalize(d.data()?.username || '') === nameNorm);
-  if (byUsername) return { doc: byUsername, reason: 'username' };
-
-  return null;
+  const fingerprints: AccountFingerprint[] = docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  const hit = matchAccount(fingerprints, notionId, emails, name);
+  if (!hit) return null;
+  const doc = docs.find((d) => d.id === hit.id);
+  return doc ? { doc, reason: hit.reason } : null;
 };
 
 export interface ImportSelection {

@@ -1,8 +1,8 @@
 # Synchronizacja Notion → aplikacja
 
-Stan na 7 września 2026. Kod jest gotowy i zbudowany, ale **nie jest jeszcze
-wdrożony** — brakuje dwóch rzeczy, które trzeba zrobić ręcznie (sekcja
-„Co zostało do zrobienia”).
+Stan na 8 września 2026. Funkcje są **wdrożone i działające**:
+`previewNotionSync`, `importNotionSelection` oraz `notifyStudentOnHomework`
+(powiadomienia e-mail) stoją w regionie `us-central1`.
 
 ## Po co to jest
 
@@ -82,12 +82,35 @@ Jeśli deploy odmówi z powodu niedopasowanej lokalizacji, popraw
 `FUNCTION_REGION` w `functions/src/config.ts` na region bazy Firestore.
 Region w `firebase.ts` (`getFunctions(app, 'us-central1')`) musi się zgadzać.
 
-### 3. Pierwsze uruchomienie
+### 3. Jak się tego używa
 
-Panel lektora → zakładka **Historia lekcji** → przycisk **Synchronizuj**.
-Raport pokaże, ile lekcji weszło, ile pominięto i czego nie dało się dopasować.
+Panel lektora, sekcja **Historia lekcji z Notion** — nad wyborem kursanta, bo
+import dotyczy wszystkich naraz.
 
-Warto zacząć od przejrzenia lekcji oznaczonych `needsReview` — to te, w których
+**Krok pierwszy: „Sprawdź Notion”.** Czyta wyłącznie właściwości stron, więc
+kończy się w kilka sekund i niczego nie zapisuje. Przy każdej karcie widać, ile
+lekcji na nią czeka, czy kursant ma konto, **po czym został rozpoznany** i ile
+lekcji leży już w aplikacji.
+
+Powód dopasowania jest istotny i dlatego widoczny. Kolejność kryteriów to
+kolejność pewności: zapisane powiązanie → adres e-mail → imię i nazwisko →
+nazwa użytkownika. Pozycje rozpoznane po nazwisku warto przejrzeć okiem, zanim
+się je zaimportuje; przy powiązaniu i adresie nie ma o czym myśleć.
+
+**Krok drugi: zaznaczenie i „Importuj”.** Domyślnie zaznaczeni są ci, którzy
+mają konto i czekają na nich lekcje — jedyny przypadek bez skutków ubocznych.
+Dostępne są też zaznaczenia zbiorcze (wszyscy / tylko z kontem / odznacz).
+
+Kursant bez konta dostaje **drugi, osobny checkbox**: „Załóż konto i wyślij
+hasło startowe”. Samo zaznaczenie kogoś do importu lekcji nigdy nie tworzy mu
+konta. Hasła startowe pokazujemy raz, w oknie z wynikiem — trzeba je wtedy
+zapisać.
+
+Podział na dwa kroki nie jest kosmetyczny: jednym przebiegiem przez całe
+archiwum przekraczaliśmy czas oczekiwania przeglądarki (`deadline-exceeded`),
+bo treść każdej lekcji to osobne zapytanie do Notion.
+
+Po imporcie warto przejrzeć lekcje oznaczone `needsReview` — to te, w których
 nie rozpoznano czterech bloków podsumowania.
 
 ## Czego świadomie nie ma
@@ -105,5 +128,26 @@ nie rozpoznano czterech bloków podsumowania.
 - `functions/src/notion/client.ts` — klient API Notion (bez SDK, jak `resend.ts`)
 - `functions/src/notion/parse.ts` — rozbiór podsumowania na pola rekordu
 - `functions/src/notion/sync.ts` — dopasowanie kursantów i import lekcji
-- `functions/src/index.ts` — funkcja `syncNotionLessons`
-- `services/notionSync.ts`, `components/admin/NotionSyncButton.tsx` — strona aplikacji
+- `functions/src/index.ts` — funkcje `previewNotionSync` i `importNotionSelection`
+- `services/notionSync.ts`, `components/admin/NotionSyncButton.tsx`,
+  `components/admin/NotionSyncResultModal.tsx` — strona aplikacji
+- `tests/notionParse.test.ts`, `tests/notionMatch.test.ts` — parser podsumowań
+  i rozpoznawanie kont
+
+## Archiwum kursantów
+
+Osobna rzecz niż „zawieś konto”. Zawieszenie odbiera dostęp komuś, kto nadal
+się uczy; archiwum zamyka współpracę i zostawia historię lekcji oraz wyniki
+nietknięte. Zarchiwizowani znikają z list i z przeglądu nauczyciela, wracają
+przełącznikiem „Pokaż archiwum” przy liczniku wyników.
+
+Pole `isArchived` w profilu, przycisk w karcie kursanta obok zawieszania.
+
+## Znane ograniczenia
+
+- **Usuwanie kont nie działa.** Na produkcji brakuje backendu (`server.ts` nie
+  jest nigdzie wystawiony, Vercel serwuje sam frontend), a lokalnie
+  `FIREBASE_SERVICE_ACCOUNT` w `.env` jest puste, więc Admin SDK nie ma czym się
+  uwierzytelnić. Archiwizacja działa niezależnie, bo idzie prosto do Firestore.
+- **Grupy** (Gulermak, Kramp) są w Notion kartami jak kursanci, ale nie mają
+  odpowiednika w modelu aplikacji. Import ich nie obsługuje.
