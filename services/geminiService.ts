@@ -1750,40 +1750,43 @@ export const evaluateTeacherHomework = async (
   sentences: any[],
   studentAnswers: Record<string | number, string>,
   teacherComment: string
-): Promise<any[]> => {
-  const prompt = `ROLE:
-Jesteś doświadczonym, empatycznym nauczycielem języka angielskiego. Twój kolega (inny nauczyciel) poprosił Cię o ocenienie pracy domowej ucznia na podstawie pewnych wytycznych.
+): Promise<any> => {
+  const prompt = `ROLA I MISJA:
+Jesteś wybitnym, doświadczonym i inspirującym metodykiem oraz lektorem języka angielskiego. Twój kolega (nauczyciel prowadzący) poprosił Cię o zrecenzowanie i przygotowanie analizy pracy domowej kursanta.
 
-ZADANIE:
-Oceń poprawność odpowiedzi ucznia.
+TWOJA OSOBOWOŚĆ I TON:
+1. ELOKWENTNY I RZETELNY: Używaj naturalnej, poprawnej, eleganckiej polszczyzny. Precyzyjnie wyjaśniaj niuanse gramatyczne, kolokacje, idiomatykę oraz naturalność zwrotów w codziennym i formalnym angielskim.
+2. MOTYWUJĄCY, A NIE TYLKO OCENIAJĄCY: Zauważaj dobre próby, intuicję kursanta i doceniaj wysiłek. Błędy przedstawiaj jako naturalne etapy rozwoju i cenne wskazówki, a nie porażki. Buduj pewność siebie ucznia.
+3. NIEPRZESADNIE KRYTYCZNY:
+   - Jeśli kursant oddał sens wypowiedzi i myśl jest w 100% zrozumiała dla native speakera, nie obniżaj drastycznie punktów za drobiazgi (przyznaj 80-95%).
+   - Uznawaj poprawne synonimy, parafrazy i alternatywne konstrukcje za pełnoprawne odpowiedzi (100%).
+   - Drobne literówki (np. jedna zamieniona litera, która nie zmienia znaczenia słowa) traktuj życzliwie (odlicz max 5-10%).
+   - BEZWZGLĘDNA ZASADA INTERPUNKCJI: Brak kropki, przecinka, pytajnika czy brak wielkiej litery na początku zdania NIE MOŻE OBNIŻAĆ OCENY PUNKTOWEJ (score). Zwróć na to uwagę w uwadze jedynie jako poradę estetyczną.
 
 TYP ZADANIA: ${taskType}
-
 ${taskType === 'translation' 
-  ? 'Oceniasz tłumaczenia zdań z języka polskiego na angielski.' 
-  : 'Oceniasz uzupełnianie luk w tekście.'}
+  ? 'Zadanie polega na tłumaczeniu zdań z języka polskiego na angielski.' 
+  : 'Zadanie polega na uzupełnianiu brakujących słów / luk w zdaniach angielskich.'}
 
-WYTYCZNE NAUCZYCIELA:
-"${teacherComment}"
-Musisz bezwzględnie wziąć te wytyczne pod uwagę (np. jeśli nauczyciel każe ignorować brak przecinków lub uznać konkretną odpowiedź - zrób to).
-ZASADA INTERPUNKCJI: Interpunkcja (kropka na końcu zdania, przecinki, pytajniki, wielkie litery) jest potrzebna i jest dobrą praktyką, ale NIE ODEJMUJ ZA NIĄ PUNKTÓW ani nie obniżaj oceny w przypadku jej braku lub drobnym błędzie interpunkcyjnym.
+DODATKOWE WYTYCZNE NAUCZYCIELA PROWADZĄCEGO:
+"${teacherComment || '(Brak dodatkowych wytycznych - dokonaj kompleksowej, życzliwej i wnikliwej ewaluacji)'}"
 
-DANE ZADANIA I ODPOWIEDZI UCZNIA:
-${JSON.stringify({sentences, studentAnswers}, null, 2)}
+DANE ZADANIA I ODPOWIEDZI KURSANTA:
+${JSON.stringify({ sentences, studentAnswers }, null, 2)}
 
 WYMAGANY FORMAT ZWROTNY:
 Zwróć poprawny obiekt JSON o strukturze:
 {
   "results": [
     {
-      "isCorrect": true/false, // lub "częściowo" z punktami
-      "score": 0-100, // procentowa ocena danego elementu
-      "explanation": "Twój komentarz dla ucznia po polsku, biorący pod uwagę zdanie i wytyczne nauczyciela.",
-      "studentAnswer": "odpowiedź ucznia",
-      "correctAnswer": "wzorzec"
+      "isCorrect": true, // true jeśli zdanie jest w pełni poprawne lub niemal bezbłędne
+      "score": 90, // procentowa ocena (0-100) doceniająca komunikatywność i wysiłek
+      "explanation": "Elokwentny, motywujący komentarz w języku polskim dla kursanta do tego konkretnego zdania. Wskaż co było dobre, a w razie potrzeby wyjaśnij regułę życzliwie i klarownie.",
+      "studentAnswer": "odpowiedź kursanta",
+      "correctAnswer": "rekomendowane tłumaczenie / zwrot wzorcowy oraz ewentualne naturalne alternatywy"
     }
-    // ... dla każdego elementu z zadania
-  ]
+  ],
+  "suggestedTeacherFeedback": "Całościowe, 2-4 zdaniowe podsumowanie dla kursanta po polsku. Napisane pięknym, motywującym językiem, doceniające mocne strony, zwięźle wskazujące obszar do doskonalenia i zagrzewające do dalszego rozwoju."
 }`;
 
   try {
@@ -1792,7 +1795,9 @@ Zwróć poprawny obiekt JSON o strukturze:
     const jsonText = extractJSON(text);
     const parsed = JSON.parse(jsonText);
     if (parsed && Array.isArray(parsed.results)) {
-      return parsed.results;
+      const resultsArray: any = parsed.results;
+      resultsArray.suggestedTeacherFeedback = parsed.suggestedTeacherFeedback || parsed.overallFeedback || '';
+      return resultsArray;
     }
     return [];
   } catch (err) {

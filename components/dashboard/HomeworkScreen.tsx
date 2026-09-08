@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { User, SpecialTask, HomeworkType, TranslationExercise, FillInTheBlankExercise, LessonRecord } from '../../types';
+import { User, SpecialTask, HomeworkType, TranslationExercise, FillInTheBlankExercise, LessonRecord, StudentTest } from '../../types';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { generateTranslationExercises, generateFillInTheBlankExercises, evaluateErrorCorrectionSentence, evaluateTranslations, evaluateTeacherHomework, processBulkSentences, generateHomeworkChatPipeline } from '../../services/geminiService';
@@ -12,6 +12,8 @@ import Button from '../ui/Button';
 import ConfirmModal from '../ui/ConfirmModal';
 import { LessonSelectionModal } from './LessonSelectionModal';
 import HomeworkComposer from '../admin/HomeworkComposer';
+import { TestPreviewModal } from '../admin/TestPreviewModal';
+import { exportTestToPDF } from '../../utils/pdfExport';
 import { FillInTheBlankTask } from '../practice/FillInTheBlankTask';
 import { useEscapeModal } from '../../hooks/useEscapeModal';
 import Badge from '../ui/Badge';
@@ -36,7 +38,9 @@ import {
   Award,
   Layers,
   UserCheck,
-  Eye
+  Eye,
+  GraduationCap,
+  Download
 } from 'lucide-react';
 
 interface HomeworkScreenProps {
@@ -85,6 +89,8 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
   // Filter state for teacher
   const [filterStudentId, setFilterStudentId] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus || 'all');
+  const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
+  const [previewTest, setPreviewTest] = useState<StudentTest | null>(null);
 
   useEffect(() => {
     if (initialFilterStatus) {
@@ -311,6 +317,84 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
       if (unsubscribe) unsubscribe();
     };
   }, [user?.id, user?.username, user?.email, user?.firstName, user?.lastName, isTeacher]);
+
+  // Pobieranie testów kursantów dla widoku lektora
+  useEffect(() => {
+    if (!isTeacher) return;
+    let isMounted = true;
+
+    const fetchStudentTests = async () => {
+      try {
+        const testsList: StudentTest[] = [];
+        if (filterStudentId !== 'all') {
+          const snap = await getDocs(collection(db, `users/${filterStudentId}/tests`));
+          const st = students.find((s) => s.id === filterStudentId);
+          snap.forEach((d) => {
+            testsList.push({
+              id: d.id,
+              studentId: filterStudentId,
+              studentName: st ? `${st.firstName || ''} ${st.lastName || ''}`.trim() || st.username : 'Kursant',
+              studentEmail: st?.email || '',
+              ...d.data(),
+            } as StudentTest);
+          });
+        } else {
+          for (const st of students) {
+            if (!st.id) continue;
+            const snap = await getDocs(collection(db, `users/${st.id}/tests`));
+            snap.forEach((d) => {
+              testsList.push({
+                id: d.id,
+                studentId: st.id,
+                studentName: `${st.firstName || ''} ${st.lastName || ''}`.trim() || st.username || 'Kursant',
+                studentEmail: st.email || '',
+                ...d.data(),
+              } as StudentTest);
+            });
+          }
+        }
+        testsList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        if (isMounted) setStudentTests(testsList);
+      } catch (err) {
+        console.error('Błąd pobierania testów kursantów w HomeworkScreen:', err);
+      }
+    };
+
+    if (students.length > 0) {
+      fetchStudentTests();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isTeacher, students, filterStudentId]);
+
+  const isDateOverdue = (dateStr?: string | null): boolean => {
+    if (!dateStr) return false;
+    try {
+      const d = new Date(dateStr);
+      if (dateStr.length === 10) d.setHours(23, 59, 59, 999);
+      return d.getTime() < Date.now();
+    } catch {
+      return false;
+    }
+  };
+
+  const filteredStudentTests = React.useMemo(() => {
+    return studentTests.filter((t) => {
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'submitted') {
+        return t.status === 'graded' || t.status === 'completed' || Boolean(t.completedAt);
+      }
+      if (filterStatus === 'pending') {
+        return t.status === 'pending' || !t.status;
+      }
+      if (filterStatus === 'graded') {
+        return t.status === 'graded' || t.status === 'completed';
+      }
+      return true;
+    });
+  }, [studentTests, filterStatus]);
 
   // Auto-select initial task if provided
   useEffect(() => {
@@ -826,11 +910,18 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
       );
       
       let totalScore = 0;
-      results.forEach((res) => {
+      results.forEach((res: any) => {
         const scoreNum = Number(res.score);
         totalScore += isNaN(scoreNum) ? 0 : scoreNum;
       });
       const avgScore = results.length > 0 ? Math.round(totalScore / results.length) : 0;
+
+      // Jeśli AI przygotowało elokwentne, motywujące podsumowanie pracy, wypełnij pole
+      if (results?.suggestedTeacherFeedback) {
+        if (!teacherFeedbackText.trim() || teacherFeedbackText.trim().length < 15) {
+          setTeacherFeedbackText(results.suggestedTeacherFeedback);
+        }
+      }
 
       const updatedData = {
         evaluationResults: results,
@@ -845,7 +936,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         grade: avgScore
       });
 
-      alert('Zadanie przeanalizowane z uwzględnieniem Twoich wytycznych!');
+      alert('Zadanie przeanalizowane z uwzględnieniem Twoich wytycznych! Przygotowano rzetelne i motywujące uwagi.');
     } catch (e: any) {
       console.error('Error analyzing homework:', e);
       alert('Wystąpił błąd podczas analizy AI.');
@@ -1899,6 +1990,123 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
             </div>
           )}
 
+          {/* ---------------- ROZDZIELAJĄCY DIVIDER MIĘDZY PRACAMI A TESTAMI ---------------- */}
+          {isTeacher && (
+            <>
+              <div className="relative my-10 py-2">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                  <div className="w-full border-t border-white/10" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-base-200 px-5 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider text-primary border border-primary/30 flex items-center gap-2 shadow-xl shadow-black/40">
+                    <GraduationCap size={16} />
+                    <span>Testy i Sprawdziany kursantów</span>
+                    {filteredStudentTests.length > 0 && (
+                      <span className="px-2 py-0.5 bg-primary/20 rounded-full text-[11px] font-bold">
+                        {filteredStudentTests.length}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* ---------------- TESTY KURSANTÓW DLA NAUCZYCIELA ---------------- */}
+              {filteredStudentTests.length === 0 ? (
+                <Card className="text-center py-8 bg-base-200/40 border border-white/5">
+                  <GraduationCap className="mx-auto text-content-muted mb-2 opacity-40" size={36} />
+                  <p className="text-sm font-bold text-content">Brak testów dla wybranych filtrów</p>
+                  <p className="text-xs text-content-muted mt-0.5">
+                    Nie znaleziono testów odpowiadających wybranemu kursantowi lub statusowi.
+                  </p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredStudentTests.map((test) => {
+                    const isCompleted = test.status === 'graded' || test.status === 'completed' || Boolean(test.completedAt);
+                    const isOverdue = !isCompleted && isDateOverdue(test.dueDate);
+                    const isPending = !isCompleted && !isOverdue;
+
+                    return (
+                      <Card
+                        key={test.id}
+                        className={`p-5 flex flex-col justify-between transition-all border ${
+                          isOverdue
+                            ? 'border-danger/40 bg-danger/[0.04]'
+                            : isCompleted
+                            ? 'border-primary/30 bg-base-200/70'
+                            : 'border-white/10 bg-base-200/50'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-xs font-semibold text-content-muted flex items-center gap-1.5 truncate">
+                              <UserIcon size={14} className="text-primary" />
+                              <strong className="text-white">{test.studentName}</strong>
+                            </span>
+                            {isOverdue && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-danger/20 text-danger border border-danger/30 flex items-center gap-1">
+                                <Clock size={11} /> Termin minął
+                              </span>
+                            )}
+                            {isPending && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-warn/20 text-warn border border-warn/30">
+                                W trakcie
+                              </span>
+                            )}
+                            {isCompleted && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-primary/20 text-primary border border-primary/30 flex items-center gap-1">
+                                <Check size={11} /> Odesłany
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="text-base font-bold text-white leading-snug">{test.title}</h3>
+                          {test.scope && (
+                            <p className="text-xs text-content-muted line-clamp-2 mt-1">{test.scope}</p>
+                          )}
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-content-muted mt-3 pt-2 border-t border-white/5 font-mono">
+                            {test.dueDate && (
+                              <span className={`flex items-center gap-1 ${isOverdue ? 'text-danger font-bold' : ''}`}>
+                                <Clock size={12} /> Termin: {test.dueDate}
+                              </span>
+                            )}
+                            <span>Pytań: {test.questions?.length || 0}</span>
+                            {test.score !== undefined && (
+                              <span className="text-primary font-bold">
+                                Wynik: {test.score}/{test.maxScore || test.questions?.length || 100} pkt
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-white/5">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => exportTestToPDF(test, (k: string) => k)}
+                            className="text-xs flex items-center gap-1.5"
+                            title="Pobierz arkusz lub raport PDF"
+                          >
+                            <Download size={14} /> PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={isCompleted ? 'primary' : 'secondary'}
+                            onClick={() => setPreviewTest(test)}
+                            className="text-xs flex items-center gap-1.5"
+                          >
+                            <Eye size={14} />
+                            {isCompleted ? 'Zobacz odpowiedzi i feedback' : 'Podgląd pytań'}
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -2220,6 +2428,11 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         onCancel={() => {
           if (!isDeleting) setTaskToDelete(null);
         }}
+      />
+      <TestPreviewModal
+        isOpen={Boolean(previewTest)}
+        test={previewTest}
+        onClose={() => setPreviewTest(null)}
       />
     </div>
   );

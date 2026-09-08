@@ -306,42 +306,45 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
               {isTeacher ? (language === 'pl' ? 'Panel nauczyciela' : 'Dashboard') : (language === 'pl' ? 'Mój panel' : 'My panel')}
           </NavLink>
 
-          {isTeacher && (
-            <NavLink
-              icon={
-                <div className="relative">
-                  <BookOpenCheck size={20} className={submittedHomeworkCount > 0 ? "text-primary" : ""} />
-                  {submittedHomeworkCount > 0 && isDesktopCollapsed && (
-                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+          {isTeacher && (() => {
+            const totalSubmittedToReview = submittedHomeworkCount + unreadTestsCount;
+            return (
+              <NavLink
+                icon={
+                  <div className="relative">
+                    <BookOpenCheck size={20} className={totalSubmittedToReview > 0 ? "text-primary" : ""} />
+                    {totalSubmittedToReview > 0 && isDesktopCollapsed && (
+                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+                      </span>
+                    )}
+                  </div>
+                }
+                isCollapsed={isDesktopCollapsed}
+                onClick={() => handleNavigate('homework', { filterStatus: 'submitted' })}
+                isActive={currentView === 'homework'}
+                badge={
+                  totalSubmittedToReview > 0 ? (
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-[11px] font-bold">
+                      <span className="flex h-1.5 w-1.5 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
+                      </span>
+                      {totalSubmittedToReview}
                     </span>
+                  ) : undefined
+                }
+              >
+                <span>
+                  {language === 'pl' ? 'Odesłane prace' : 'Submitted Homework'}
+                  {totalSubmittedToReview > 0 && !isDesktopCollapsed && (
+                    <span className="ml-1 text-primary font-bold">({totalSubmittedToReview})</span>
                   )}
-                </div>
-              }
-              isCollapsed={isDesktopCollapsed}
-              onClick={() => handleNavigate('homework', { filterStatus: 'submitted' })}
-              isActive={currentView === 'homework'}
-              badge={
-                submittedHomeworkCount > 0 ? (
-                  <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-[11px] font-bold">
-                    <span className="flex h-1.5 w-1.5 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
-                    </span>
-                    {submittedHomeworkCount}
-                  </span>
-                ) : undefined
-              }
-            >
-              <span>
-                {language === 'pl' ? 'Odesłane prace' : 'Submitted Homework'}
-                {submittedHomeworkCount > 0 && !isDesktopCollapsed && (
-                  <span className="ml-1 text-primary font-bold">({submittedHomeworkCount})</span>
-                )}
-              </span>
-            </NavLink>
-          )}
+                </span>
+              </NavLink>
+            );
+          })()}
 
           {isTeacher && (
             <div className="pt-3 mt-1 border-t border-base-300">

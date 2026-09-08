@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, collectionGroup, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { BookOpenCheck, ChevronRight, X } from 'lucide-react';
+import { BookOpenCheck, ChevronRight, GraduationCap, X } from 'lucide-react';
 
 interface TeacherHomeworkNotificationProps {
   onOpenHomework?: (taskId: string) => void;
@@ -14,6 +14,7 @@ interface NotificationItem {
   studentName: string;
   title: string;
   timestamp: number;
+  itemType?: 'homework' | 'test';
 }
 
 export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationProps> = ({
@@ -21,7 +22,9 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
 }) => {
   const [activeNotifications, setActiveNotifications] = useState<NotificationItem[]>([]);
   const knownTaskIdsRef = useRef<Set<string>>(new Set());
-  const isInitialLoadRef = useRef(true);
+  const knownTestIdsRef = useRef<Set<string>>(new Set());
+  const isInitialLoadTasksRef = useRef(true);
+  const isInitialLoadTestsRef = useRef(true);
 
   // Play subtle gentle chime on submission
   const playChime = () => {
@@ -50,17 +53,16 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
   };
 
   useEffect(() => {
-    const q = query(collection(db, 'specialTasks'), where('status', '==', 'submitted'));
-
-    const unsubscribe = onSnapshot(
-      q,
+    // 1. Nasłuchiwanie odesłanych prac domowych
+    const qTasks = query(collection(db, 'specialTasks'), where('status', '==', 'submitted'));
+    const unsubTasks = onSnapshot(
+      qTasks,
       (snapshot) => {
-        if (isInitialLoadRef.current) {
-          // On first load, seed known tasks so we don't alert on existing submissions
+        if (isInitialLoadTasksRef.current) {
           snapshot.docs.forEach((doc) => {
             knownTaskIdsRef.current.add(doc.id);
           });
-          isInitialLoadRef.current = false;
+          isInitialLoadTasksRef.current = false;
           return;
         }
 
@@ -73,17 +75,17 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
               knownTaskIdsRef.current.add(taskId);
 
               const newItem: NotificationItem = {
-                id: `${taskId}-${Date.now()}`,
+                id: `task-${taskId}-${Date.now()}`,
                 taskId,
                 studentName: data.studentName || data.studentUsername || 'Kursant',
                 title: data.title || 'Praca domowa',
                 timestamp: Date.now(),
+                itemType: 'homework',
               };
 
               setActiveNotifications((prev) => [newItem, ...prev.slice(0, 2)]);
               playChime();
 
-              // Auto-dismiss after 10s
               setTimeout(() => {
                 setActiveNotifications((prev) => prev.filter((n) => n.id !== newItem.id));
               }, 10000);
@@ -96,7 +98,64 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
       }
     );
 
-    return () => unsubscribe();
+    // 2. Nasłuchiwanie odesłanych testów
+    let unsubTests: (() => void) | undefined;
+    try {
+      const qTests = query(collectionGroup(db, 'tests'), where('teacherRead', '==', false));
+      unsubTests = onSnapshot(
+        qTests,
+        (snapshot) => {
+          if (isInitialLoadTestsRef.current) {
+            snapshot.docs.forEach((doc) => {
+              knownTestIdsRef.current.add(doc.id);
+            });
+            isInitialLoadTestsRef.current = false;
+            return;
+          }
+
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added' || change.type === 'modified') {
+              const testId = change.doc.id;
+              const data = change.doc.data() as any;
+
+              if (
+                data.teacherRead === false &&
+                (data.status === 'graded' || data.status === 'completed' || data.completedAt) &&
+                !knownTestIdsRef.current.has(testId)
+              ) {
+                knownTestIdsRef.current.add(testId);
+
+                const newItem: NotificationItem = {
+                  id: `test-${testId}-${Date.now()}`,
+                  taskId: testId,
+                  studentName: data.studentName || 'Kursant',
+                  title: data.title || 'Test wiedzy',
+                  timestamp: Date.now(),
+                  itemType: 'test',
+                };
+
+                setActiveNotifications((prev) => [newItem, ...prev.slice(0, 2)]);
+                playChime();
+
+                setTimeout(() => {
+                  setActiveNotifications((prev) => prev.filter((n) => n.id !== newItem.id));
+                }, 10000);
+              }
+            }
+          });
+        },
+        (error) => {
+          console.warn('TeacherHomeworkNotification tests snapshot error:', error);
+        }
+      );
+    } catch (e) {
+      console.warn('TeacherHomeworkNotification setup tests error:', e);
+    }
+
+    return () => {
+      unsubTasks();
+      if (unsubTests) unsubTests();
+    };
   }, []);
 
   const handleDismiss = (id: string) => {
@@ -129,7 +188,7 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
 
             <div className="flex items-start gap-3 relative z-10">
               <div className="p-2.5 rounded-xl bg-primary/20 text-primary border border-primary/30 shrink-0 shadow-[0_0_15px_rgba(114,240,180,0.3)]">
-                <BookOpenCheck size={20} />
+                {item.itemType === 'test' ? <GraduationCap size={20} /> : <BookOpenCheck size={20} />}
               </div>
 
               <div className="flex-1 min-w-0 pr-5">
@@ -139,7 +198,7 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                   </span>
                   <span className="text-[11px] font-bold font-mono uppercase tracking-wider text-primary">
-                    Odesłano pracę
+                    {item.itemType === 'test' ? 'Odesłano test' : 'Odesłano pracę'}
                   </span>
                 </div>
 
@@ -155,7 +214,7 @@ export const TeacherHomeworkNotification: React.FC<TeacherHomeworkNotificationPr
                     onClick={() => handleAction(item)}
                     className="flex-1 min-h-[2.25rem] px-3.5 flex items-center justify-center gap-1.5 rounded-xl bg-primary text-accent-ink font-bold text-xs shadow-md shadow-primary/20 hover:shadow-primary/40 active:scale-98 transition-all"
                   >
-                    <span>Sprawdź i oceń</span>
+                    <span>{item.itemType === 'test' ? 'Zobacz test' : 'Sprawdź i oceń'}</span>
                     <ChevronRight size={14} />
                   </button>
                   <button

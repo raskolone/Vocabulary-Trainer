@@ -421,6 +421,8 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
     try {
       const newTest: Omit<StudentTest, 'id'> = {
         studentId: user.id,
+        studentName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || 'Kursant',
+        studentEmail: user.email || '',
         title: testTitle,
         scope,
         dueDate,
@@ -430,9 +432,19 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
         maxScore: generatedQuestions.length,
         attemptsLimit,
         attemptsUsed: 0,
+        teacherRead: false,
       };
       
       await addDoc(collection(db, `users/${user.id}/tests`), newTest);
+
+      try {
+        await updateDoc(doc(db, 'users', user.id), {
+          hasNewHomework: true,
+        });
+      } catch (notifErr) {
+        console.warn('Nie udało się ustawić hasNewHomework u kursanta:', notifErr);
+      }
+
       setGeneratedQuestions(null);
       setIsPreviewModalOpen(false);
       setTestTitle('');
@@ -440,7 +452,7 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
       setDueDate('');
       setSelectedLessons([]);
       fetchTests();
-      alert("Test przypisany pomyślnie!");
+      alert("Test przypisany pomyślnie! Kursant otrzyma powiadomienie.");
     } catch (err) {
       console.error(err);
       alert("Błąd przypisywania testu");

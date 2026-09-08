@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { addDoc, collection, doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import {
   ArrowLeft,
   ArrowRight,
@@ -8,6 +8,9 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Download,
+  Eye,
+  GraduationCap,
   Loader2,
   Send,
   X as XIcon,
@@ -15,7 +18,7 @@ import {
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { HomeworkType, SpecialTask } from '../../types';
+import { HomeworkType, SpecialTask, StudentTest } from '../../types';
 import { homeworkBlocks, homeworkItemType, studentTasksQuery } from '../../utils/homework';
 import { evaluateTranslations } from '../../services/geminiService';
 import { HOMEWORK_TYPE_LABELS } from '../../services/homeworkGenerator';
@@ -23,6 +26,12 @@ import { recordExerciseResults } from '../../services/learningProfile';
 import { useDraftAnswers } from '../../hooks/useDraftAnswers';
 import { normalizeLevel } from '../../utils/learningCurve';
 import HomeworkExercise from './HomeworkExercise';
+import TakeTestScreen from '../tests/TakeTestScreen';
+import { exportTestToPDF } from '../../utils/pdfExport';
+import Markdown from 'react-markdown';
+import { useEscapeModal } from '../../hooks/useEscapeModal';
+import Card from '../ui/Card';
+import Button from '../ui/Button';
 
 /**
  * Praca domowa kursanta.
@@ -118,6 +127,13 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   // a kursant może zajrzeć, z czego się składa, zanim ją otworzy.
   const [openBlocksId, setOpenBlocksId] = useState<string | null>(null);
 
+  // Stan testów kursanta (w tej samej zakładce co prace domowe)
+  const [tests, setTests] = useState<StudentTest[]>([]);
+  const [activeTest, setActiveTest] = useState<StudentTest | null>(null);
+  const [feedbackTest, setFeedbackTest] = useState<StudentTest | null>(null);
+
+  useEscapeModal(Boolean(feedbackTest), () => setFeedbackTest(null));
+
   useEffect(() => {
     if (!targetId) {
       setIsLoading(false);
@@ -141,6 +157,22 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   }, [targetId]);
 
   useEffect(() => {
+    if (!targetId) return;
+    const testsQ = query(collection(db, `users/${targetId}/tests`), orderBy('createdAt', 'desc'));
+    const unsubscribeTests = onSnapshot(
+      testsQ,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() } as StudentTest));
+        setTests(list);
+      },
+      (error) => {
+        console.error('Nie udało się wczytać testów kursanta:', error);
+      }
+    );
+    return () => unsubscribeTests();
+  }, [targetId]);
+
+  useEffect(() => {
     if (user?.hasNewHomework && user?.id) {
       updateDoc(doc(db, 'users', user.id), { hasNewHomework: false }).catch(console.error);
     }
@@ -156,6 +188,35 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTaskId, tasks, isPreview]);
+
+  const isDateOverdue = (dateStr?: string | null): boolean => {
+    if (!dateStr) return false;
+    try {
+      const d = new Date(dateStr);
+      if (dateStr.length === 10) d.setHours(23, 59, 59, 999);
+      return d.getTime() < Date.now();
+    } catch {
+      return false;
+    }
+  };
+
+  const pendingTests = useMemo(() => {
+    return tests.filter(
+      (t) => (t.status === 'pending' || !t.status) && !isDateOverdue(t.dueDate)
+    );
+  }, [tests]);
+
+  const overdueTests = useMemo(() => {
+    return tests.filter(
+      (t) => (t.status === 'pending' || !t.status) && isDateOverdue(t.dueDate)
+    );
+  }, [tests]);
+
+  const finishedTests = useMemo(() => {
+    return tests.filter(
+      (t) => t.status === 'graded' || t.status === 'completed' || Boolean(t.completedAt)
+    );
+  }, [tests]);
 
   const L =
     language === 'pl'
@@ -441,6 +502,11 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  // ————— Aktywny test kursanta —————
+  if (activeTest && !isPreview) {
+    return <TakeTestScreen test={activeTest} onBack={() => setActiveTest(null)} />;
+  }
 
   // ————— Wynik po wysłaniu —————
   if (activeTask && result) {
@@ -772,6 +838,223 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
             </section>
           )}
         </>
+      )}
+
+      {/* ---------------- ROZDZIELAJĄCY DIVIDER MIĘDZY PRACAMI A TESTAMI ---------------- */}
+      <div className="relative my-8 py-2">
+        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+          <div className="w-full border-t border-white/10" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-base-200 px-4 py-1.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider text-primary border border-primary/30 flex items-center gap-2 shadow-lg shadow-black/40">
+            <GraduationCap size={15} />
+            <span>{language === 'pl' ? 'Testy i Sprawdziany wiedzy' : 'Tests & Exams'}</span>
+            {tests.length > 0 && (
+              <span className="px-1.5 py-0.2 bg-primary/20 rounded-full text-[10px] text-primary font-bold">
+                {tests.length}
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* ---------------- TESTY KURSANTÓW (PO TERMINIE / DO ZROBIENIA / ODESŁANE) ---------------- */}
+      {tests.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-base-200/30 p-5 text-center text-xs text-content-muted">
+          Brak przypisanych testów do rozwiązania.
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Testy po terminie (overdue) */}
+          {overdueTests.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <span className="flex h-2 w-2 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-danger"></span>
+                </span>
+                <h2 className="text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-danger">
+                  Termin wykonania minął
+                </h2>
+              </div>
+              <ul className="space-y-2">
+                {overdueTests.map((t) => (
+                  <li key={t.id}>
+                    <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-danger/35 bg-danger/[0.06] text-left">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="px-2 py-0.5 rounded-md bg-danger/20 text-danger border border-danger/30 text-[10px] font-bold font-mono uppercase">
+                            Zaległy
+                          </span>
+                          <span className="text-[12px] text-danger font-medium flex items-center gap-1">
+                            <Clock size={12} /> Termin minął: {t.dueDate}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-white text-[15px] leading-snug">{t.title}</h3>
+                        {t.scope && (
+                          <p className="text-[12px] text-content-muted line-clamp-1 mt-0.5">{t.scope}</p>
+                        )}
+                        <span className="text-[11px] text-content-muted font-mono mt-1 block">
+                          Pytań: {t.questions?.length || 0}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isPreview ? (
+                          <button
+                            onClick={() => setActiveTest(t)}
+                            className="min-h-[2.5rem] px-4 rounded-xl bg-danger text-white font-bold text-xs hover:bg-danger/90 active:scale-98 transition-all flex items-center gap-1.5 shadow-md shadow-danger/20"
+                          >
+                            <span>Rozwiąż po terminie</span>
+                            <ArrowRight size={14} />
+                          </button>
+                        ) : (
+                          <span className="text-xs text-content-muted italic">Podgląd</span>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Testy do zrobienia (pending & in time) */}
+          {pendingTests.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="px-1 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-primary">
+                Testy do zrobienia
+              </h2>
+              <ul className="space-y-2">
+                {pendingTests.map((t) => (
+                  <li key={t.id}>
+                    <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/[0.08] to-base-200/50 text-left">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="px-2 py-0.5 rounded-md bg-primary/20 text-primary border border-primary/30 text-[10px] font-bold font-mono uppercase">
+                            Nowy test
+                          </span>
+                          {t.dueDate && (
+                            <span className="text-[12px] text-warn font-medium flex items-center gap-1">
+                              <Clock size={12} /> Do: {t.dueDate}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-bold text-white text-[15px] leading-snug">{t.title}</h3>
+                        {t.scope && (
+                          <p className="text-[12px] text-content-muted line-clamp-1 mt-0.5">{t.scope}</p>
+                        )}
+                        <span className="text-[11px] text-content-muted font-mono mt-1 block">
+                          Pytań: {t.questions?.length || 0}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isPreview ? (
+                          <button
+                            onClick={() => setActiveTest(t)}
+                            className="min-h-[2.5rem] px-4 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:bg-primary/90 active:scale-98 transition-all flex items-center gap-1.5 shadow-md shadow-primary/20"
+                          >
+                            <span>Rozpocznij test</span>
+                            <ArrowRight size={14} />
+                          </button>
+                        ) : (
+                          <span className="text-xs text-content-muted italic">Podgląd</span>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Testy odesłane / ocenione */}
+          {finishedTests.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="px-1 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-content-muted">
+                Odesłane i Ocenione testy
+              </h2>
+              <ul className="rounded-2xl border border-white/10 bg-base-200/40 divide-y divide-white/[0.06] overflow-hidden">
+                {finishedTests.map((t) => (
+                  <li key={t.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2 py-0.5 rounded-md bg-primary/20 text-primary border border-primary/30 text-[10px] font-bold font-mono uppercase">
+                          Odesłany
+                        </span>
+                        {t.completedAt && (
+                          <span className="text-[11px] text-content-muted">
+                            {new Date(t.completedAt).toLocaleDateString(language === 'pl' ? 'pl-PL' : 'en-US')}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-semibold text-content text-[15px] leading-snug">{t.title}</h3>
+                      {t.score !== undefined && (
+                        <p className="text-xs font-mono text-primary font-bold mt-1 flex items-center gap-1">
+                          <Award size={13} />
+                          Wynik: {Number.isNaN(Number(t.score)) ? 0 : t.score}/{Number.isNaN(Number(t.maxScore)) ? 100 : t.maxScore} pkt
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setFeedbackTest(t)}
+                        className="min-h-[2.25rem] px-3 rounded-xl bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 text-xs font-bold transition-all flex items-center gap-1.5"
+                      >
+                        <Eye size={13} />
+                        <span>Feedback</span>
+                      </button>
+                      <button
+                        onClick={() => exportTestToPDF(t, (k: string) => k)}
+                        className="min-h-[2.25rem] px-3 rounded-xl bg-white/5 hover:bg-white/10 text-content-muted hover:text-white text-xs font-medium transition-all flex items-center gap-1.5"
+                      >
+                        <Download size={13} />
+                        <span>PDF</span>
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* Modal z feedbackiem do testu */}
+      {feedbackTest && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+          <Card className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-base-200 border border-primary/30 shadow-2xl rounded-3xl overflow-hidden">
+            <div className="flex items-center justify-between p-5 sm:p-6 border-b border-white/10 bg-base-100">
+              <div>
+                <span className="inline-block px-2.5 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 text-[11px] font-bold uppercase tracking-wider mb-1">
+                  Raport z testu
+                </span>
+                <h3 className="text-lg sm:text-xl font-bold text-white">{feedbackTest.title}</h3>
+                <p className="text-content-muted text-xs sm:text-sm mt-0.5">
+                  Wynik: <strong className="text-primary font-mono font-bold">{Number.isNaN(Number(feedbackTest.score)) ? 0 : feedbackTest.score}/{Number.isNaN(Number(feedbackTest.maxScore)) ? 100 : feedbackTest.maxScore} pkt</strong>
+                </p>
+              </div>
+              <button onClick={() => setFeedbackTest(null)} className="p-2 hover:bg-white/10 rounded-xl text-content-muted hover:text-white transition-colors">
+                <XIcon size={20} />
+              </button>
+            </div>
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 prose prose-invert max-w-none text-sm leading-relaxed">
+              {feedbackTest.aiFeedback ? (
+                <Markdown>{feedbackTest.aiFeedback}</Markdown>
+              ) : (
+                <p className="text-content-muted italic">Brak dodatkowego feedbacku do tego testu.</p>
+              )}
+            </div>
+            <div className="p-4 sm:p-5 border-t border-white/10 flex justify-end gap-3 bg-base-100">
+              <Button onClick={() => exportTestToPDF(feedbackTest, (k: string) => k)} variant="secondary" size="sm" className="flex items-center gap-2">
+                <Download size={14} />
+                Pobierz raport (PDF)
+              </Button>
+              <Button onClick={() => setFeedbackTest(null)} size="sm" className="bg-primary text-accent-ink hover:bg-primary/90">
+                Zamknij
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
