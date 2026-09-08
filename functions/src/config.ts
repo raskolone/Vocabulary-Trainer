@@ -32,12 +32,12 @@ export const FUNCTION_REGION = 'us-central1';
 /**
  * Adres nadawcy powiadomień.
  *
- * `onboarding@resend.dev` to nadawca testowy Resenda: działa bez weryfikacji
- * domeny, ale **wysyła wyłącznie na adres właściciela konta Resend**. Kursanci
- * nic nie dostaną, dopóki nie zweryfikujesz własnej domeny i nie wpiszesz tu
- * adresu w rodzaju `powiadomienia@twojadomena.pl`.
+ * Domena `send.maciej.pro` jest zweryfikowana w Resend (DKIM + SPF w Netlify
+ * DNS, 7 września 2026). Świadomie jest to subdomena: poczta główna
+ * `maciej.pro` stoi w Hostingerze i ma własne rekordy MX oraz SPF, których
+ * wysyłka aplikacji nie dotyka.
  */
-export const FROM_ADDRESS = 'CRIBRO ENGLISH <onboarding@resend.dev>';
+export const FROM_ADDRESS = 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>';
 
 /**
  * Domeny, pod które nie ma sensu wysyłać.
@@ -52,7 +52,20 @@ export const PLACEHOLDER_EMAIL_DOMAINS = ['student.vocabboost.com'];
 /**
  * Adres, pod którym stoi aplikacja — trafia do przycisku w wiadomości.
  *
- * Dopóki projekt nie ma hostingu, zostaw pusty ciąg: wtedy e-mail wychodzi bez
- * przycisku, zamiast prowadzić kursanta pod adres, który nie odpowiada.
+ * To produkcja na Vercelu, a nie Firebase Hosting: witryna
+ * `gen-lang-client-0425391821.web.app` istnieje, ale nic na niej nie stoi
+ * (zwraca 404). Gdyby aplikacja kiedyś przeniosła się na Hosting, wystarczy
+ * podmienić tę stałą — nic innego nie odwołuje się do adresu.
  */
-export const APP_URL = '';
+export const APP_URL = 'https://app.maciej.pro';
+
+/**
+ * Bazy Notion, z których czyta synchronizacja.
+ *
+ * Identyfikatory pochodzą z adresów baz w „Teacher HQ”. Obie muszą być
+ * udostępnione integracji (w Notion: „...” → Connections → nazwa integracji),
+ * inaczej API odpowiada 404 — Notion nie odróżnia „nie istnieje” od
+ * „nie masz dostępu”.
+ */
+export const NOTION_LESSONS_DB = '5c6d910b-31b7-83b8-810c-0187aa513b51';
+export const NOTION_STUDENTS_DB = 'ca88a293-bd34-4cc7-b09e-f6bd3901ef96';

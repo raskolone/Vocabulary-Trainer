@@ -2,6 +2,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 import defaultFirebaseConfig from './firebase-applet-config.json';
 
 const getFirebaseConfig = () => {
@@ -44,6 +45,15 @@ export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId || "ai-studio-520a4841-33d0-41ef-829a-838ebc44072d");
+
+/**
+ * Funkcje wywoływane z aplikacji.
+ *
+ * Region musi zgadzać się z `FUNCTION_REGION` w functions/src/config.ts —
+ * wywołanie w złym regionie kończy się błędem „not-found", który wygląda jak
+ * brak funkcji, a jest zwykłą pomyłką adresową.
+ */
+export const functions = getFunctions(app, 'us-central1');
 
 export enum OperationType {
   CREATE = 'create',

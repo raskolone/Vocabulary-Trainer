@@ -31,6 +31,7 @@ import { isTaskForStudent } from '../../utils/homework';
 import TeacherOverview from './TeacherOverview';
 import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
+import NotionSyncButton from './NotionSyncButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   Trash2, Download, Printer, FileText, CheckCircle2, AlertCircle,
@@ -1120,7 +1121,14 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   const [isStudentPickerOpen, setIsStudentPickerOpen] = useState(false);
   const [targetTabAfterSelect, setTargetTabAfterSelect] = useState<string | null>(null);
 
+  // Archiwum to zamknięta współpraca, nie usunięte konto: domyślnie znika
+  // z list, ale wystarczy przełącznik, żeby wrócić do historii kursanta.
+  const [showArchived, setShowArchived] = useState(false);
+  const activeUsers = users.filter(u => !u.isArchived);
+  const archivedCount = users.length - activeUsers.length;
+
   const filteredUsers = users.filter(u => {
+    if (u.isArchived && !showArchived) return false;
     const searchStr = `${u.firstName || ''} ${u.lastName || ''} ${u.username} ${u.email || ''}`.toLowerCase();
     const matchesSearch = searchStr.includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === 'all' || u.role === roleFilter;
@@ -1374,7 +1382,9 @@ const [users, setUsers] = useState<UserWithId[]>([]);
         </div>
       </div>
 
-      <TeacherOverview students={users} language={language} />
+      <TeacherOverview students={activeUsers} language={language} />
+
+      <NotionSyncButton />
 
       {/* Dynamic Student Selector Banner */}
       <div className={`p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 ${
@@ -2458,6 +2468,28 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                           }}
                         >
                           {selectedUser.isSuspended ? 'Odwieś konto' : 'Zawieś konto'}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className={selectedUser.isArchived ? "bg-primary/20 text-primary hover:bg-primary/30 border-transparent" : "bg-base-100/60 text-content hover:bg-base-100 border-transparent"}
+                          onClick={() => {
+                            // Archiwum zamyka współpracę, ale niczego nie kasuje:
+                            // historia lekcji i wyniki zostają, gdyby kursant wrócił.
+                            const archived = !selectedUser.isArchived;
+                            const userRef = doc(db, 'users', selectedUser.id);
+                            updateDoc(userRef, {
+                              isArchived: archived,
+                              archivedAt: archived ? new Date().toISOString() : null,
+                            }).then(() => {
+                              const updated = { ...selectedUser, isArchived: archived };
+                              setSelectedUser(updated);
+                              setUsers(users.map(u => u.id === updated.id ? updated : u));
+                              showToast(archived ? 'Przeniesiono do archiwum.' : 'Przywrócono z archiwum.');
+                            }).catch(err => alert('Błąd: ' + err.message));
+                          }}
+                        >
+                          {selectedUser.isArchived ? 'Przywróć z archiwum' : 'Przenieś do archiwum'}
                         </Button>
                         <Button 
                           variant="secondary" 
@@ -4005,6 +4037,14 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             {/* Modal Footer */}
             <div className="p-4 border-t border-white/10 bg-base-100/40 text-xs text-content-muted flex justify-between items-center">
               <span>Znaleziono: <strong className="text-white">{filteredUsers.length}</strong> z {users.length} osób</span>
+              {archivedCount > 0 && (
+                <button
+                  onClick={() => setShowArchived(v => !v)}
+                  className="ml-3 text-xs font-bold text-content-muted hover:text-white underline underline-offset-2"
+                >
+                  {showArchived ? 'Ukryj archiwum' : `Pokaż archiwum (${archivedCount})`}
+                </button>
+              )}
               <Button size="sm" variant="secondary" onClick={() => setIsStudentPickerOpen(false)}>
                 Zamknij
               </Button>

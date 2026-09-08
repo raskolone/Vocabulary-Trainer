@@ -45,6 +45,13 @@ export interface User {
   description?: string;
   aiPrompt?: string;
   isSuspended?: boolean;
+  /**
+   * Zakończona współpraca. Konto i cała historia zostają nietknięte, znika
+   * tylko z list w panelu — inaczej niż `isSuspended`, które odbiera dostęp
+   * komuś, kto nadal jest kursantem.
+   */
+  isArchived?: boolean;
+  archivedAt?: string;
   tempPasswordLogins?: number;
   frequentErrors?: any[];
   onboardingCompleted?: boolean;

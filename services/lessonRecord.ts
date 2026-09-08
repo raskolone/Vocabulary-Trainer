@@ -17,6 +17,13 @@ export function parseVocabularyTextToCards(vocabularyText: string) {
       const parts = line.split(' – ');
       term = parts[0].trim();
       definition = parts.slice(1).join(' – ').trim();
+    } else if (line.includes(' — ')) {
+      // Myślnik em: tym separatorem zapisuje słownictwo skill „Meeting Summary”
+      // w Notion, więc bez tej gałęzi każda zaimportowana pozycja trafiałaby
+      // do bazy jako termin bez tłumaczenia.
+      const parts = line.split(' — ');
+      term = parts[0].trim();
+      definition = parts.slice(1).join(' — ').trim();
     } else if (line.includes(':')) {
       const parts = line.split(':');
       term = parts[0].trim();
