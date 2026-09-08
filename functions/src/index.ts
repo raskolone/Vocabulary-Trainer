@@ -12,7 +12,7 @@ import {
 } from './config';
 import { buildHomeworkEmail } from './emailTemplate';
 import { sendEmail } from './resend';
-import { syncLessons } from './notion/sync';
+import { importSelection, previewSync } from './notion/sync';
 
 /**
  * Powiadomienie e-mail o nowej pracy domowej.
@@ -143,17 +143,39 @@ export const notifyStudentOnHomework = onDocumentCreated(
 );
 
 /**
- * Ręczna synchronizacja historii lekcji z Notion.
+ * Kto jest w Notion i co aplikacja już o nim wie.
  *
- * Wywoływana z panelu lektora, a nie z harmonogramu — dopóki import nie zostanie
- * sprawdzony na prawdziwych lekcjach, lepiej, żeby ktoś patrzył na wynik. Gdy
- * okaże się nudny i przewidywalny, wystarczy dołożyć obok wyzwalacz czasowy;
- * cała logika siedzi w `syncLessons` i nie zależy od tego, kto ją uruchomił.
- *
- * Limit czasu jest podniesiony, bo import czyta treść każdej lekcji osobnym
- * zapytaniem do Notion — przy kilkudziesięciu lekcjach domyślna minuta to za mało.
+ * Czyta wyłącznie właściwości stron, bez treści lekcji, więc kończy się
+ * w kilka sekund. Nic nie zapisuje — to podgląd, na podstawie którego lektor
+ * decyduje, kogo i co zaimportować.
  */
-export const syncNotionLessons = onCall(
+export const previewNotionSync = onCall(
+  {
+    region: FUNCTION_REGION,
+    secrets: [NOTION_TOKEN],
+    timeoutSeconds: 120,
+    memory: '512MiB',
+  },
+  async (request) => {
+    await requireTeacher(request.auth?.uid);
+    try {
+      return await previewSync(NOTION_TOKEN.value());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Podgląd Notion nie powiódł się', { error: message });
+      throw new HttpsError('internal', message);
+    }
+  }
+);
+
+/**
+ * Import kursantów i lekcji zaznaczonych przez lektora.
+ *
+ * Zakres pochodzi z wyboru w panelu, a nie z rozmiaru archiwum — dzięki temu
+ * czas pracy zależy od decyzji lektora i nie przekracza cierpliwości
+ * przeglądarki. Konta zakładamy wyłącznie tam, gdzie lektor to zaznaczył.
+ */
+export const importNotionSelection = onCall(
   {
     region: FUNCTION_REGION,
     secrets: [NOTION_TOKEN],
@@ -161,27 +183,40 @@ export const syncNotionLessons = onCall(
     memory: '512MiB',
   },
   async (request) => {
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError('unauthenticated', 'Wymagane zalogowanie.');
-    }
+    await requireTeacher(request.auth?.uid);
 
-    // Historia lekcji dotyczy wszystkich kursantów, więc uruchomić może ją
-    // wyłącznie nauczyciel. Rola jest czytana z bazy, nie z żądania.
-    const profile = await db.collection('users').doc(uid).get();
-    const role = profile.data()?.role;
-    if (role !== 'admin' && role !== 'teacher') {
-      throw new HttpsError('permission-denied', 'Tylko lektor może synchronizować lekcje.');
+    const selections = Array.isArray(request.data?.selections) ? request.data.selections : [];
+    if (selections.length === 0) {
+      throw new HttpsError('invalid-argument', 'Nie wskazano nikogo do zaimportowania.');
     }
 
     try {
-      const report = await syncLessons(NOTION_TOKEN.value());
-      logger.info('Synchronizacja z Notion zakończona', { uid, ...report });
+      const report = await importSelection(NOTION_TOKEN.value(), selections);
+      logger.info('Import z Notion zakończony', {
+        wybranych: selections.length,
+        lekcji: report.lessonsImported,
+        kont: report.accountsCreated.length,
+      });
       return report;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error('Synchronizacja z Notion nie powiodła się', { uid, error: message });
+      logger.error('Import z Notion nie powiódł się', { error: message });
       throw new HttpsError('internal', message);
     }
   }
 );
+
+/**
+ * Wspólna bramka obu funkcji.
+ *
+ * Dane dotyczą wszystkich kursantów, więc sięgnąć po nie może wyłącznie
+ * nauczyciel. Rola czytana jest z bazy, nigdy z żądania.
+ */
+async function requireTeacher(uid?: string): Promise<void> {
+  if (!uid) throw new HttpsError('unauthenticated', 'Wymagane zalogowanie.');
+  const profile = await db.collection('users').doc(uid).get();
+  const role = profile.data()?.role;
+  if (role !== 'admin' && role !== 'teacher') {
+    throw new HttpsError('permission-denied', 'Tylko lektor może synchronizować dane z Notion.');
+  }
+}
