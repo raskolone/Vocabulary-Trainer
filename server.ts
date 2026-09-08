@@ -147,7 +147,6 @@ async function callOpenAIServerFallback(prompt, system, schema) {
 
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -366,8 +365,17 @@ function getAdminApp() {
   return initializeApp(); // App Default Credentials
 }
 
-export async function createApp() {
+export function createApp() {
   const app = express();
+
+  // Przywróć oryginalną ścieżkę żądania, jeśli router Vercela przepisał ją na /api
+  app.use((req, res, next) => {
+    const forwardPath = (req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-original-url']) as string;
+    if (forwardPath && forwardPath.startsWith('/api') && (req.url === '/api' || req.url === '/api/' || req.url.startsWith('/api?'))) {
+      req.url = forwardPath;
+    }
+    next();
+  });
   
   app.use(express.json({ limit: '50mb' }));
   app.use((err: any, req: any, res: any, next: any) => {
@@ -1702,6 +1710,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -1720,6 +1729,16 @@ async function startServer() {
   });
 }
 
-if (!process.env.VERCEL) {
+// Uruchamiaj serwer wyłącznie przy bezpośrednim wywołaniu (node server.ts / tsx server.ts).
+// W środowiskach serverless (Vercel, AWS Lambda) lub przy imporcie jako moduł, aplikacja
+// jest eksportowana przez createApp() i zarządzana przez platformę.
+const isDirectExecution = 
+  !process.env.VERCEL && 
+  !process.env.VERCEL_ENV && 
+  !process.env.AWS_LAMBDA_FUNCTION_NAME &&
+  typeof process.argv[1] === 'string' &&
+  (process.argv[1].endsWith('server.ts') || process.argv[1].endsWith('server.cjs'));
+
+if (isDirectExecution) {
   startServer().catch(console.error);
 }
