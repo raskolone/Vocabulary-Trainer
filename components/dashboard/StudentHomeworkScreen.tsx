@@ -149,7 +149,11 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   useEffect(() => {
     if (!initialTaskId || activeTask || isPreview) return;
     const found = tasks.find((t) => t.id === initialTaskId);
-    if (found && (found.status === 'pending' || !found.status)) startTask(found);
+    if (found && (found.status === 'pending' || !found.status)) {
+      startTask(found);
+    } else if (found && (found.status === 'graded' || found.status === 'submitted')) {
+      setOpenResultId(found.id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTaskId, tasks, isPreview]);
 
@@ -360,14 +364,14 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
         const answer = String(answers[i] || '');
         const score = Number(ev?.score);
         return {
-          polishSentence: item.polishSentence,
-          correctTranslation: item.englishTranslation,
+          polishSentence: item.polishSentence || item.polish || '',
+          correctTranslation: item.englishTranslation || item.english || '',
           studentAnswer: answer,
           isCorrect: ev?.isCorrect ?? false,
           // Brak oceny modelu nie może zerować pracy kursanta — wtedy liczy
           // się samo oddanie odpowiedzi, a lektor ocenia ręcznie.
           score: isNaN(score) ? (answer.trim() ? 70 : 0) : score,
-          explanation: ev?.explanation,
+          explanation: ev?.explanation || (answer.trim() ? 'Przesłano do oceny lektora' : 'Brak odpowiedzi'),
         };
       });
 

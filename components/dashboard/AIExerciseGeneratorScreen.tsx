@@ -1748,7 +1748,10 @@ ${learningContext?.briefing || ''}
           if (selectedSetId?.startsWith('special-task-')) {
              const taskId = selectedSetId.replace('special-task-', '');
              import('firebase/firestore').then(({ doc, updateDoc }) => {
-                updateDoc(doc(db, 'specialTasks', taskId), { status: 'completed' });
+                updateDoc(doc(db, 'specialTasks', taskId), {
+                  status: 'submitted',
+                  submittedAt: new Date().toISOString()
+                });
              });
           }
         } catch (e) {
@@ -1949,11 +1952,14 @@ ${learningContext?.briefing || ''}
           updateUserStreak().catch(console.error);
         }
 
-        // mark special task as completed
+        // mark special task as submitted for teacher review
         if (selectedSetId?.startsWith('special-task-')) {
            const taskId = selectedSetId.replace('special-task-', '');
            import('firebase/firestore').then(({ doc, updateDoc }) => {
-              updateDoc(doc(db, 'specialTasks', taskId), { status: 'completed' });
+              updateDoc(doc(db, 'specialTasks', taskId), {
+                status: 'submitted',
+                submittedAt: new Date().toISOString()
+              });
            });
         }
       } catch (e) {

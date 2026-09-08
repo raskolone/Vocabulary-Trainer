@@ -43,6 +43,8 @@ import HomeworkScreen from './HomeworkScreen';
 import StudentHomeworkScreen from './StudentHomeworkScreen';
 import AdminDebuggingScreen from '../admin/AdminDebuggingScreen';
 import OnboardingOverlay from './OnboardingOverlay';
+import TeacherHomeworkNotification from './TeacherHomeworkNotification';
+import StudentHomeworkGradedModal from './StudentHomeworkGradedModal';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -85,6 +87,7 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [homeworkFilterStatus, setHomeworkFilterStatus] = useState<string | null>(null);
 
   const handleNavigate = (newView: View, extra?: any) => {
     let newSetId = activeSetId;
@@ -98,6 +101,12 @@ const Dashboard: React.FC = () => {
       setActiveTaskId(extra.taskId);
     } else if (newView !== 'homework') {
       setActiveTaskId(null);
+    }
+
+    if (extra && extra.filterStatus) {
+      setHomeworkFilterStatus(extra.filterStatus);
+    } else if (newView !== 'homework') {
+      setHomeworkFilterStatus(null);
     }
     
     if (newView !== view || newSetId !== activeSetId) {
@@ -280,6 +289,7 @@ const Dashboard: React.FC = () => {
         return (
           <HomeworkScreen
             initialTaskId={activeTaskId}
+            initialFilterStatus={homeworkFilterStatus}
             onBack={() => handleNavigate('dashboard')}
           />
         );
@@ -402,7 +412,7 @@ const Dashboard: React.FC = () => {
     <div className="flex h-[100dvh] w-full overflow-hidden">
       <Sidebar 
         currentView={view} 
-        onNavigate={(newView) => handleNavigate(newView)}
+        onNavigate={(newView, extra) => handleNavigate(newView, extra)}
         onStartPractice={(exercise) => console.log('start practice', exercise)} 
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -421,6 +431,18 @@ const Dashboard: React.FC = () => {
       />
       <main className="flex-1 overflow-y-auto overflow-x-hidden relative min-w-0">
         <StudentNotifications onNavigate={(newView) => handleNavigate(newView)} />
+        {isTeacher && (
+          <TeacherHomeworkNotification
+            onOpenHomework={(taskId) =>
+              handleNavigate('homework', { taskId, filterStatus: 'submitted' })
+            }
+          />
+        )}
+        {!isTeacher && (
+          <StudentHomeworkGradedModal
+            onOpenHomework={(taskId) => handleNavigate('homework', { taskId })}
+          />
+        )}
         {showOnboarding && <OnboardingOverlay onComplete={() => {
           setShowOnboarding(false);
           try { localStorage.setItem('has_seen_onboarding', 'true'); } catch(e) {}

@@ -217,7 +217,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && ((request.resource.data.role == 'user') || ('email' in request.auth.token && (request.auth.token.email == "maciej.wyrozumski@gmail.com" || request.auth.token.email == "marta.lukaszczyk@gmail.com")) || isAdmin());
-      allow update: if (isOwner(userId) || isAdmin()) && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["loginCount", "lastLoginDate", "streakCount", "lastStreakDate", "streakHidden", "username", "photoURL", "firstName", "lastName", "level", "description", "requirePasswordChange", "hasNewVocabulary", "hasNewLesson", "hasNewHomework", "dismissedNotifications", "translatedSentencesCount", "aiPrompt", "frequentErrors", "tempPassword", "tempPasswordLogins", "onboardingCompleted"]) || isAdmin());
+      allow update: if (isOwner(userId) || isAdmin()) && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["loginCount", "lastLoginDate", "streakCount", "lastStreakDate", "streakHidden", "username", "photoURL", "firstName", "lastName", "level", "description", "requirePasswordChange", "hasNewVocabulary", "hasNewLesson", "hasNewHomework", "hasGradedHomework", "lastGradedHomeworkId", "lastGradedHomeworkTitle", "lastGradedFeedback", "lastGradedScore", "dismissedNotifications", "translatedSentencesCount", "aiPrompt", "frequentErrors", "tempPassword", "tempPasswordLogins", "onboardingCompleted"]) || isAdmin());
       allow delete: if isAdmin();
 
       match /words/{wordId} {
@@ -371,7 +371,7 @@ service cloud.firestore {
           ownsTask() &&
           request.resource.data.studentUid == resource.data.studentUid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(
-            ['status', 'studentAnswers', 'evaluationResults', 'submittedAt']
+            ['status', 'studentAnswers', 'evaluationResults', 'submittedAt', 'feedbackReadByStudent']
           )
         );
 

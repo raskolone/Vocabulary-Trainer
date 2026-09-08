@@ -41,6 +41,11 @@ export interface User {
   hasNewVocabulary?: boolean;
   hasNewLesson?: boolean;
   hasNewHomework?: boolean;
+  hasGradedHomework?: boolean;
+  lastGradedHomeworkId?: string;
+  lastGradedHomeworkTitle?: string;
+  lastGradedFeedback?: string;
+  lastGradedScore?: number;
   adminMessage?: { title: string; text: string; createdAt: string; } | null;
   description?: string;
   aiPrompt?: string;
@@ -462,6 +467,8 @@ export interface SpecialTask {
   submittedAt?: string;
   teacherFeedback?: string;
   grade?: number;
+  reviewedAt?: string;
+  feedbackReadByStudent?: boolean;
 }
 
 export interface StudentTest {

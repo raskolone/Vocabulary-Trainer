@@ -42,6 +42,7 @@ import {
 interface HomeworkScreenProps {
   initialTaskId?: string | null;
   initialStudentId?: string | null;
+  initialFilterStatus?: string | null;
   onBack?: () => void;
 }
 
@@ -63,7 +64,12 @@ export const formatTaskDate = (val: any): string => {
   return new Date(millis).toLocaleDateString('pl-PL');
 };
 
-export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({ initialTaskId = null, initialStudentId = null, onBack }) => {
+export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
+  initialTaskId = null,
+  initialStudentId = null,
+  initialFilterStatus = null,
+  onBack,
+}) => {
   const { user, updateUserStreak } = useAuth();
   const { language } = useLanguage();
   const isTeacher = user?.role === 'admin' || user?.role === 'teacher';
@@ -78,7 +84,14 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({ initialTaskId = 
 
   // Filter state for teacher
   const [filterStudentId, setFilterStudentId] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus || 'all');
+
+  useEffect(() => {
+    if (initialFilterStatus) {
+      setFilterStatus(initialFilterStatus);
+      setActiveTab('list');
+    }
+  }, [initialFilterStatus]);
 
   // Form state for creating/editing homework (Teacher)
   const [editingTask, setEditingTask] = useState<SpecialTask | null>(null);
@@ -846,11 +859,31 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({ initialTaskId = 
     if (!reviewTask || !reviewTask.id) return;
     setIsSavingReview(true);
     try {
+      const nowIso = new Date().toISOString();
       await updateDoc(doc(db, 'specialTasks', reviewTask.id), {
         status: 'graded',
-        teacherFeedback: teacherFeedbackText
+        teacherFeedback: teacherFeedbackText,
+        reviewedAt: nowIso,
+        feedbackReadByStudent: false,
       });
-      alert('Ocena i komentarz zostały zapisane!');
+
+      // Powiadomienie dla kursanta o sprawdzeniu pracy i komentarzu lektora
+      const targetStudentUid = reviewTask.studentUid || reviewTask.studentId;
+      if (targetStudentUid) {
+        try {
+          await updateDoc(doc(db, 'users', targetStudentUid), {
+            hasGradedHomework: true,
+            lastGradedHomeworkId: reviewTask.id,
+            lastGradedHomeworkTitle: reviewTask.title || 'Praca domowa',
+            lastGradedFeedback: teacherFeedbackText || '',
+            lastGradedScore: reviewTask.grade ?? null,
+          });
+        } catch (uErr) {
+          console.warn('Nie udało się zapisać powiadomienia o ocenie u kursanta:', uErr);
+        }
+      }
+
+      alert('Ocena i komentarz zostały zapisane! Kursant otrzyma powiadomienie.');
       setReviewTask(null);
       await loadData();
     } catch (e: any) {
