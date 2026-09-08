@@ -46,6 +46,28 @@ const normalize = (value: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/**
+ * Rozdziela „Poziom / profil" na krótki poziom i pełną notatkę.
+ *
+ * W Notion to jedno pole tekstowe i lektor trzyma w nim wszystko naraz:
+ * „B1 Final — wtorki i czwartki 7:30–8:30; start 08.09.2026". W aplikacji
+ * poziom jest plakietką obok nazwiska, więc całe zdanie rozpychało wiersz
+ * listy i wypychało z niego imię. Do plakietki bierzemy wyłącznie oznaczenie
+ * CEFR z początku tekstu, resztę zostawiamy w opisie kursanta, gdzie i tak
+ * trafia do kontekstu dla modelu.
+ *
+ * Gdy tekst nie zaczyna się od poziomu — „Grupa mieszana…", „Nowa kursantka…" —
+ * plakietka zostaje pusta. Lepiej jej nie mieć niż wpisać w nią zdanie.
+ */
+export const splitLevel = (raw: string): { level: string; profile: string } => {
+  const profile = (raw || '').trim();
+  const match = profile.match(
+    /^\s*([ABC][12]\s*\+?(?:\s*\/\s*[ABC][12]\s*\+?)?)/i
+  );
+  const level = match ? match[1].replace(/\s+/g, '').toUpperCase() : '';
+  return { level, profile };
+};
+
 /** Wartość właściwości Notion jako tekst, niezależnie od jej typu. */
 const propText = (page: NotionPage, name: string): string => {
   const prop = page.properties?.[name];
@@ -400,6 +422,17 @@ export const importSelection = async (
         report.emailsUpdated += 1;
       }
 
+      // Poziom i opis: uzupełniamy tylko puste miejsca oraz naprawiamy plakietkę,
+      // w którą wcześniejszy import wpisał całą notatkę z Notion. Tego, co lektor
+      // wpisał sam, nie ruszamy — Notion jest źródłem prawdy dla historii lekcji,
+      // nie dla profilu prowadzonego w aplikacji.
+      const { level, profile } = splitLevel(propText(page, 'Poziom / profil'));
+      const currentLevel = (data.level || '').toString();
+      if (level && (!currentLevel || currentLevel === profile)) updates.level = level;
+      if (profile && !(data.description || '').toString().trim()) {
+        updates.description = profile;
+      }
+
       if (Object.keys(updates).length > 0) await ref.update(updates);
       uidByNotionId.set(page.id, ref.id);
       uidByName.set(normalize(name), ref.id);
@@ -433,6 +466,7 @@ export const importSelection = async (
       }
 
       const { firstName, lastName } = splitName(name);
+      const { level, profile } = splitLevel(propText(page, 'Poziom / profil'));
       await db.collection('users').doc(record.uid).set(
         {
           username: name,
@@ -440,7 +474,8 @@ export const importSelection = async (
           role: 'user',
           firstName,
           lastName,
-          level: propText(page, 'Poziom / profil').slice(0, 120),
+          level,
+          description: profile,
           notionPageId: page.id,
           tempPassword: password,
           requirePasswordChange: true,

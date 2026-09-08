@@ -1409,7 +1409,10 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   </h2>
                   <span className="text-xs text-content-muted font-mono truncate">({selectedUser.username})</span>
                   {selectedUser.level && (
-                    <span className="px-2.5 py-0.5 bg-primary/20 text-primary border border-primary/40 rounded-lg text-xs font-mono font-bold">
+                    <span
+                      title={selectedUser.level}
+                      className="px-2.5 py-0.5 bg-primary/20 text-primary border border-primary/40 rounded-lg text-xs font-mono font-bold max-w-[12rem] truncate"
+                    >
                       Poziom: {selectedUser.level}
                     </span>
                   )}
@@ -3004,7 +3007,10 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                                     <span>{fullName}</span>
                                   </div>
                                   {u.level && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-base-300 text-content-muted font-mono">
+                                    <span
+                                      title={u.level}
+                                      className="text-xs px-2 py-0.5 rounded-full bg-base-300 text-content-muted font-mono max-w-[7rem] truncate shrink-0"
+                                    >
                                       {u.level}
                                     </span>
                                   )}
@@ -4018,7 +4024,10 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
                     <div className="flex items-center gap-2.5 shrink-0">
                       {u.level && (
-                        <span className="px-2.5 py-1 bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-mono font-bold">
+                        <span
+                          title={u.level}
+                          className="px-2.5 py-1 bg-primary/20 text-primary border border-primary/30 rounded-lg text-xs font-mono font-bold max-w-[7rem] truncate"
+                        >
                           {u.level}
                         </span>
                       )}
