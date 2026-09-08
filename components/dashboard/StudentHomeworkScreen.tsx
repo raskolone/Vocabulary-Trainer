@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Award,
   Check,
+  ChevronDown,
   ChevronRight,
   Clock,
   Loader2,
@@ -15,7 +16,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { HomeworkType, SpecialTask } from '../../types';
-import { studentTasksQuery } from '../../utils/homework';
+import { homeworkBlocks, homeworkItemType, studentTasksQuery } from '../../utils/homework';
 import { evaluateTranslations } from '../../services/geminiService';
 import { HOMEWORK_TYPE_LABELS } from '../../services/homeworkGenerator';
 import { recordExerciseResults } from '../../services/learningProfile';
@@ -113,6 +114,9 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   const [confirmedIncomplete, setConfirmedIncomplete] = useState(false);
   const [result, setResult] = useState<{ score: number; rows: EvaluationRow[] } | null>(null);
   const [openResultId, setOpenResultId] = useState<string | null>(null);
+  // Rozwinięcie spisu bloków na liście. Praca domowa zostaje jedną pozycją,
+  // a kursant może zajrzeć, z czego się składa, zanim ją otworzy.
+  const [openBlocksId, setOpenBlocksId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!targetId) {
@@ -177,6 +181,10 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
             `Nie odpowiedziałeś na ${n} zadań. Dotknij jeszcze raz, żeby wysłać mimo to.`,
           sendFailed: 'Nie udało się wysłać pracy. Twoje odpowiedzi są zapisane — spróbuj ponownie.',
           sendAnyway: 'Wyślij mimo to',
+          blockCount: (n: number) => `${n} rodzaje zadań`,
+          showBlocks: 'Z czego się składa',
+          hideBlocks: 'Zwiń',
+          blockLabel: (label: string, at: number, of: number) => `${label} · ${at}/${of}`,
         }
       : {
           title: 'Homework',
@@ -203,7 +211,26 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
           unanswered: (n: number) => `${n} tasks are unanswered. Tap again to send anyway.`,
           sendFailed: 'Could not send your work. Your answers are saved — try again.',
           sendAnyway: 'Send anyway',
+          blockCount: (n: number) => `${n} exercise types`,
+          showBlocks: "What's inside",
+          hideBlocks: 'Collapse',
+          blockLabel: (label: string, at: number, of: number) => `${label} · ${at}/${of}`,
         };
+
+  /** Nazwa rodzaju zadania w języku interfejsu. */
+  const typeLabel = (type: HomeworkType): string =>
+    HOMEWORK_TYPE_LABELS[type]?.[language === 'pl' ? 'pl' : 'en'] || type;
+
+  /** Podział pracy domowej na bloki — liczony raz na zadanie. */
+  const blocksCache = useMemo(() => new Map<string, ReturnType<typeof homeworkBlocks>>(), [tasks]);
+  const blocksOf = (task: SpecialTask) => {
+    const key = task.id || '';
+    const cached = blocksCache.get(key);
+    if (cached) return cached;
+    const blocks = homeworkBlocks(task);
+    blocksCache.set(key, blocks);
+    return blocks;
+  };
 
   const pending = useMemo(
     () => tasks.filter((t) => t.status === 'pending' || !t.status),
@@ -273,8 +300,12 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
 
   const handleSubmit = async () => {
     if (!activeTask?.id || !user?.id) return;
-    const type = (activeTask.type || 'translation') as HomeworkType;
     const items = activeTask.sentences || [];
+    const typeOf = (item: any): HomeworkType => homeworkItemType(item, activeTask);
+    // Rodzaj do zapisu w dzienniku ćwiczeń: przy pracy mieszanej jedna etykieta
+    // musi objąć całość, bo wpis dotyczy całej pracy domowej.
+    const typesUsed = Array.from(new Set(items.map(typeOf)));
+    const logFormat = typesUsed.length === 1 ? typesUsed[0] : 'mixed';
 
     const answered = items.filter((_, i) => {
       const a = answers[i];
@@ -296,46 +327,60 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
     setNotice('');
     setIsSubmitting(true);
     try {
-      let rows: EvaluationRow[];
+      // Tłumaczenia ocenia model, pozostałe rodzaje liczą się lokalnie. Przy
+      // pracy mieszanej wszystkie tłumaczenia idą jednym zapytaniem — pytanie
+      // po jednym zdaniu kosztowałoby tyle, co ułożenie pracy od nowa.
+      const translationAt = items
+        .map((item: any, i: number) => (typeOf(item) === 'translation' ? i : -1))
+        .filter((i: number) => i >= 0);
 
-      if (type === 'translation') {
-        const exercises = items.map((item: any) => ({
-          polishSentence: item.polishSentence,
-          englishTranslation: item.englishTranslation,
-          hint: item.hint,
+      let evaluated: any[] = [];
+      if (translationAt.length > 0) {
+        const exercises = translationAt.map((i: number) => ({
+          polishSentence: items[i].polishSentence,
+          englishTranslation: items[i].englishTranslation,
+          hint: items[i].hint,
         }));
-        const given = items.map((_, i) => String(answers[i] || ''));
-        let evaluated: any[] = [];
+        const given = translationAt.map((i: number) => String(answers[i] || ''));
         try {
           evaluated = await evaluateTranslations(exercises, given, user.level || 'B1', '');
         } catch (error) {
           console.error('Ocena tłumaczeń nie powiodła się:', error);
         }
-        rows = items.map((item: any, i: number) => {
-          const ev = evaluated?.[i];
-          const score = Number(ev?.score);
-          return {
-            polishSentence: item.polishSentence,
-            correctTranslation: item.englishTranslation,
-            studentAnswer: given[i],
-            isCorrect: ev?.isCorrect ?? false,
-            // Brak oceny modelu nie może zerować pracy kursanta — wtedy liczy
-            // się samo oddanie odpowiedzi, a lektor ocenia ręcznie.
-            score: isNaN(score) ? (given[i].trim() ? 70 : 0) : score,
-            explanation: ev?.explanation,
-          };
-        });
-      } else {
-        rows = items.map((item: any, i: number) => gradeDeterministic(type, item, answers[i]));
       }
+
+      const rows: EvaluationRow[] = items.map((item: any, i: number) => {
+        const itemType = typeOf(item);
+        if (itemType !== 'translation') {
+          return gradeDeterministic(itemType, item, answers[i]);
+        }
+        // Odpowiedzi modelu wracają w kolejności wysłanych tłumaczeń, a nie
+        // w kolejności ćwiczeń — stąd przeliczenie pozycji.
+        const ev = evaluated?.[translationAt.indexOf(i)];
+        const answer = String(answers[i] || '');
+        const score = Number(ev?.score);
+        return {
+          polishSentence: item.polishSentence,
+          correctTranslation: item.englishTranslation,
+          studentAnswer: answer,
+          isCorrect: ev?.isCorrect ?? false,
+          // Brak oceny modelu nie może zerować pracy kursanta — wtedy liczy
+          // się samo oddanie odpowiedzi, a lektor ocenia ręcznie.
+          score: isNaN(score) ? (answer.trim() ? 70 : 0) : score,
+          explanation: ev?.explanation,
+        };
+      });
 
       const average =
         rows.length > 0 ? Math.round(rows.reduce((sum, r) => sum + r.score, 0) / rows.length) : 0;
 
       const storedAnswers: Record<number, any> = {};
       items.forEach((item: any, i: number) => {
+        const itemType = typeOf(item);
         storedAnswers[i] =
-          type === 'fill_in_the_blank' ? answers[i] || {} : answerToText(type, item, answers[i]);
+          itemType === 'fill_in_the_blank'
+            ? answers[i] || {}
+            : answerToText(itemType, item, answers[i]);
       });
 
       await updateDoc(doc(db, 'specialTasks', activeTask.id), {
@@ -348,7 +393,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
       try {
         await addDoc(collection(db, `users/${user.id}/practiceLogs`), {
           exerciseType: 'homework',
-          exerciseFormat: type,
+          exerciseFormat: logFormat,
           date: new Date().toISOString(),
           isRevisionMode: false,
           score: average,
@@ -364,14 +409,14 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
       // To z niej bierze się poziom kolejnych zadań i lista braków w promptcie.
       recordExerciseResults(
         user.id,
-        rows.map((row) => ({
+        rows.map((row, i) => ({
           prompt: row.polishSentence,
           expected: row.correctTranslation,
           given: row.studentAnswer,
           isCorrect: row.isCorrect,
           score: row.score,
           level: normalizeLevel(user.level),
-          exerciseType: type,
+          exerciseType: typeOf(items[i]),
           date: new Date().toISOString(),
         })),
         user.level
@@ -455,8 +500,12 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   // ————— Rozwiązywanie —————
   if (activeTask) {
     const items = activeTask.sentences || [];
-    const type = (activeTask.type || 'translation') as HomeworkType;
+    // Jedna praca domowa miesza rodzaje ćwiczeń, więc rodzaj rozstrzyga
+    // element, a nie dokument (patrz utils/homework.ts).
+    const type = homeworkItemType(items[index], activeTask);
     const isLast = index >= items.length - 1;
+    const blocks = blocksOf(activeTask);
+    const block = blocks.find((b) => index >= b.from && index < b.from + b.count);
 
     return (
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
@@ -478,6 +527,15 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
             {index + 1}/{items.length}
           </span>
         </div>
+
+        {/* Etykieta bloku: przy pracy z kilku rodzajów kursant widzi, w którym
+            jest i ile w nim zostało — bez tego mieszane zadania czytają się
+            jak jeden nieprzewidywalny ciąg. */}
+        {block && blocks.length > 1 && (
+          <p className="px-1 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-primary">
+            {L.blockLabel(typeLabel(block.type), index - block.from + 1, block.count)}
+          </p>
+        )}
 
         <div className="rounded-2xl border border-white/10 bg-base-200/50 p-4 sm:p-6">
           <HomeworkExercise
@@ -585,7 +643,11 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                           {task.title}
                         </span>
                         <span className="flex flex-wrap items-center gap-x-2 text-[12px] text-content-muted mt-0.5">
-                          <span>{HOMEWORK_TYPE_LABELS[(task.type || 'translation') as HomeworkType]?.pl}</span>
+                          <span>
+                            {blocksOf(task).length > 1
+                              ? L.blockCount(blocksOf(task).length)
+                              : typeLabel(blocksOf(task)[0]?.type || 'translation')}
+                          </span>
                           <span>· {L.items(task.sentences?.length || 0)}</span>
                           {task.dueDate && (
                             <span className="inline-flex items-center gap-1 text-warn">
@@ -597,6 +659,40 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                       </div>
                       {!isPreview && <ChevronRight className="w-5 h-5 text-primary shrink-0" />}
                     </button>
+
+                    {/* Spis bloków pod pozycją — jedno dotknięcie, żeby zobaczyć
+                        skład pracy domowej bez jej otwierania. */}
+                    {blocksOf(task).length > 1 && (
+                      <>
+                        <button
+                          onClick={() => setOpenBlocksId((id) => (id === task.id ? null : task.id || null))}
+                          aria-expanded={openBlocksId === task.id}
+                          className="mt-1 ml-1 inline-flex items-center gap-1.5 min-h-[2.25rem] px-2 text-[12px] font-bold text-content-muted"
+                        >
+                          <ChevronDown
+                            size={13}
+                            className={`transition-transform ${openBlocksId === task.id ? 'rotate-180' : ''}`}
+                          />
+                          {openBlocksId === task.id ? L.hideBlocks : L.showBlocks}
+                        </button>
+                        {openBlocksId === task.id && (
+                          <ul className="mt-1 ml-1 space-y-1">
+                            {blocksOf(task).map((block, i) => (
+                              <li
+                                key={`${block.type}-${block.from}`}
+                                className="flex items-center gap-2 text-[12px] text-content-muted"
+                              >
+                                <span className="w-5 h-5 shrink-0 rounded-md bg-primary/10 border border-primary/25 text-primary font-mono text-[10px] flex items-center justify-center">
+                                  {i + 1}
+                                </span>
+                                <span className="text-content">{typeLabel(block.type)}</span>
+                                <span>· {L.items(block.count)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>

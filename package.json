@@ -13,6 +13,8 @@
     "test": "tsx --test tests/*.test.ts",
     "emulators": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" firebase emulators:start --project demo-cribro --only firestore,auth",
     "test:rules": "PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\" firebase emulators:exec --project demo-cribro --only firestore \"tsx --test tests/rules/*.test.ts\"",
+    "deploy:rules": "PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:hosting": "npm run build && PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" firebase deploy --only hosting",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build"
   },

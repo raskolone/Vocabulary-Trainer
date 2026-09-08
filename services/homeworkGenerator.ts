@@ -160,7 +160,38 @@ export const buildSourceText = (source: HomeworkSource): string => {
 const SYSTEM_INSTRUCTION =
   'Jesteś doświadczonym lektorem języka angielskiego układającym pracę domową dla konkretnego kursanta. ' +
   'Pracujesz WYŁĄCZNIE na materiale podanym przez lektora — nie wprowadzasz słownictwa spoza niego. ' +
+  'ZASADA NADRZĘDNA: każde zdanie musi być prawdziwym zdaniem, jakie ktoś mógłby wypowiedzieć w realnej ' +
+  'sytuacji — sensownym znaczeniowo, spójnym wewnętrznie i osadzonym w czytelnym kontekście. Zdanie ' +
+  'poprawne gramatycznie, ale bezsensowne znaczeniowo („The invoice drinks the deadline"), jest błędem ' +
+  'równie ciężkim jak błąd gramatyczny i nie wolno go zwrócić. Użycie słowa z materiału nigdy nie ' +
+  'usprawiedliwia zdania, które nie ma sensu. ' +
   'Odpowiadasz zawsze poprawnym JSON-em, bez komentarzy i bez bloków markdown.';
+
+/**
+ * Kanon jakości dołączany do każdego typu zadania.
+ *
+ * Model dostaje słownictwo i temat, więc łatwo mu ułożyć zdanie, które zalicza
+ * materiał, a nie znaczy nic sensownego. Te zasady są w jednym miejscu, bo
+ * inaczej każdy typ zadania obrastałby własną, rozjeżdżającą się wersją.
+ */
+const QUALITY_RULES = `
+ZASADY JAKOŚCI — OBOWIĄZUJĄ W KAŻDYM ZADANIU:
+1. SENS PRZED SŁOWNICTWEM. Zdanie ma opisywać sytuację, która mogła się wydarzyć.
+   Podmiot musi móc wykonać czynność, dopełnienie musi do niej pasować, a całość
+   ma się bronić bez dopowiadania kontekstu. Jeśli słowa z materiału nie dają się
+   sensownie połączyć w jednym zdaniu — rozdziel je na dwa zdania.
+2. JEDNO SŁOWO DOCELOWE NA ZDANIE. Upychanie kilku nowych słów naraz jest
+   najczęstszą przyczyną zdań, które brzmią jak wyliczanka, a nie jak wypowiedź.
+3. SPÓJNOŚĆ WEWNĘTRZNA. Czas gramatyczny, liczba i rodzajniki muszą zgadzać się
+   w obrębie zdania, a określenia czasu nie mogą przeczyć użytemu czasowi
+   („Yesterday I will call him" jest błędem).
+4. NATURALNA POLSZCZYZNA. Polskie zdania i podpowiedzi mają brzmieć jak zdania
+   Polaka, nie jak tłumaczenie słowo w słowo z angielskiego.
+5. KONTEKST Z LEKCJI. Sytuacje mają nawiązywać do tematu materiału — jeśli
+   materiał dotyczy podróży, zdania dzieją się na lotnisku, w hotelu, w rozmowie
+   o planach, a nie w przypadkowych, oderwanych scenkach.
+6. BEZ ZDAŃ-WYDMUSZEK. Żadnych „This is a sentence with the word X" ani zdań,
+   których jedyną treścią jest to, że zawierają słowo z listy.`;
 
 const askForJson = async (prompt: string): Promise<{ parsed: any; modelUsed: string }> => {
   const { text, modelUsed } = await generateTextWithUnifiedFallback(
@@ -190,6 +221,7 @@ ${req.instruction ? `[WYTYCZNE LEKTORA]: ${req.instruction}` : ''}
 
 [MATERIAŁ Z LEKCJI — TYLKO NA NIM PRACUJESZ]:
 ${sourceText}
+${QUALITY_RULES}
 `;
 
 /** Ułóż zdanie: fragmenty tasujemy u nas, żeby model nie „pomagał" kolejnością. */
@@ -205,6 +237,18 @@ Ułóż ${req.perType} angielskich zdań opartych na powyższym materiale. Każd
 podziel na 4–8 sensownych fragmentów (pojedyncze słowa albo krótkie frazy, np. "have to",
 "in the morning"). Fragmenty podaj W POPRAWNEJ KOLEJNOŚCI — przetasujemy je sami.
 Do każdego zdania dołącz jego polskie znaczenie.
+
+WYMAGANIA SZCZEGÓŁOWE DLA UKŁADANIA ZDANIA:
+- Zdanie musi mieć DOKŁADNIE JEDNĄ poprawną kolejność. Jeśli fragmenty da się
+  ułożyć na dwa sposoby i oba są poprawne (np. okolicznik czasu pasuje na
+  początku i na końcu), przebuduj zdanie — inaczej kursant dostanie błąd za
+  odpowiedź, która jest dobra.
+- Fragmenty tnij po granicach naturalnych całości: "have to", "in the morning",
+  "my younger sister". Nie rozrywaj kolokacji ani czasownika złożonego.
+- Polska podpowiedź (pole polishHint) to znaczenie całego zdania, a nie lista słów.
+  Ma jednoznacznie wskazywać, o które zdanie chodzi.
+- Unikaj zdań, które po przetasowaniu składają się z samych krótkich, podobnych
+  fragmentów — takie zadanie sprawdza cierpliwość, nie język.
 
 Zwróć JSON:
 {"items":[{"chunks":["I","have to","meet the deadline"],"correctSentence":"I have to meet the deadline.","polishHint":"Muszę dotrzymać terminu."}]}`;
@@ -248,6 +292,22 @@ Ułóż ${req.perType} pytań wielokrotnego wyboru sprawdzających słownictwo i
 z powyższego materiału. Każde pytanie to zdanie z luką oznaczoną "___".
 Podaj 4 opcje: jedną poprawną i trzy błędne, ale prawdopodobne (typowe błędy Polaka).
 Dodaj krótkie wyjaśnienie po polsku, dlaczego poprawna jest właśnie ta forma.
+
+WYMAGANIA SZCZEGÓŁOWE DLA WYBORU FORMY:
+- Zdanie z luką musi mieć sens PO WSTAWIENIU poprawnej opcji i musi dawać dość
+  kontekstu, żeby dało się ją wybrać. Jeśli zdanie działa z dwiema opcjami
+  naraz, dopisz kontekst („... because the flight leaves at 6 a.m.") albo
+  zmień pytanie.
+- DOKŁADNIE JEDNA opcja może być poprawna. Warianty równoważne znaczeniowo
+  („I must" i „I have to" w tym samym zdaniu) to błąd konstrukcyjny.
+- Błędne opcje mają być wiarygodne: kalka z polskiego, mylony czas, zły przyimek,
+  częsty błąd ortograficzny. Nie wstawiaj opcji absurdalnych ani zbudowanych
+  z przypadkowych słów — one niczego nie sprawdzają.
+- Wszystkie cztery opcje muszą pasować do luki gramatycznie na tyle, żeby wybór
+  wymagał zrozumienia zdania, a nie odsiania jedynej opcji, która „wygląda jak
+  zdanie".
+- Wyjaśnienie po polsku ma mówić, DLACZEGO ta forma, a nie powtarzać treści
+  zdania.
 
 Zwróć JSON:
 {"items":[{"question":"I ___ for the sales team.","options":["am responsible","responsible","am responsable","responsible for"],"correctIndex":0,"explanation":"..."}]}`;

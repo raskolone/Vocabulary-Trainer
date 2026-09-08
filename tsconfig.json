@@ -30,6 +30,7 @@
     "dist",
     "node_modules",
     "functions",
+    "src-tauri",
     "scripts/archive",
     "*.cjs",
     "*.js"
