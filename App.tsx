@@ -16,6 +16,7 @@ import PublicTestScreen, { publicTestCodeFromLocation } from './components/tests
 import PresenterScreen from './components/admin/presentation/PresenterScreen';
 import { AdminAIActivityMonitor } from './components/admin/AdminAIActivityMonitor';
 import { handleGlobalEscape } from './utils/modalStack';
+import AppAlertModal from './components/ui/AppAlertModal';
 
 const App: React.FC = () => {
   useEffect(() => {
@@ -37,6 +38,7 @@ const App: React.FC = () => {
         <GlobalErrorBoundary>
           <AppContent />
           <AdminAIActivityMonitor />
+          <AppAlertModal />
         </GlobalErrorBoundary>
       </AuthProvider>
     </LanguageProvider>
