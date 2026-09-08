@@ -151,7 +151,7 @@ import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { GoogleGenAI, Type } from "@google/genai";
-import defaultFirebaseConfig from "./firebase-applet-config.json" with { type: "json" };
+import defaultFirebaseConfig from "./firebase-applet-config.json";
 import { AI_MODEL_CASCADE, GEMINI_MODEL_CASCADE, openAiModelsFor } from "./services/aiModels";
 import { normalizeImportedLessons } from "./utils/lessonImport";
 let pdfParse: any;
@@ -1261,7 +1261,7 @@ Zwróć obiekt JSON z polami: overallTeacherCommentary (string), keyStrengths (a
       let bucket: any = null;
       try {
         const { getStorage } = await import('firebase-admin/storage');
-        const fbConfig = (await import('./firebase-applet-config.json', { with: { type: 'json' } })).default;
+        const fbConfig = (await import('./firebase-applet-config.json')).default;
         const bucketName = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || fbConfig.storageBucket || "gen-lang-client-0425391821.firebasestorage.app";
         if (bucketName) {
           bucket = getStorage().bucket(bucketName);
