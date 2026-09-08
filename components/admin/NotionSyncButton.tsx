@@ -40,7 +40,6 @@ const NotionSyncButton: React.FC = () => {
   const loadPreview = async () => {
     setBusy('preview');
     setError('');
-    setReport(null);
     try {
       const result = await previewNotionSync();
       setPreview(result);
@@ -108,7 +107,11 @@ const NotionSyncButton: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={loadPreview}
+          onClick={() => {
+            setReport(null);
+            setImportError('');
+            loadPreview();
+          }}
           disabled={busy !== null}
           className="min-h-[2.75rem] px-4 inline-flex items-center gap-2 rounded-xl bg-primary text-accent-ink font-bold text-sm disabled:opacity-60"
         >
