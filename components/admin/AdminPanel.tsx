@@ -1384,7 +1384,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
       <TeacherOverview students={activeUsers} language={language} />
 
-      <NotionSyncButton />
+      <NotionSyncButton onImported={fetchUsers} />
 
       {/* Dynamic Student Selector Banner */}
       <div className={`p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 ${

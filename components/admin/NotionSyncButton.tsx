@@ -26,7 +26,16 @@ const MATCH_LABEL: Record<MatchReason, string> = {
   username: 'rozpoznany po nazwie użytkownika',
 };
 
-const NotionSyncButton: React.FC = () => {
+interface Props {
+  /**
+   * Wywoływane po udanym imporcie. Panel trzyma listę kursantów we własnym
+   * stanie, wczytanym przy wejściu na stronę — bez tego sygnału świeżo
+   * założone konto istnieje w bazie, ale pojawia się dopiero po odświeżeniu.
+   */
+  onImported?: () => void;
+}
+
+const NotionSyncButton: React.FC<Props> = ({ onImported }) => {
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [createAccounts, setCreateAccounts] = useState<Set<string>>(new Set());
@@ -80,6 +89,7 @@ const NotionSyncButton: React.FC = () => {
         }))
       );
       setReport(result);
+      onImported?.();
       // Po imporcie podgląd jest nieaktualny: konta powstały, adresy się zmieniły.
       await loadPreview();
     } catch (e: any) {
