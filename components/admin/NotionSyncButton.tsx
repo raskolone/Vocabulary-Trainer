@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Check, Download, KeyRound, Loader2, RefreshCw, Users } from 'lucide-react';
+import { AlertTriangle, Download, Loader2, RefreshCw } from 'lucide-react';
+import NotionSyncResultModal from './NotionSyncResultModal';
 import {
   ImportReport,
   MatchReason,
@@ -32,6 +33,9 @@ const NotionSyncButton: React.FC = () => {
   const [report, setReport] = useState<ImportReport | null>(null);
   const [busy, setBusy] = useState<'preview' | 'import' | null>(null);
   const [error, setError] = useState('');
+  // Błąd podglądu zostaje przy przycisku, błąd importu trafia do okna —
+  // import trwa długo i lektor zdąży spojrzeć gdzie indziej.
+  const [importError, setImportError] = useState('');
 
   const loadPreview = async () => {
     setBusy('preview');
@@ -67,6 +71,8 @@ const NotionSyncButton: React.FC = () => {
   const runImport = async () => {
     setBusy('import');
     setError('');
+    setImportError('');
+    setReport(null);
     try {
       const result = await importNotionSelection(
         [...chosen].map((notionId) => ({
@@ -78,7 +84,7 @@ const NotionSyncButton: React.FC = () => {
       // Po imporcie podgląd jest nieaktualny: konta powstały, adresy się zmieniły.
       await loadPreview();
     } catch (e: any) {
-      setError(e?.message || 'Import nie powiódł się.');
+      setImportError(e?.message || 'Import nie powiódł się.');
     } finally {
       setBusy(null);
     }
@@ -120,10 +126,32 @@ const NotionSyncButton: React.FC = () => {
 
       {preview && (
         <>
-          <p className="text-xs text-content-muted font-mono">
-            {preview.students.length} kart w Notion · {preview.lessonsTotal} lekcji z podsumowaniem
-            {preview.orphanLessons > 0 && ` · ${preview.orphanLessons} bez przypisanego kursanta`}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-content-muted font-mono">
+              {preview.students.length} kart w Notion · {preview.lessonsTotal} lekcji z podsumowaniem
+              {preview.orphanLessons > 0 && ` · ${preview.orphanLessons} bez przypisanego kursanta`}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                { label: 'Zaznacz wszystkich', pick: () => preview.students.map((s) => s.notionId) },
+                {
+                  label: 'Tylko z kontem',
+                  pick: () =>
+                    preview.students.filter((s) => s.uid && !s.inactive).map((s) => s.notionId),
+                },
+                { label: 'Odznacz', pick: () => [] as string[] },
+              ].map((action) => (
+                <button
+                  key={action.label}
+                  onClick={() => setChosen(new Set(action.pick()))}
+                  disabled={busy !== null}
+                  className="min-h-[2rem] px-2.5 rounded-lg border border-white/12 text-[11px] font-bold text-content-muted hover:text-white hover:border-white/25 disabled:opacity-50"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <ul className="space-y-1.5">
             {preview.students.map((s) => {
@@ -157,6 +185,11 @@ const NotionSyncButton: React.FC = () => {
                         {s.uid ? (
                           <span className="text-primary">
                             ma konto — {MATCH_LABEL[s.matchedBy || 'notion']}
+                            {typeof s.importedCount === 'number' && (
+                              <span className="text-content-muted">
+                                {' '}· w aplikacji {s.importedCount} z {s.lessonCount}
+                              </span>
+                            )}
                             {s.emailNeedsFix && ' · adres do poprawienia'}
                           </span>
                         ) : (
@@ -210,48 +243,15 @@ const NotionSyncButton: React.FC = () => {
         </>
       )}
 
-      {report && (
-        <div className="space-y-2 border-t border-white/10 pt-3">
-          <p className="flex items-center gap-2 text-xs font-bold text-primary">
-            <Check size={14} />
-            Zaimportowano {report.lessonsImported} lekcji
-            {report.emailsUpdated > 0 && ` · uzupełniono ${report.emailsUpdated} adresów`}
-          </p>
+      <NotionSyncResultModal
+        report={report}
+        error={importError}
+        onClose={() => {
+          setReport(null);
+          setImportError('');
+        }}
+      />
 
-          {report.accountsCreated.length > 0 && (
-            <div className="rounded-xl border border-warn/30 bg-warn/10 p-3 space-y-1.5">
-              <p className="flex items-center gap-2 text-xs font-bold text-warn">
-                <KeyRound size={13} /> Hasła startowe — przekaż kursantom, pokazujemy je raz
-              </p>
-              <ul className="space-y-1">
-                {report.accountsCreated.map((a) => (
-                  <li key={a.email} className="text-[11px] font-mono text-content">
-                    {a.name} · {a.email} · <strong className="text-warn">{a.tempPassword}</strong>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {(report.lessonsSkipped > 0 || report.needsReview > 0) && (
-            <p className="text-xs text-content-muted">
-              Pominięto {report.lessonsSkipped} · do przejrzenia {report.needsReview}
-              {report.needsReview > 0 && ' (nierozpoznany format podsumowania)'}
-            </p>
-          )}
-
-          {report.warnings.length > 0 && (
-            <ul className="space-y-1">
-              {report.warnings.map((w, i) => (
-                <li key={i} className="text-[11px] text-warn/90 flex gap-1.5">
-                  <Users size={11} className="shrink-0 mt-0.5" />
-                  <span>{w}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
     </section>
   );
 };

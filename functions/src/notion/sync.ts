@@ -85,6 +85,13 @@ export interface StudentPreview {
   matchedBy?: MatchReason;
   /** Konto istnieje, ale ma adres zastępczy — import może go poprawić. */
   emailNeedsFix?: boolean;
+  /**
+   * Ile lekcji z Notion leży już w aplikacji.
+   *
+   * Bez tej liczby lektor nie ma jak sprawdzić, czy import się wykonał —
+   * a to pierwsze pytanie, które zadaje po kliknięciu.
+   */
+  importedCount?: number;
 }
 
 export interface PreviewResult {
@@ -180,6 +187,28 @@ export const previewSync = async (token: string): Promise<PreviewResult> => {
 
     students.push(preview);
   }
+
+  // Ile z tego już wylądowało w aplikacji. Zliczamy po stronie bazy
+  // (agregacja zamiast pobierania dokumentów), bo interesuje nas sama liczba.
+  await Promise.all(
+    students
+      .filter((s) => s.uid)
+      .map(async (s) => {
+        try {
+          const snap = await db
+            .collection('users')
+            .doc(s.uid!)
+            .collection('lessonRecords')
+            .where('source', '==', 'notion')
+            .count()
+            .get();
+          s.importedCount = snap.data().count;
+        } catch {
+          // Brak licznika jest do zniesienia; brak podglądu nie byłby.
+          s.importedCount = undefined;
+        }
+      })
+  );
 
   students.sort((a, b) => b.lessonCount - a.lessonCount || a.name.localeCompare(b.name, 'pl'));
 

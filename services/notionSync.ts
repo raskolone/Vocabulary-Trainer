@@ -28,6 +28,8 @@ export interface StudentPreview {
   uid?: string;
   matchedBy?: MatchReason;
   emailNeedsFix?: boolean;
+  /** Ile lekcji z Notion leży już w aplikacji. */
+  importedCount?: number;
 }
 
 export interface PreviewResult {
