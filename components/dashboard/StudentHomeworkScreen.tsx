@@ -335,7 +335,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
     [tasks]
   );
   const submittedTasks = useMemo(
-    () => tasks.filter((t) => t.status === 'submitted' && t.status !== 'graded' && !t.reviewedAt),
+    () => tasks.filter((t) => t.status === 'submitted' && !t.reviewedAt),
     [tasks]
   );
   const gradedTasks = useMemo(

@@ -48,7 +48,7 @@ const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ studentId, init
       if (initialTestId) {
         const found = loaded.find(t => t.id === initialTestId);
         if (found) {
-          if (found.completed) {
+          if (found.status === 'completed' || found.status === 'graded' || found.completedAt) {
             setFeedbackTest(found);
           } else if (!isPreview) {
             setActiveTest(found);

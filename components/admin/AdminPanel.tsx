@@ -33,7 +33,6 @@ import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
 import NotionSyncButton from './NotionSyncButton';
 import AdminMailingScreen from './AdminMailingScreen';
-import StudentDatabaseScreen from './StudentDatabaseScreen';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   Trash2, Download, Printer, FileText, CheckCircle2, AlertCircle,
@@ -205,28 +204,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
     const nextTab = targetTab || activeTab || 'profile';
     setActiveTab(nextTab);
     if (onUserSelect) onUserSelect(user.id);
-    // Nie wywołujemy onViewChange dla wewnętrznych zakładek — Dashboard
-    // remontowałby AdminPanel i tracił selectedUser.
     fetchUserLogsAndStats(user.id);
     setIsStudentPickerOpen(false);
+    setTimeout(() => {
+      tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
   };
 
   const handleTileClick = (tabId: string) => {
     if (tabId === 'mailing') {
       if (onViewChange) onViewChange('mailing');
-      else setActiveTab('mailing');
-      return;
-    }
-    if (tabId === 'students-database') {
-      if (onViewChange) onViewChange('students-database');
-      else setActiveTab('students-database');
+      else {
+        setActiveTab('mailing');
+        setTimeout(() => {
+          tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
       return;
     }
     // Wewnętrzne zakładki (profile, stats, tests, homework, vocabulary,
-    // lesson-planner, presentation) — zmiana wyłącznie wewnątrz AdminPanel,
-    // bez wywoływania onViewChange, żeby Dashboard nie remontował komponentu.
+    // lesson-planner, presentation, context, history) — zmiana wyłącznie wewnątrz AdminPanel.
     if (tabId === 'lesson-planner' || tabId === 'presentation') {
       setActiveTab(tabId);
+      setTimeout(() => {
+        tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
       return;
     }
     if (!selectedUser) {
@@ -234,6 +236,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
       setIsStudentPickerOpen(true);
     } else {
       setActiveTab(tabId);
+      setTimeout(() => {
+        tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
     }
   };
 
@@ -1423,24 +1428,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
           <button
             onClick={() => {
               if (onViewChange) {
-                onViewChange('students-database');
-              } else {
-                setActiveTab(activeTab === 'students-database' ? null : 'students-database');
-              }
-            }}
-            className={`px-3.5 min-h-11 rounded-xl text-xs sm:text-sm font-bold border transition-colors flex items-center justify-center gap-2 cursor-pointer ${
-              activeTab === 'students-database'
-                ? 'bg-primary text-black border-primary shadow-sm'
-                : 'bg-base-200/80 text-white border-white/15 hover:bg-white/10 hover:border-primary/40 hover:text-primary'
-            }`}
-            title="Przejdź do bazy danych kursantów (Notion DB)"
-          >
-            <Database size={16} className={activeTab === 'students-database' ? 'text-black' : 'text-primary'} />
-            Baza kursantów
-          </button>
-          <button
-            onClick={() => {
-              if (onViewChange) {
                 onViewChange('mailing');
               } else {
                 setActiveTab(activeTab === 'mailing' ? null : 'mailing');
@@ -1517,6 +1504,9 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   <button
                     onClick={() => {
                       setActiveTab('profile');
+                      setTimeout(() => {
+                        tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 150);
                     }}
                     className="hover:text-primary transition-colors inline-flex items-center gap-1 group text-left cursor-pointer"
                     title="Kliknij, aby edytować profil lub adres e-mail kursanta"
@@ -1783,12 +1773,11 @@ const [users, setUsers] = useState<UserWithId[]>([]);
       </div>
 
       {/* Active Tab Content Header Banner */}
-      {((selectedUser && activeTab) || activeTab === 'lesson-planner' || activeTab === 'presentation' || activeTab === 'mailing' || activeTab === 'students-database') && (
+      {((selectedUser && activeTab) || activeTab === 'lesson-planner' || activeTab === 'presentation' || activeTab === 'mailing') && (
         <div className="flex items-center justify-between p-4 rounded-2xl bg-base-200/50 border border-white/10">
           <div className="flex items-center gap-3">
             <span className="w-3 h-3 rounded-full bg-primary animate-pulse" />
             <h2 className="text-xl font-extrabold text-white">
-              {activeTab === 'students-database' && 'Baza kursantów (Notion DB, role i eksport CSV/PDF)'}
               {activeTab === 'lesson-planner' && 'Planer lekcji AI (Wersja robocza)'}
               {activeTab === 'presentation' && 'Interaktywna Prezentacja i Wspólny Notatnik Live'}
               {activeTab === 'context' && 'Kontekst kursanta przed lekcją'}
@@ -1807,7 +1796,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             </span>
           ) : (
             <span className="text-xs font-mono text-content-muted hidden sm:inline">
-              {activeTab === 'students-database' ? 'Baza kursantów' : activeTab === 'mailing' ? 'Moduł pocztowy' : 'Tryb ogólny / Wybierz kursanta'}
+              {activeTab === 'mailing' ? 'Moduł pocztowy' : 'Tryb ogólny / Wybierz kursanta'}
             </span>
           )}
         </div>
@@ -1815,29 +1804,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
       {/* Active Tab Container */}
       <div ref={tabContentRef}>
-          {activeTab === 'students-database' && (
-            <div className="pt-2">
-              <StudentDatabaseScreen
-                users={users}
-                onSelectUser={(u, targetTab) => handleSelectUser(u as UserWithId, targetTab)}
-                onUpdateUserRole={handleRoleChangeForUser}
-                onUpdateUserEmail={async (userId, newEmail) => {
-                  const userRef = doc(db, 'users', userId);
-                  await updateDoc(userRef, { email: newEmail });
-                  changeUserEmail(userId, newEmail).catch((authErr) => {
-                    console.warn('[Admin Auth Email Sync Warning]:', authErr);
-                  });
-                  setUsers(prev => prev.map(u => u.id === userId ? { ...u, email: newEmail } : u));
-                }}
-                onAddNewStudent={() => setShowCreateStudentModal(true)}
-                onOpenMailing={() => {
-                  if (onViewChange) onViewChange('mailing');
-                  else setActiveTab('mailing');
-                }}
-                onBack={() => setActiveTab(null)}
-              />
-            </div>
-          )}
           {activeTab === 'mailing' && (
             <div className="pt-2">
               <AdminMailingScreen onBack={() => setActiveTab(null)} />

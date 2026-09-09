@@ -390,33 +390,30 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
                   ) : undefined
                 }
               >
-                {language === 'pl' ? 'Widok kursanta' : 'Student View'}
+                {language === 'pl' ? 'Podgląd kursanta (Preview)' : 'Student Preview'}
               </NavLink>
 
               {isPreviewExpanded && (
                 <div className={`mt-1 space-y-1 ${isDesktopCollapsed ? '' : 'ml-4 pl-3 border-l border-white/10'}`}>
                   <NavLink icon={<Sparkles size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('student-today')} isActive={currentView === 'student-today'}>
-                      {language === 'pl' ? 'Mój panel' : 'My panel'}
+                      {language === 'pl' ? 'Podgląd: Mój panel' : 'Preview: Dashboard'}
                   </NavLink>
-                  {/* Generator zdań nie czyta konta kursanta — to narzędzie, nie
-                      jego dane — więc otwiera się bez wyboru kursanta, na koncie
-                      lektora. Kolejność kafelków odpowiada menu kursanta. */}
                   {isModuleVisible('extraPractice') && (
                     <NavLink icon={<FlaskConical size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('extra-practice')} isActive={currentView === 'extra-practice'}>
                         {language === 'pl' ? 'Praktyka dodatkowa' : 'Extra Practice'}
                     </NavLink>
                   )}
                   <NavLink icon={<Library size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-vocab')} isActive={currentView === 'preview-vocab'}>
-                      {language === 'pl' ? 'Moje słownictwo' : 'My Word Lists'}
+                      {language === 'pl' ? 'Podgląd: Słownictwo' : 'Preview: Word Lists'}
                   </NavLink>
                   <NavLink icon={<BookOpen size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-homework')} isActive={currentView === 'preview-homework'}>
-                      {language === 'pl' ? 'Praca domowa' : 'Homework'}
+                      {language === 'pl' ? 'Podgląd: Prace domowe' : 'Preview: Homework'}
                   </NavLink>
                   <NavLink icon={<History size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-history')} isActive={currentView === 'preview-history'}>
-                      {language === 'pl' ? 'Historia lekcji' : 'Lesson History'}
+                      {language === 'pl' ? 'Podgląd: Historia lekcji' : 'Preview: History'}
                   </NavLink>
                   <NavLink icon={<ClipboardList size={18} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('preview-tests')} isActive={currentView === 'preview-tests'}>
-                      {language === 'pl' ? 'Testy' : 'Tests'}
+                      {language === 'pl' ? 'Podgląd: Testy' : 'Preview: Tests'}
                   </NavLink>
                 </div>
               )}
