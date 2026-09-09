@@ -1684,15 +1684,8 @@ const [users, setUsers] = useState<UserWithId[]>([]);
           </div>
 
           {/* POZOSTAŁE KAFELKI (KOMPAKTOWY RZĄD 7 KAFELKÓW) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
             {[
-              {
-                id: 'students-database',
-                title: 'Baza kursantów',
-                badge: 'Notion DB',
-                desc: 'Tabela, role i CSV/PDF',
-                icon: Database
-              },
               {
                 id: 'profile',
                 title: 'Profil kursanta',
@@ -1746,7 +1739,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   className={`p-3 sm:p-3.5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-xl ${
                     isActive
                       ? 'border-primary/80 shadow-[0_0_18px_rgba(114,240,180,0.2)] ring-1 ring-primary/40 bg-ink-2 z-10'
-                      : selectedUser || tile.id === 'mailing' || tile.id === 'students-database'
+                      : selectedUser || tile.id === 'mailing'
                       ? 'hover:border-primary/50'
                       : 'opacity-80 hover:border-warn/40'
                   }`}
@@ -1778,7 +1771,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
                   <div className="mt-2.5 pt-1.5 border-t border-white/5 flex items-center justify-between text-[11px] font-semibold">
                     <span className={isActive ? 'text-primary font-bold' : 'text-content-muted'}>
-                      {isActive ? 'Aktywny' : tile.id === 'mailing' || tile.id === 'students-database' ? 'Otwórz moduł' : selectedUser ? 'Otwórz' : 'Wybierz'}
+                      {isActive ? 'Aktywny' : tile.id === 'mailing' ? 'Otwórz moduł' : selectedUser ? 'Otwórz' : 'Wybierz'}
                     </span>
                     <ChevronRight size={12} className={`transition-transform group-hover:translate-x-0.5 ${isActive ? 'text-primary' : 'text-content-muted'}`} />
                   </div>

@@ -15,13 +15,11 @@ import { getDueRecallItems, logReviewSession, recordRetrievalAttempt } from '../
 import { recordExerciseResults } from '../../services/learningProfile';
 import { normalizeLevel } from '../../utils/learningCurve';
 import PuzzleExercise from './PuzzleExercise';
-import AssignedExercises from './AssignedExercises';
 import StudentLessonPanel from './StudentLessonPanel';
 import StudentHomeworkPanelSection from './StudentHomeworkPanelSection';
 import StudentTestsPanelSection from './StudentTestsPanelSection';
 import PracticeSessionsSection from './PracticeSessionsSection';
-import StudentProgressBar from './StudentProgressBar';
-import AiProgressNote from './AiProgressNote';
+import StudentHeroHeader from './StudentHeroHeader';
 
 /**
  * Panel kursanta — domyślne wejście po zalogowaniu.
@@ -467,49 +465,50 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
   })();
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-5 sm:py-8 space-y-5">
-      {!isPreview && (
-        <div className="space-y-2">
-          <StudentProgressBar
-            studentId={targetId}
-            streakCount={user?.streakCount || 0}
-            streakHidden={user?.streakHidden}
-          />
-          <AiProgressNote studentId={targetId} />
-        </div>
-      )}
-
-      {reviewCard}
-
-      <StudentLessonPanel
+    <div className="w-full max-w-3xl mx-auto px-3 sm:px-4 py-5 sm:py-8 space-y-6">
+      {/* Szerszy nagłówek główny ze statystykami, gratulacjami i statusem zadań od lektora */}
+      <StudentHeroHeader
         studentId={targetId}
-        onStudySet={onStudySet}
-        onPracticeAI={onPracticeAI}
+        onOpenHomework={onOpenHomework || (() => {})}
+        onOpenExtraPractice={onOpenExtraPractice || (() => {})}
+        onOpenTests={onOpenTests || (() => {})}
+        streakCount={user?.streakCount || 0}
+        streakHidden={user?.streakHidden}
       />
 
-      {/* Sekcja prac domowych — spójna z resztą zwijanych paneli */}
-      <div className="pt-1">
-        <div className="h-px bg-white/[0.08] mb-4" />
-        <StudentHomeworkPanelSection
-          studentId={targetId}
-          onOpenHomework={onOpenHomework || (() => {})}
-        />
-      </div>
+      <div className="max-w-2xl mx-auto space-y-5">
+        {reviewCard}
 
-      {/* Sekcja testów kursanta — spójna z resztą zwijanych paneli */}
-      <div className="pt-1">
-        <div className="h-px bg-white/[0.08] mb-4" />
-        <StudentTestsPanelSection
+        <StudentLessonPanel
           studentId={targetId}
-          onOpenTests={onOpenTests || (() => {})}
+          onStudySet={onStudySet}
+          onPracticeAI={onPracticeAI}
         />
-      </div>
 
-      {/* Kreska oddziela to, co przyszło z lekcji, od tego, co kursant zrobił
-          sam. Bez niej sesje ćwiczeń czytały się jak kolejny rodzaj lekcji. */}
-      <div className="pt-1">
-        <div className="h-px bg-white/[0.08] mb-4" />
-        <PracticeSessionsSection studentId={targetId} />
+        {/* Sekcja prac domowych — spójna z resztą zwijanych paneli */}
+        <div className="pt-1">
+          <div className="h-px bg-white/[0.08] mb-4" />
+          <StudentHomeworkPanelSection
+            studentId={targetId}
+            onOpenHomework={onOpenHomework || (() => {})}
+          />
+        </div>
+
+        {/* Sekcja testów kursanta — spójna z resztą zwijanych paneli */}
+        <div className="pt-1">
+          <div className="h-px bg-white/[0.08] mb-4" />
+          <StudentTestsPanelSection
+            studentId={targetId}
+            onOpenTests={onOpenTests || (() => {})}
+          />
+        </div>
+
+        {/* Kreska oddziela to, co przyszło z lekcji, od tego, co kursant zrobił
+            sam. Bez niej sesje ćwiczeń czytały się jak kolejny rodzaj lekcji. */}
+        <div className="pt-1">
+          <div className="h-px bg-white/[0.08] mb-4" />
+          <PracticeSessionsSection studentId={targetId} />
+        </div>
       </div>
     </div>
   );
