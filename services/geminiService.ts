@@ -1746,7 +1746,7 @@ export const getAudioPronunciation = async (text: string, language: string): Pro
 };
 
 export const evaluateTeacherHomework = async (
-  taskType: 'translation' | 'fill_in_the_blank',
+  taskType: 'translation' | 'fill_in_the_blank' | 'find_errors',
   sentences: any[],
   studentAnswers: Record<string | number, string>,
   teacherComment: string
@@ -1766,6 +1766,8 @@ TWOJA OSOBOWOŚĆ I TON:
 TYP ZADANIA: ${taskType}
 ${taskType === 'translation' 
   ? 'Zadanie polega na tłumaczeniu zdań z języka polskiego na angielski.' 
+  : taskType === 'find_errors'
+  ? 'Zadanie polega na poprawianiu błędów w zdaniach: kursant ma zidentyfikować błąd i podać całe poprawne zdanie po angielsku.'
   : 'Zadanie polega na uzupełnianiu brakujących słów / luk w zdaniach angielskich.'}
 
 DODATKOWE WYTYCZNE NAUCZYCIELA PROWADZĄCEGO:

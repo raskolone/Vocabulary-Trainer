@@ -801,13 +801,17 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
                               />
                             )}
 
-                            {(q.type === 'translation' || q.type === 'fill_in_blank' || (q.type === 'find_mistake' && (!q.options || q.options.length === 0))) ? (
+                            {(q.type === 'translation' || q.type === 'fill_in_blank' || q.type === 'find_mistake') ? (
                               <div className="space-y-3">
                                 {parseNumberedItems(q.prompt).map((item, sIdx) => (
                                   <div key={sIdx} className="p-3.5 rounded-xl bg-black/40 border border-white/10 space-y-2.5">
                                     {/* Treść zdania z opcją bezpośredniej edycji */}
                                     <div className="flex items-start gap-2.5">
-                                      <span className="w-6 h-6 rounded bg-primary/20 text-primary font-bold text-xs flex items-center justify-center shrink-0 mt-2">
+                                      <span className={`w-6 h-6 rounded font-bold text-xs flex items-center justify-center shrink-0 mt-2 ${
+                                        q.type === 'find_mistake'
+                                          ? 'bg-amber-500/20 text-amber-300'
+                                          : 'bg-primary/20 text-primary'
+                                      }`}>
                                         {item.num}
                                       </span>
                                       <input
@@ -878,7 +882,7 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
                           </div>
                         </div>
                         
-                        {(q.type === 'multiple_choice' || q.type === 'find_mistake') && q.options && (
+                        {q.type === 'multiple_choice' && q.options && (
                           <div className="space-y-3">
                             <label className="block text-xs font-bold text-content-muted uppercase tracking-wider">{i18n.t("Opcje odpowiedzi (tylko odczyt)")}</label>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -338,7 +338,7 @@ Zwróć JSON:
 };
 
 /** Znajdź błąd w zdaniu: generujemy zdania z jednym konkretnym, wiarygodnym błędem do poprawy. */
-const generateFindErrors = async (
+export const generateFindErrors = async (
   req: HomeworkGenerationRequest,
   sourceText: string,
   briefing?: string

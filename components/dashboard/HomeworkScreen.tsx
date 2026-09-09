@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { User, SpecialTask, HomeworkType, TranslationExercise, FillInTheBlankExercise, LessonRecord, StudentTest } from '../../types';
+import { User, SpecialTask, HomeworkType, TranslationExercise, FillInTheBlankExercise, ErrorCorrectionExercise, LessonRecord, StudentTest } from '../../types';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { generateTranslationExercises, generateFillInTheBlankExercises, evaluateErrorCorrectionSentence, evaluateTranslations, evaluateTeacherHomework, processBulkSentences, generateHomeworkChatPipeline } from '../../services/geminiService';
+import { generateFindErrors } from '../../services/homeworkGenerator';
 import { isTaskForStudent, studentTasksQuery, taskOwnerFields, homeworkItemType } from '../../utils/homework';
 import { backfillTaskOwners } from '../../utils/backfillTaskOwners';
 import Card from '../ui/Card';
@@ -211,6 +212,18 @@ export const renderExercisePrompt = (item: any, itemType: HomeworkType): React.R
           <span className="text-xs text-content-muted block mb-0.5">Poprawna wersja:</span>
           <p className="text-primary font-medium">{item.correctSentence}</p>
         </div>
+        {item.hint && (
+          <div>
+            <span className="text-xs text-content-muted block mb-0.5">Wskazówka:</span>
+            <p className="text-amber-300 font-medium text-xs">💡 {item.hint}</p>
+          </div>
+        )}
+        {item.polishHint && (
+          <div>
+            <span className="text-xs text-content-muted block mb-0.5">Znaczenie PL:</span>
+            <p className="text-content-muted text-xs italic">{item.polishHint}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -287,7 +300,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
 
   // Items for creation
   const [translationItems, setTranslationItems] = useState<TranslationExercise[]>([]);
-  const [errorCorrectionItems, setErrorCorrectionItems] = useState<FillInTheBlankExercise[]>([]);
+  const [errorCorrectionItems, setErrorCorrectionItems] = useState<ErrorCorrectionExercise[]>([]);
 
   // AI Generator controls
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -335,7 +348,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
   const handleHomeworkTypeChange = (type: HomeworkType) => {
     if (
       (homeworkType === 'translation' && translationItems.length > 0 && type !== 'translation') ||
-      (homeworkType === 'fill_in_the_blank' && errorCorrectionItems.length > 0 && type !== 'fill_in_the_blank')
+      ((homeworkType === 'find_errors' || homeworkType === 'fill_in_the_blank') && errorCorrectionItems.length > 0 && type !== 'find_errors')
     ) {
       if (window.confirm(
         language === 'pl' 
@@ -357,7 +370,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
     setTitle(task.title || '');
     setInstructions(task.instructions || '');
     setDueDate(task.dueDate || '');
-    if (task.type === 'fill_in_the_blank') {
+    if (task.type === 'find_errors' || task.type === 'fill_in_the_blank') {
       setErrorCorrectionItems(task.sentences || []);
       setTranslationItems([]);
     } else {
@@ -715,16 +728,25 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
           setGenError('Nie udało się wygenerować zdań. Spróbuj zmienić parametry.');
         }
       } else {
-        const result = await generateFillInTheBlankExercises(
-          aiLevel,
-          finalTopic,
-          aiCount,
+        const result = await generateFindErrors(
+          {
+            source: {
+              lessons: selectedLessons,
+              pastedText: vocabularyTextToUse || finalTopic
+            },
+            types: ['find_errors'],
+            perType: aiCount,
+            level: selectedStudent?.level || aiLevel,
+            instruction: finalPrompt,
+            studentId: selectedStudentId !== 'all' ? selectedStudentId : undefined,
+          },
+          vocabularyTextToUse || finalTopic,
           finalPrompt
         );
-        if (result && result.textWithBlanks) {
-          setErrorCorrectionItems([result]);
+        if (result && result.items && result.items.length > 0) {
+          setErrorCorrectionItems(result.items);
         } else {
-          setGenError("Nie udało się wygenerować zadań z lukami.");
+          setGenError("Nie udało się wygenerować zdań do poprawy błędów. Spróbuj zmienić parametry.");
         }
       }
     } catch (err: any) {
@@ -745,7 +767,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
     } else {
       setErrorCorrectionItems([
         ...errorCorrectionItems,
-        { textWithBlanks: "", blanks: {}, availableWords: [] }
+        { incorrectSentence: "", correctSentence: "", hint: "", polishHint: "", explanation: "" }
       ]);
     }
   };
@@ -814,9 +836,9 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         return;
       }
     } else {
-      const hasEmpty = errorCorrectionItems.some(i => !i.textWithBlanks.trim() || Object.keys(i.blanks).length === 0);
+      const hasEmpty = errorCorrectionItems.some(i => !i.incorrectSentence.trim() || !i.correctSentence.trim());
       if (hasEmpty) {
-        alert("Uzupełnij tekst z lukami i definicje luk dla wszystkich elementów.");
+        alert("Uzupełnij zdanie z błędem oraz poprawną wersję dla wszystkich elementów.");
         return;
       }
     }
@@ -1122,7 +1144,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
     setIsAnalyzing(true);
     try {
       const results = await evaluateTeacherHomework(
-        (reviewTask.type === 'fill_in_the_blank' ? 'fill_in_the_blank' : 'translation'),
+        (reviewTask.type === 'find_errors' ? 'find_errors' : reviewTask.type === 'fill_in_the_blank' ? 'fill_in_the_blank' : 'translation'),
         reviewTask.sentences,
         reviewTask.studentAnswers || {},
         teacherFeedbackText
@@ -1462,7 +1484,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
           <div className="flex justify-between items-start border-b border-white/10 pb-4">
             <div>
               <span className="text-xs font-mono uppercase tracking-wider px-2.5 py-1 rounded-full bg-primary/20 text-primary font-bold">
-                {activeTask.type === 'fill_in_the_blank' ? 'Znajdź błędy w zdaniach' : 'Tłumaczenie zdań'}
+                {activeTask.type === 'find_errors' ? 'Poprawianie błędów w zdaniach' : activeTask.type === 'fill_in_the_blank' ? 'Uzupełnij luki' : 'Tłumaczenie zdań'}
               </span>
               <h2 className="text-xl font-bold text-white mt-2">{activeTask.title}</h2>
               {activeTask.instructions && (
@@ -1508,7 +1530,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                         {res.score !== undefined ? `${res.score}%` : (res.isCorrect ? 'Poprawne' : 'Do poprawy')}
                       </span>
                     </div>
-                    {activeTask.type === 'fill_in_the_blank' ? (
+                    {activeTask.type === 'find_errors' || activeTask.type === 'fill_in_the_blank' ? (
                       <>
                         <p className="text-sm text-danger">Błędne zdanie: {res.incorrectSentence}</p>
                         <div className="text-sm text-content">Twoja odpowiedź: {renderStudentAnswerDisplay(res.studentAnswer)}</div>
@@ -1539,6 +1561,78 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
             <div className="space-y-6">
               {activeTask.sentences.map((item: any, idx: number) => {
                 const isTranslation = (activeTask.type || 'translation') === 'translation';
+                const isFindErrors = activeTask.type === 'find_errors';
+
+                if (isFindErrors) {
+                  const incorrect = String(item.incorrectSentence || '').trim();
+                  const currentValue = typeof studentAnswers[idx] === 'string' ? studentAnswers[idx] : '';
+                  return (
+                    <div key={idx} className="p-5 rounded-2xl bg-base-200/60 border border-white/10 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                          <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+                          Zdanie {idx + 1} z {activeTask.sentences.length}: Znajdź i popraw błąd
+                        </span>
+                        {item.hint && (
+                          <button
+                            type="button"
+                            onClick={() => toggleHint(idx)}
+                            className="text-xs text-warn hover:underline flex items-center gap-1"
+                          >
+                            <HelpCircle size={14} />
+                            {showHints[idx] ? 'Ukryj wskazówkę' : 'Wskazówka'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 shadow-sm">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400/90 font-bold block">
+                          Zdanie z błędem do korekty:
+                        </span>
+                        <p className="text-lg font-bold text-white leading-snug">
+                          {incorrect}
+                        </p>
+                        {item.polishHint && (
+                          <p className="text-xs text-content-muted pt-2 border-t border-white/5 flex items-center gap-1.5">
+                            <span className="font-semibold text-content">Znaczenie:</span>
+                            <span className="italic">{item.polishHint}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {showHints[idx] && item.hint && (
+                        <div className="p-2.5 rounded-lg bg-warn/10 border border-warn/20 text-xs text-warn">
+                          💡 <strong>Wskazówka:</strong> {item.hint}
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-semibold text-content-muted">
+                            Twoja poprawiona wersja zdania:
+                          </label>
+                          {incorrect && currentValue !== incorrect && (
+                            <button
+                              type="button"
+                              onClick={() => handleAnswerChange(idx, incorrect)}
+                              className="inline-flex items-center gap-1 text-[11px] text-primary/90 hover:text-primary font-bold transition-colors cursor-pointer"
+                              title="Wstaw zdanie z błędem, aby szybko zmienić tylko niepoprawne słowo"
+                            >
+                              Kopiuj zdanie do edycji
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          rows={2}
+                          value={currentValue}
+                          onChange={(e) => handleAnswerChange(idx, e.target.value)}
+                          placeholder="Wpisz w pełni poprawione zdanie po angielsku..."
+                          className="w-full px-4 py-2.5 bg-base-100 text-white border border-white/10 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary outline-none text-sm transition-all resize-y"
+                        />
+                      </div>
+                    </div>
+                  );
+                }
                 
                 if (!isTranslation) {
                   return (
@@ -1785,20 +1879,20 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
 
               <button
                 type="button"
-                onClick={() => handleHomeworkTypeChange('fill_in_the_blank')}
+                onClick={() => handleHomeworkTypeChange('find_errors')}
                 className={`p-4 rounded-xl border text-left transition-all flex items-start gap-3 ${
-                  homeworkType === 'fill_in_the_blank'
+                  homeworkType === 'find_errors'
                     ? 'bg-primary/10 border-primary shadow-[0_0_15px_rgba(114,240,180,0.15)]'
                     : 'bg-base-200/60 border-white/5 hover:border-white/20'
                 }`}
               >
-                <div className={`p-2 rounded-lg ${homeworkType === 'fill_in_the_blank' ? 'bg-primary text-base-100' : 'bg-base-300 text-text-2'}`}>
+                <div className={`p-2 rounded-lg ${homeworkType === 'find_errors' ? 'bg-primary text-base-100' : 'bg-base-300 text-text-2'}`}>
                   <AlertTriangle size={20} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-white text-sm">2. Znajdź błędy w zdaniach</h4>
+                  <h4 className="font-bold text-white text-sm">2. Poprawianie błędów w zdaniach</h4>
                   <p className="text-xs text-content-muted mt-1">
-                    Zestaw zdań z celowymi błędami. Zadaniem ucznia jest ich korekta i wpisanie poprawnej wersji.
+                    Zestaw zdań z celowymi błędami przygotowanymi przez AI na bazie lekcji. Zadaniem ucznia jest wpisanie pełnej poprawnej wersji ze wskazówką.
                   </p>
                 </div>
               </button>
@@ -2084,15 +2178,15 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
             )}
 
             {/* Type 2: Error Correction Editor */}
-            {homeworkType === 'fill_in_the_blank' && (
+            {homeworkType === 'find_errors' && (
               <div className="space-y-3">
                 {errorCorrectionItems.length === 0 ? (
                   <p className="text-xs text-content-muted italic py-4 text-center border border-dashed border-white/10 rounded-xl">
-                    Brak zdań. Wygeneruj je przyciskiem AI lub dodaj ręcznie.
+                    Brak zdań. Wygeneruj je przyciskiem AI powyżej lub dodaj ręcznie.
                   </p>
                 ) : (
                   errorCorrectionItems.map((item, idx) => (
-                    <div key={idx} className="p-4 rounded-xl bg-base-200/60 border border-white/5 space-y-2 relative">
+                    <div key={idx} className="p-4 rounded-xl bg-base-200/60 border border-white/5 space-y-3 relative">
                       <div className="flex justify-between items-center text-xs font-mono font-bold text-primary mb-1">
                         <span>Zdanie z błędem #{idx + 1}</span>
                         <div className="flex items-center gap-1">
@@ -2125,56 +2219,94 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                         </div>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-[11px] font-semibold text-warn mb-1">Tekst z lukami (użyj [BLANK_1] itd.)</label>
-                          <textarea
-                            rows={3}
-                            value={item.textWithBlanks}
+                          <label className="block text-[11px] font-semibold text-warn mb-1">
+                            Zdanie po angielsku Z BŁĘDEM (do poprawy) <span className="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={item.incorrectSentence || ''}
                             onChange={(e) => {
                               const updated = [...errorCorrectionItems];
-                              updated[idx].textWithBlanks = e.target.value;
+                              updated[idx].incorrectSentence = e.target.value;
                               setErrorCorrectionItems(updated);
                             }}
-                            placeholder="This is a [BLANK_1]..."
-                            className="w-full px-3 py-1.5 bg-base-100 text-white border border-warn/30 rounded-lg text-xs"
+                            placeholder="np. She don't like working overtime."
+                            className="w-full px-3 py-2 bg-base-100 text-white border border-warn/30 rounded-lg text-xs font-medium focus:border-warn focus:outline-none"
                           />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-semibold text-primary mb-1">Odpowiedzi (JSON format)</label>
-                            <textarea
-                              rows={3}
-                              defaultValue={JSON.stringify(item.blanks, null, 2)}
-                              onBlur={(e) => {
-                                const updated = [...errorCorrectionItems];
-                                try {
-                                  updated[idx].blanks = JSON.parse(e.target.value);
-                                  setErrorCorrectionItems(updated);
-                                } catch(err) {
-                                  // ignore invalid json
-                                }
-                              }}
-                              placeholder='{ "BLANK_1": "word" }'
-                              className="w-full px-3 py-1.5 bg-base-100 text-white border border-primary/30 rounded-lg text-xs font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-content-muted mb-1">Dostępne słowa (po przecinku)</label>
-                            <textarea
-                              rows={3}
-                              value={(item.availableWords || []).join(", ")}
-                              onChange={(e) => {
-                                const updated = [...errorCorrectionItems];
-                                updated[idx].availableWords = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                                setErrorCorrectionItems(updated);
-                              }}
-                              placeholder="word1, word2, word3"
-                              className="w-full px-3 py-1.5 bg-base-100 text-white border border-white/10 rounded-lg text-xs"
-                            />
-                          </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-primary mb-1">
+                            Poprawna wersja zdania (wzorzec) <span className="text-danger">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={item.correctSentence || ''}
+                            onChange={(e) => {
+                              const updated = [...errorCorrectionItems];
+                              updated[idx].correctSentence = e.target.value;
+                              setErrorCorrectionItems(updated);
+                            }}
+                            placeholder="np. She doesn't like working overtime."
+                            className="w-full px-3 py-2 bg-base-100 text-white border border-primary/30 rounded-lg text-xs font-medium focus:border-primary focus:outline-none"
+                          />
                         </div>
                       </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-amber-300 mb-1">
+                            💡 Wskazówka dla kursanta (pomaga zlokalizować błąd)
+                          </label>
+                          <input
+                            type="text"
+                            value={item.hint || ''}
+                            onChange={(e) => {
+                              const updated = [...errorCorrectionItems];
+                              updated[idx].hint = e.target.value;
+                              setErrorCorrectionItems(updated);
+                            }}
+                            placeholder="np. Zwróć uwagę na przeczenie w 3. osobie l. poj."
+                            className="w-full px-3 py-1.5 bg-base-100 text-white border border-white/10 rounded-lg text-xs focus:border-primary focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-content-muted mb-1">
+                            Polskie znaczenie (kontekst wypowiedzi)
+                          </label>
+                          <input
+                            type="text"
+                            value={item.polishHint || ''}
+                            onChange={(e) => {
+                              const updated = [...errorCorrectionItems];
+                              updated[idx].polishHint = e.target.value;
+                              setErrorCorrectionItems(updated);
+                            }}
+                            placeholder="np. Ona nie lubi pracować po godzinach."
+                            className="w-full px-3 py-1.5 bg-base-100 text-white border border-white/10 rounded-lg text-xs focus:border-primary focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {item.explanation && (
+                        <div>
+                          <label className="block text-[11px] font-semibold text-content-muted mb-1">
+                            Wyjaśnienie reguły (opcjonalne, widoczne po sprawdzeniu)
+                          </label>
+                          <input
+                            type="text"
+                            value={item.explanation || ''}
+                            onChange={(e) => {
+                              const updated = [...errorCorrectionItems];
+                              updated[idx].explanation = e.target.value;
+                              setErrorCorrectionItems(updated);
+                            }}
+                            placeholder="np. W Present Simple z 'she' używamy 'doesn't'."
+                            className="w-full px-3 py-1 bg-base-100 text-white border border-white/10 rounded-lg text-xs focus:border-primary focus:outline-none"
+                          />
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -2293,7 +2425,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                     <div className="flex justify-between items-start mb-3 gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-base-300 text-primary">
-                          {task.type === 'fill_in_the_blank' ? 'Znajdź błędy' : 'Tłumaczenie zdań'}
+                          {task.type === 'find_errors' ? 'Poprawianie błędów' : task.type === 'fill_in_the_blank' ? 'Uzupełnij luki' : 'Tłumaczenie zdań'}
                         </span>
                         {isTaskNewForTeacher(task) && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-400 text-black shadow-md flex items-center gap-1 animate-pulse">
@@ -2522,7 +2654,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2 mb-1">
                             <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-base-300 text-content-muted">
-                              {task.type === 'fill_in_the_blank' ? 'Znajdź błędy' : 'Tłumaczenie zdań'}
+                              {task.type === 'find_errors' ? 'Poprawianie błędów' : task.type === 'fill_in_the_blank' ? 'Uzupełnij luki' : 'Tłumaczenie zdań'}
                             </span>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 flex items-center gap-1">
                               <CheckCircle2 size={11} />
@@ -2889,7 +3021,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-1.5">
                   <Badge>
-                    {previewTask.type === 'fill_in_the_blank' ? 'Znajdź błędy w zdaniach' : 'Tłumaczenie zdań'}
+                    {previewTask.type === 'find_errors' ? 'Poprawianie błędów w zdaniach' : previewTask.type === 'fill_in_the_blank' ? 'Uzupełnij luki' : 'Tłumaczenie zdań'}
                   </Badge>
                   <Badge status={previewTask.status === 'submitted' || previewTask.status === 'graded' ? 'ok' : 'wait'}>
                     {previewTask.status === 'submitted'

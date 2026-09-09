@@ -78,15 +78,29 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
   - Zaimplementowano wyskakujące okno z podsumowaniem dla kursanta po sprawdzeniu pracy ([StudentHomeworkGradedModal.tsx](components/dashboard/StudentHomeworkGradedModal.tsx)) z blokadą przeskakiwania ekranu.
 - **Nowy typ zadania: Korekta błędów w zdaniu (Find Errors / Spot the Mistakes) w Pracy Domowej i Testach**:
   - **Praca domowa (`find_errors`)**:
-    - Włączono typ `find_errors` do kreatora prac domowych lektora ([HomeworkComposer.tsx](components/admin/HomeworkComposer.tsx)) oraz silnika generowania [services/homeworkGenerator.ts](services/homeworkGenerator.ts).
-    - Generowanie wykorzystuje wszystkie dostępne informacje o kursancie: historię lekcji, poziom CEFR, słownictwo, a w szczególności sekcje `thingsToImprove` i `corrections` (rzeczywiste błędy kursanta zanotowane podczas lekcji w Notion) oraz typowe interferencje językowe.
-    - Każde ćwiczenie generuje: zdanie z błędem (`incorrectSentence`), poprawne zdanie (`correctSentence`), regułę gramatyczną/wyjaśnienie (`explanation`), wskazówkę (`hint`) oraz polskie znaczenie (`polishHint`).
-    - Nowoczesny, responsywny interfejs w [HomeworkExercise.tsx](components/dashboard/HomeworkExercise.tsx): wyróżniona karta ze zdaniem z błędem, kontekst znaczeniowy, rozwijana wskazówka oraz szybki przycisk **„Kopiuj zdanie do edycji”** (umożliwiający natychmiastowe wklejenie tekstu do poprawy bez konieczności przepisywania całego zdania na klawiaturze mobilnej).
-    - Pełna integracja z ocenianiem, formatowaniem odpowiedzi i widokiem recenzji w [StudentHomeworkScreen.tsx](components/dashboard/StudentHomeworkScreen.tsx).
+    - **Ekran Pracy Domowej Lektora ([HomeworkScreen.tsx](components/dashboard/HomeworkScreen.tsx))**:
+      - Naprawiono widoczność: kafelek „2. Poprawianie błędów w zdaniach” został w pełni powiązany z typem `find_errors` (zamiast dotychczasowego pustego lub zastępczego `fill_in_the_blank`).
+      - Zaimplementowano dedykowany generator AI (`generateFindErrors`) tworzący zdania z celowymi błędami na bazie wybranych lekcji, słownictwa oraz sekcji `thingsToImprove` i `corrections`.
+      - Zbudowano formularz edycji dla lektora: pola na zdanie z błędem (`incorrectSentence`), poprawną wersję (`correctSentence`), wskazówkę naprowadzającą (`hint`), kontekst PL (`polishHint`) oraz wyjaśnienie (`explanation`).
+      - W podglądzie zadania oraz w widoku kursanta dodano odznakę błędu, rozwijaną wskazówkę oraz przycisk **„Kopiuj zdanie do edycji”** ułatwiający szybkie poprawienie felernego fragmentu.
+    - **Modal Zadania Specjalnego Lektora ([TeacherSpecialTaskModal.tsx](components/admin/TeacherSpecialTaskModal.tsx))**:
+      - Dodano przełącznik typu zadania w nagłówku modalu (`Tłumaczenie` vs `Poprawianie błędów`).
+      - Zintegrowano generator `generateFindErrors` w dwustopniowym pipeline AI oraz dostosowano listę wygenerowanych zdań i tryb edycji inline do obsługi specyficznych pól `find_errors`.
+    - **Kreator Prac Domowych ([HomeworkComposer.tsx](components/admin/HomeworkComposer.tsx))**:
+      - W podglądzie pozycji dodano wyświetlanie wskazówki (`💡 Wskazówka: {item.hint}`).
+    - **Ewaluacja AI ([geminiService.ts](services/geminiService.ts))**:
+      - Zaktualizowano `evaluateTeacherHomework` o bezpośrednią obsługę ewaluacji nadesłanych przez kursanta poprawek zdań typu `find_errors`.
   - **Testy (`find_mistake`)**:
-    - Zoptymalizowano reguły generowania testów w [server.ts](server.ts) pod kątem tworzenia zbiorczych zadań korekty zdań z błędami opartych o profil ucznia.
-    - W [TestQuestionFields.tsx](components/tests/TestQuestionFields.tsx) zintegrowano obsługę `find_mistake` z komponentem `SentenceListTask`, wyposażonym w odznaki błędów, etykiety korekty oraz asystenta kopiowania do edycji.
-    - W panelu lektora [AdminTestGenerator.tsx](components/admin/AdminTestGenerator.tsx) ujednolicono nazwę na *„Korekta błędów w zdaniach”* wraz z edycją punkt po punkcie.
+    - **Generator Testów AI ([server.ts](server.ts))**:
+      - W `typeRulesMap['find_mistake']` nakazano modelowi do KAŻDEGO zdania z błędem obowiązkowo dodawać w nawiasie zwięzłą wskazówkę naprowadzającą ułatwiającą pracę kursantowi (np. `(wskazówka: zły przyimek)`, `(wskazówka: 3. osoba l. pojedynczej)`).
+      - W endpointzie oceniania `/api/gemini/grade-test` dodano instrukcję weryfikującą poprawność naprawy błędu i zachowania struktury zdania.
+    - **Interfejs Rozwiązywania Testu ([TestQuestionFields.tsx](components/tests/TestQuestionFields.tsx))**:
+      - Wdrożono funkcję `extractSentenceHint` inteligentnie wyodrębniającą wskazówkę z nawiasów na końcu zdania.
+      - W `SentenceListTask` zdanie z błędem jest czyszczone ze wskazówki, a wskazówka wyświetla się w eleganckim boksie `💡 Wskazówka: ...`.
+      - Przycisk **„Kopiuj do edycji”** wkleja do pola odpowiedzi wyłącznie czyste zdanie z błędem bez nawiasu wskazówki.
+      - Wyeliminowano powielanie promptu w nagłówku `TestQuestionHeader` oraz błędne renderowanie opcji jednokrotnego wyboru (radio) dla tego typu pytań.
+    - **Podgląd i Edycja w Panelu Lektora ([AdminTestGenerator.tsx](components/admin/AdminTestGenerator.tsx), [TestPreviewModal.tsx](components/admin/TestPreviewModal.tsx))**:
+      - Ujednolicono prezentację zadań w formie listy zdań ze złotymi odznakami błędu i podglądem klucza odpowiedzi.
 
 ### C. Zaawansowana Synchronizacja z Notion i Układ 4 Bloków
 - **Granularna selekcja lekcji w synchronizacji z Notion**:

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, TranslationExercise, LessonRecord } from '../../types';
+import { User, TranslationExercise, LessonRecord, ErrorCorrectionExercise } from '../../types';
 import Button from '../ui/Button';
-import { X, Sparkles, Check, Trash2, Plus, RefreshCw, BookOpen, Eye, EyeOff, Send, MessageSquare, Bot, User as UserIcon, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
+import { X, Sparkles, Check, Trash2, Plus, RefreshCw, BookOpen, AlertTriangle, Eye, EyeOff, Send, MessageSquare, Bot, User as UserIcon, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
 import { generateHomeworkChatPipeline, HomeworkChatMessage } from '../../services/geminiService';
+import { generateFindErrors } from '../../services/homeworkGenerator';
 import { getLessonRecordsForStudent } from '../../services/lessonRecord';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -22,11 +23,26 @@ interface TeacherSpecialTaskModalProps {
   autoGenerate?: boolean;
 }
 
+export interface TeacherModalItem {
+  id: string;
+  type?: 'translation' | 'find_errors';
+  polishSentence?: string;
+  englishTranslation?: string;
+  englishSentence?: string;
+  incorrectSentence?: string;
+  correctSentence?: string;
+  hint?: string;
+  polishHint?: string;
+  explanation?: string;
+  targetWordUsed?: string;
+  accepted: boolean;
+}
+
 interface ChatTurnItem {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  sentences?: (TranslationExercise & { accepted: boolean })[];
+  sentences?: TeacherModalItem[];
   summaryText?: string;
   modelInfo?: string;
   timestamp: string;
@@ -41,6 +57,7 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
   initialTopic,
   autoGenerate 
 }) => {
+  const [taskType, setTaskType] = useState<'translation' | 'find_errors'>('translation');
   const [chatInput, setChatInput] = useState('');
   const [selectedWords, setSelectedWords] = useState<string[]>(() => {
     if (initialWords && initialWords.length > 0) return initialWords;
@@ -52,7 +69,7 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
   const [numSentences, setNumSentences] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [statusUpdate, setStatusUpdate] = useState<string>('');
-  const [generatedSentences, setGeneratedSentences] = useState<(TranslationExercise & { id: string; accepted: boolean })[]>([]);
+  const [generatedSentences, setGeneratedSentences] = useState<TeacherModalItem[]>([]);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false);
@@ -221,43 +238,95 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
         content: turn.content
       }));
 
-      const pipelineResult = await generateHomeworkChatPipeline({
-        studentProfile: {
-          firstName: user.firstName,
-          lastName: user.lastName,
-          level: user.level,
-          description: user.description,
-          aiPrompt: user.aiPrompt
-        },
-        lessonHistory: selectedLessons,
-        exerciseHistory: exerciseHistory.concat(user.frequentErrors || []),
-        chatHistory: formattedHistory,
-        teacherInstruction: instructionToSend,
-        numSentences: numSentences,
-        selectedWords: selectedWords,
-        level: user.level || 'B1-B2',
-        onStatusUpdate: (msg) => setStatusUpdate(msg)
-      });
+      if (taskType === 'find_errors') {
+        setStatusUpdate('Krok AI: Generowanie zdań z celowymi błędami i wskazówkami...');
+        const vocabToUse = selectedWords.length > 0
+          ? selectedWords.join('\n')
+          : selectedLessons.map((l) => l.vocabularyText).filter(Boolean).join('\n');
 
-      const newMappedSentences = pipelineResult.sentences.map((s) => ({
-        ...s,
-        id: generateId(),
-        accepted: true
-      }));
+        const result = await generateFindErrors(
+          {
+            source: {
+              lessons: selectedLessons,
+              pastedText: vocabToUse
+            },
+            types: ['find_errors'],
+            perType: numSentences,
+            level: user.level || 'B1-B2',
+            instruction: instructionToSend,
+            studentId: user.id
+          },
+          vocabToUse,
+          instructionToSend
+        );
 
-      setGeneratedSentences(newMappedSentences);
+        const newMappedSentences: TeacherModalItem[] = result.items.map((it) => ({
+          id: generateId(),
+          type: 'find_errors',
+          incorrectSentence: it.incorrectSentence,
+          correctSentence: it.correctSentence,
+          hint: it.hint || '',
+          polishHint: it.polishHint || '',
+          explanation: it.explanation || '',
+          polishSentence: it.polishHint || it.incorrectSentence,
+          englishTranslation: it.correctSentence,
+          englishSentence: it.correctSentence,
+          accepted: true
+        }));
 
-      const aiTurn: ChatTurnItem = {
-        id: generateId(),
-        role: 'assistant',
-        content: `Wygenerowano ${newMappedSentences.length} zdań dopasowanych do profilu kursanta i Twoich instrukcji.`,
-        sentences: newMappedSentences,
-        summaryText: pipelineResult.summaryText,
-        modelInfo: pipelineResult.modelUsed,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+        setGeneratedSentences(newMappedSentences);
 
-      setChatTurns((prev) => [...prev, aiTurn]);
+        const aiTurn: ChatTurnItem = {
+          id: generateId(),
+          role: 'assistant',
+          content: `Wygenerowano ${newMappedSentences.length} zdań z celowymi błędami do poprawy i pomocnymi wskazówkami.`,
+          sentences: newMappedSentences,
+          summaryText: `Generowanie zadań "Popraw błędy w zdaniach" ze wskazówkami na podstawie ${selectedLessons.length} lekcji. Model: ${result.modelUsed}.`,
+          modelInfo: result.modelUsed,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        setChatTurns((prev) => [...prev, aiTurn]);
+      } else {
+        const pipelineResult = await generateHomeworkChatPipeline({
+          studentProfile: {
+            firstName: user.firstName,
+            lastName: user.lastName,
+            level: user.level,
+            description: user.description,
+            aiPrompt: user.aiPrompt
+          },
+          lessonHistory: selectedLessons,
+          exerciseHistory: exerciseHistory.concat(user.frequentErrors || []),
+          chatHistory: formattedHistory,
+          teacherInstruction: instructionToSend,
+          numSentences: numSentences,
+          selectedWords: selectedWords,
+          level: user.level || 'B1-B2',
+          onStatusUpdate: (msg) => setStatusUpdate(msg)
+        });
+
+        const newMappedSentences: TeacherModalItem[] = pipelineResult.sentences.map((s) => ({
+          ...s,
+          type: 'translation',
+          id: generateId(),
+          accepted: true
+        }));
+
+        setGeneratedSentences(newMappedSentences);
+
+        const aiTurn: ChatTurnItem = {
+          id: generateId(),
+          role: 'assistant',
+          content: `Wygenerowano ${newMappedSentences.length} zdań dopasowanych do profilu kursanta i Twoich instrukcji.`,
+          sentences: newMappedSentences,
+          summaryText: pipelineResult.summaryText,
+          modelInfo: pipelineResult.modelUsed,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+
+        setChatTurns((prev) => [...prev, aiTurn]);
+      }
     } catch (err: any) {
       console.error(err);
       setError(`Błąd wygenerowania zdań przez AI: ${err.message || err}`);
@@ -273,13 +342,12 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
     );
   };
 
-  const handleUpdateSentence = (id: string, newPol: string, newEng: string, newHint: string) => {
+  const handleUpdateSentence = (
+    id: string,
+    updates: Partial<TeacherModalItem>
+  ) => {
     setGeneratedSentences((prev) =>
-      prev.map((s) =>
-        s.id === id
-          ? { ...s, polishSentence: newPol, englishTranslation: newEng, englishSentence: newEng, hint: newHint }
-          : s
-      )
+      prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
     );
   };
 
@@ -308,6 +376,7 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
     setError('');
 
     try {
+      const isFindErrors = taskType === 'find_errors';
       const studentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || 'Kursant';
       const taskData = {
         ...taskOwnerFields(user.id!),
@@ -315,17 +384,32 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
         studentEmail: user.email || '',
         studentUsername: user.username || '',
         assignedBy: 'Nauczyciel',
-        type: 'translation',
-        title: initialLesson ? `Praca domowa: ${initialLesson.topic}` : `Praca domowa - ${new Date().toLocaleDateString('pl-PL')}`,
-        instructions: initialLesson ? `Ćwiczenia na tłumaczenie zdań z lekcji: ${initialLesson.topic}` : '',
+        type: isFindErrors ? 'find_errors' : 'translation',
+        title: isFindErrors
+          ? (initialLesson ? `Poprawianie błędów: ${initialLesson.topic}` : `Poprawianie błędów - ${new Date().toLocaleDateString('pl-PL')}`)
+          : (initialLesson ? `Praca domowa: ${initialLesson.topic}` : `Praca domowa - ${new Date().toLocaleDateString('pl-PL')}`),
+        instructions: isFindErrors
+          ? (initialLesson ? `Popraw błędy w zdaniach z lekcji: ${initialLesson.topic}. Wpisz pełne poprawne zdanie, korzystając ze wskazówki.` : 'Popraw błędy w zdaniach. Wpisz pełne poprawne zdanie, korzystając ze wskazówki.')
+          : (initialLesson ? `Ćwiczenia na tłumaczenie zdań z lekcji: ${initialLesson.topic}` : ''),
         createdAt: new Date().toISOString(),
         dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         status: 'pending',
-        sentences: finalSentences.map(({ polishSentence, englishTranslation, hint }) => ({
-          polishSentence,
-          englishTranslation,
-          hint: hint || '',
-        })),
+        sentences: finalSentences.map((s) => {
+          if (isFindErrors || s.type === 'find_errors' || s.incorrectSentence) {
+            return {
+              incorrectSentence: s.incorrectSentence || s.polishSentence,
+              correctSentence: s.correctSentence || s.englishTranslation,
+              hint: s.hint || '',
+              polishHint: s.polishHint || '',
+              explanation: s.explanation || '',
+            };
+          }
+          return {
+            polishSentence: s.polishSentence,
+            englishTranslation: s.englishTranslation,
+            hint: s.hint || '',
+          };
+        }),
       };
 
       const taskPayload = {
@@ -378,9 +462,35 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-content-muted hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 p-1 bg-base-300/80 rounded-xl border border-white/10">
+              <button
+                type="button"
+                onClick={() => setTaskType('translation')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  taskType === 'translation'
+                    ? 'bg-primary text-base-100 shadow-sm'
+                    : 'text-content-muted hover:text-white'
+                }`}
+              >
+                <BookOpen size={13} /> Tłumaczenie
+              </button>
+              <button
+                type="button"
+                onClick={() => setTaskType('find_errors')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  taskType === 'find_errors'
+                    ? 'bg-primary text-base-100 shadow-sm'
+                    : 'text-content-muted hover:text-white'
+                }`}
+              >
+                <AlertTriangle size={13} /> Poprawianie błędów
+              </button>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-colors text-content-muted hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Initial Lesson Active Banner */}
@@ -395,7 +505,10 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => handleSendChatMessage(`Wygeneruj ${numSentences} zdań do tłumaczenia ze słownictwa z lekcji "${initialLesson.topic}": ${selectedWords.join(', ')}`)}
+              onClick={() => handleSendChatMessage(taskType === 'find_errors'
+                ? `Wygeneruj ${numSentences} zdań z błędami do korekty ze słownictwa z lekcji "${initialLesson.topic}": ${selectedWords.join(', ')}`
+                : `Wygeneruj ${numSentences} zdań do tłumaczenia ze słownictwa z lekcji "${initialLesson.topic}": ${selectedWords.join(', ')}`
+              )}
               disabled={isGenerating || selectedWords.length === 0}
               className="bg-primary hover:bg-primary/90 text-accent-ink font-bold px-3 py-1.5 rounded-xl shadow-[0_0_12px_rgba(114,240,180,0.3)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 text-xs hover:scale-105"
             >
@@ -599,41 +712,123 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
                     >
                       {editingSentenceId === s.id ? (
                         <div className="space-y-2">
-                          <div>
-                            <label className="text-[10px] text-content-muted uppercase">Polski:</label>
-                            <input
-                              type="text"
-                              value={s.polishSentence}
-                              onChange={(e) => handleUpdateSentence(s.id, e.target.value, s.englishTranslation, s.hint)}
-                              className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] text-content-muted uppercase">Angielski:</label>
-                            <input
-                              type="text"
-                              value={s.englishTranslation}
-                              onChange={(e) => handleUpdateSentence(s.id, s.polishSentence, e.target.value, s.hint)}
-                              className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
-                            />
-                          </div>
+                          {s.type === 'find_errors' || taskType === 'find_errors' ? (
+                            <>
+                              <div>
+                                <label className="text-[10px] text-danger/90 font-bold uppercase">Zdanie z błędem (do poprawy przez kursanta):</label>
+                                <input
+                                  type="text"
+                                  value={s.incorrectSentence || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { incorrectSentence: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-primary/90 font-bold uppercase">Poprawne zdanie (odpowiedź wzorcowa):</label>
+                                <input
+                                  type="text"
+                                  value={s.correctSentence || s.englishTranslation || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { correctSentence: e.target.value, englishTranslation: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-amber-400 font-bold uppercase">Wskazówka (hint):</label>
+                                <input
+                                  type="text"
+                                  value={s.hint || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { hint: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-content-muted uppercase">Kontekst / Znaczenie PL (opcjonalnie):</label>
+                                <input
+                                  type="text"
+                                  value={s.polishHint || s.polishSentence || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { polishHint: e.target.value, polishSentence: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div>
+                                <label className="text-[10px] text-content-muted uppercase">Polski:</label>
+                                <input
+                                  type="text"
+                                  value={s.polishSentence || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { polishSentence: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-content-muted uppercase">Angielski:</label>
+                                <input
+                                  type="text"
+                                  value={s.englishTranslation || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { englishTranslation: e.target.value, correctSentence: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-content-muted uppercase">Wskazówka:</label>
+                                <input
+                                  type="text"
+                                  value={s.hint || ''}
+                                  onChange={(e) => handleUpdateSentence(s.id, { hint: e.target.value })}
+                                  className="w-full bg-base-200 border border-white/10 rounded-lg p-2 text-xs text-white"
+                                />
+                              </div>
+                            </>
+                          )}
                           <button
                             onClick={() => setEditingSentenceId(null)}
-                            className="text-xs bg-primary/20 text-primary border border-primary/30 px-3 py-1 rounded-lg font-bold"
+                            className="text-xs bg-primary/20 text-primary border border-primary/30 px-3 py-1 rounded-lg font-bold hover:bg-primary/30 transition-colors"
                           >
                             Zapisz edycję
                           </button>
                         </div>
                       ) : (
                         <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1 flex-1">
-                            <p className="text-xs font-bold text-white">
-                              {index + 1}. {s.polishSentence}
-                            </p>
-                            <p className="text-xs text-primary/90 font-medium">
-                              {s.englishTranslation}
-                            </p>
-                            {s.hint && <p className="text-[11px] text-content-muted">Wskazówka: {s.hint}</p>}
+                          <div className="space-y-1.5 flex-1">
+                            {s.type === 'find_errors' || taskType === 'find_errors' ? (
+                              <>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-danger/20 text-danger border border-danger/30">
+                                      Błąd
+                                    </span>
+                                    <span className="text-xs font-semibold text-white">
+                                      {index + 1}. {s.incorrectSentence || s.polishSentence}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-emerald-400 font-medium pl-2 border-l-2 border-emerald-500/40">
+                                    Poprawnie: {s.correctSentence || s.englishTranslation}
+                                  </p>
+                                </div>
+                                {s.hint && (
+                                  <p className="text-[11px] text-amber-300/90 flex items-center gap-1">
+                                    <span>💡 Wskazówka:</span> {s.hint}
+                                  </p>
+                                )}
+                                {(s.polishHint || (s.polishSentence && s.polishSentence !== s.incorrectSentence)) && (
+                                  <p className="text-[11px] text-content-muted">
+                                    PL: {s.polishHint || s.polishSentence}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xs font-bold text-white">
+                                  {index + 1}. {s.polishSentence}
+                                </p>
+                                <p className="text-xs text-primary/90 font-medium">
+                                  {s.englishTranslation}
+                                </p>
+                                {s.hint && <p className="text-[11px] text-content-muted">Wskazówka: {s.hint}</p>}
+                              </>
+                            )}
                           </div>
                           <div className="flex items-center gap-1">
                             <button

@@ -1007,7 +1007,7 @@ app.post('/api/gemini/generate-test', requireFirebaseAdmin, async (req, res) => 
         'fill_in_blank': "- fill_in_blank: 1 zadanie zbiorcze w formie JEDNEGO SPÓJNEGO TEKSTU (np. krótka historyjka, opowiadanie). W 'prompt' umieść tekst z lukami '___', oznaczonymi numerami lub po prostu w tekście. W 'correctAnswer' umieść N poprawnych słów w punktach (1., 2., ...).",
         'fill_in_blank_bank': "- fill_in_blank_bank: 1 zadanie zbiorcze w formie JEDNEGO SPÓJNEGO TEKSTU (np. krótka historyjka). W 'wordBank' umieść słowa w rozsypce do wstawienia. W 'prompt' umieść tekst z lukami '___'. W 'correctAnswer' umieść N odpowiedzi.",
         'matching': "- matching: 1 zadanie zbiorcze. W 'options' zamieść listę wszystkich N par w formacie [\"słowo1 = word1\", \"słowo2 = word2\", ...].",
-        'find_mistake': "- find_mistake: 1 zadanie zbiorcze. W 'prompt' umieść N zdań w języku angielskim zawierających błędy (gramatyczne, leksykalne, przyimkowe lub szyku) w punktach (1., 2., ...). W 'correctAnswer' umieść N w pełni poprawnych zdań w punktach (1., 2., ...).",
+        'find_mistake': "- find_mistake: 1 zadanie zbiorcze polegające na korekcie błędów w zdaniach. W 'prompt' umieść N zdań w języku angielskim zawierających celowe błędy (gramatyczne, leksykalne, przyimkowe lub szyku) w punktach (1., 2., ...). Do KAŻDEGO zdania z błędem OBOWIĄZKOWO dodaj na końcu w nawiasie zwięzłą wskazówkę naprowadzającą w formacie: (wskazówka: treść wskazówki), np. (wskazówka: zły przyimek), (wskazówka: 3. osoba l. pojedynczej), (wskazówka: zły czasownik). W 'correctAnswer' umieść N w pełni poprawnych zdań w punktach (1., 2., ...). Nie wypełniaj pola options dla tego typu.",
         'multiple_choice': "- multiple_choice: 1 zadanie zbiorcze. W 'prompt' umieść JEDEN SPÓJNY TEKST z lukami '___', albo N pytań wielokrotnego wyboru, w zależności od kontekstu. Jeśli to test z gramatyki np. czasowniki, to krótka historyjka jest preferowana. Podaj opcje A/B/C.",
         'writing': "- writing: 1 zadanie z dłuższą wypowiedzią pisemną."
       };
@@ -1524,7 +1524,7 @@ Poprawna odpowiedź (dla zadań zamkniętych): ${q.correctAnswer || "Zadanie otw
 }).join('\n')}
 
 Twoim zadaniem jest ocenić ten test i dostarczyć konstruktywny, motywujący feedback dla kursanta w języku polskim.
-Przeanalizuj każdą odpowiedź ucznia. Zwróć szczególną uwagę na zadania typu "writing" - wskaż błędy, ale też pochwal za dobre użycie struktur.
+Przeanalizuj każdą odpowiedź ucznia. Zwróć szczególną uwagę na zadania typu "find_mistake" (czy uczeń poprawnie naprawił błąd w zdaniu i zachował poprawną strukturę) oraz "writing" - wskaż błędy, ale też pochwal za dobre użycie struktur.
 ZASADA INTERPUNKCJI: Pamiętaj, że interpunkcja (kropki, przecinki, wielkie litery) jest potrzebna i jest dobrą praktyką, ale NIE MOŻE obniżać oceny ani powodować odejmowania punktów.
 Na koniec przyznaj łączną ocenę (np. w procentach lub punktach).
 

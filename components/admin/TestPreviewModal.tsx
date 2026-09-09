@@ -140,7 +140,7 @@ export const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ test, isOpen
                     <div className="text-xs text-content-muted font-medium italic">{q.instruction}</div>
                   )}
 
-                  {(q.type === 'translation' || q.type === 'fill_in_blank') ? (
+                  {(q.type === 'translation' || q.type === 'fill_in_blank' || q.type === 'find_mistake') ? (
                     <div className="space-y-3">
                       {parseNumberedItems(q.prompt).map((sItem, sIdx) => {
                         const correctMap = parseSubAnswers(q.correctAnswer, 30);

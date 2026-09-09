@@ -944,7 +944,7 @@ Ka\u017Cdy z wybranych typ\xF3w ma stanowi\u0107 DOK\u0141ADNIE JEDNO POJEDYNCZE
         "fill_in_blank": "- fill_in_blank: 1 zadanie zbiorcze w formie JEDNEGO SP\xD3JNEGO TEKSTU (np. kr\xF3tka historyjka, opowiadanie). W 'prompt' umie\u015B\u0107 tekst z lukami '___', oznaczonymi numerami lub po prostu w tek\u015Bcie. W 'correctAnswer' umie\u015B\u0107 N poprawnych s\u0142\xF3w w punktach (1., 2., ...).",
         "fill_in_blank_bank": "- fill_in_blank_bank: 1 zadanie zbiorcze w formie JEDNEGO SP\xD3JNEGO TEKSTU (np. kr\xF3tka historyjka). W 'wordBank' umie\u015B\u0107 s\u0142owa w rozsypce do wstawienia. W 'prompt' umie\u015B\u0107 tekst z lukami '___'. W 'correctAnswer' umie\u015B\u0107 N odpowiedzi.",
         "matching": `- matching: 1 zadanie zbiorcze. W 'options' zamie\u015B\u0107 list\u0119 wszystkich N par w formacie ["s\u0142owo1 = word1", "s\u0142owo2 = word2", ...].`,
-        "find_mistake": "- find_mistake: 1 zadanie zbiorcze. W 'prompt' umie\u015B\u0107 N zda\u0144 w j\u0119zyku angielskim zawieraj\u0105cych b\u0142\u0119dy (gramatyczne, leksykalne, przyimkowe lub szyku) w punktach (1., 2., ...). W 'correctAnswer' umie\u015B\u0107 N w pe\u0142ni poprawnych zda\u0144 w punktach (1., 2., ...).",
+        "find_mistake": "- find_mistake: 1 zadanie zbiorcze polegaj\u0105ce na korekcie b\u0142\u0119d\xF3w w zdaniach. W 'prompt' umie\u015B\u0107 N zda\u0144 w j\u0119zyku angielskim zawieraj\u0105cych celowe b\u0142\u0119dy (gramatyczne, leksykalne, przyimkowe lub szyku) w punktach (1., 2., ...). Do KA\u017BDEGO zdania z b\u0142\u0119dem OBOWI\u0104ZKOWO dodaj na ko\u0144cu w nawiasie zwi\u0119z\u0142\u0105 wskaz\xF3wk\u0119 naprowadzaj\u0105c\u0105 w formacie: (wskaz\xF3wka: tre\u015B\u0107 wskaz\xF3wki), np. (wskaz\xF3wka: z\u0142y przyimek), (wskaz\xF3wka: 3. osoba l. pojedynczej), (wskaz\xF3wka: z\u0142y czasownik). W 'correctAnswer' umie\u015B\u0107 N w pe\u0142ni poprawnych zda\u0144 w punktach (1., 2., ...). Nie wype\u0142niaj pola options dla tego typu.",
         "multiple_choice": "- multiple_choice: 1 zadanie zbiorcze. W 'prompt' umie\u015B\u0107 JEDEN SP\xD3JNY TEKST z lukami '___', albo N pyta\u0144 wielokrotnego wyboru, w zale\u017Cno\u015Bci od kontekstu. Je\u015Bli to test z gramatyki np. czasowniki, to kr\xF3tka historyjka jest preferowana. Podaj opcje A/B/C.",
         "writing": "- writing: 1 zadanie z d\u0142u\u017Csz\u0105 wypowiedzi\u0105 pisemn\u0105."
       };
@@ -1417,7 +1417,7 @@ Poprawna odpowied\u017A (dla zada\u0144 zamkni\u0119tych): ${q.correctAnswer || 
       }).join("\n")}
 
 Twoim zadaniem jest oceni\u0107 ten test i dostarczy\u0107 konstruktywny, motywuj\u0105cy feedback dla kursanta w j\u0119zyku polskim.
-Przeanalizuj ka\u017Cd\u0105 odpowied\u017A ucznia. Zwr\xF3\u0107 szczeg\xF3ln\u0105 uwag\u0119 na zadania typu "writing" - wska\u017C b\u0142\u0119dy, ale te\u017C pochwal za dobre u\u017Cycie struktur.
+Przeanalizuj ka\u017Cd\u0105 odpowied\u017A ucznia. Zwr\xF3\u0107 szczeg\xF3ln\u0105 uwag\u0119 na zadania typu "find_mistake" (czy ucze\u0144 poprawnie naprawi\u0142 b\u0142\u0105d w zdaniu i zachowa\u0142 poprawn\u0105 struktur\u0119) oraz "writing" - wska\u017C b\u0142\u0119dy, ale te\u017C pochwal za dobre u\u017Cycie struktur.
 ZASADA INTERPUNKCJI: Pami\u0119taj, \u017Ce interpunkcja (kropki, przecinki, wielkie litery) jest potrzebna i jest dobr\u0105 praktyk\u0105, ale NIE MO\u017BE obni\u017Ca\u0107 oceny ani powodowa\u0107 odejmowania punkt\xF3w.
 Na koniec przyznaj \u0142\u0105czn\u0105 ocen\u0119 (np. w procentach lub punktach).
 

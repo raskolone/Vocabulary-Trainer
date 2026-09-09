@@ -642,9 +642,14 @@ const ItemPreview: React.FC<{ type: HomeworkType; item: any }> = ({ type, item }
         <span className="block text-primary/90 font-mono text-[13px] pl-1">
           ➜ {item.correctSentence}
         </span>
+        {item.hint && (
+          <span className="block text-amber-300 text-[12px] font-medium pl-1">
+            💡 Wskazówka: {item.hint}
+          </span>
+        )}
         {item.explanation && (
           <span className="block text-content-muted text-[12px] italic pl-1">
-            💡 {item.explanation}
+            ℹ️ {item.explanation}
           </span>
         )}
       </div>
