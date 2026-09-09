@@ -93,6 +93,21 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
     4. `Homework` (zadania domowe i materiały utrwalające)
   - Ukryto wiązanie ze scenariuszami na rzecz bezpośredniego, czytelnego układu blokowego Notion.
   - Dodano narzędzie retroaktywnego czyszczenia i migracji starszych lekcji do nowego formatu ([CleanLessonsModal.tsx](components/admin/CleanLessonsModal.tsx)).
+- **Toggle Heading widoku „Do potwierdzenia” (Notion-style)**:
+  - Sekcja lekcji oczekujących na potwierdzenie została przekształcona w kompaktowy **Toggle Heading** w stylu Notion ([AdminPanel.tsx](components/admin/AdminPanel.tsx)).
+  - Domyślnie zwinięty widok zajmuje minimalną przestrzeń na ekranie, prezentując w jednym wierszu kluczowe metryki (liczbę lekcji oczekujących, podział na nowe wpisy i aktualizacje).
+  - Rozwijanie i zwijanie jednym kliknięciem z animacją chevronu.
+- **Weryfikacja istnienia lekcji w bazie kursanta & Opcja „Zaktualizuj rekord” (Update records)**:
+  - Zaimplementowano algorytm weryfikujący, czy dana lekcja ze stagingu Notion istnieje już w historii kursanta (dopasowanie po `notionPageId`, dacie spotkania lub znormalizowanym tytule tematu).
+  - Wpisy istniejące są wyraźnie oznaczone plakietką `🔄 Istnieje w bazie (Aktualizacja: YYYY-MM-DD)` i wyposażone w dedykowany przycisk **„Zaktualizuj rekord”**.
+  - Kliknięcie „Zaktualizuj rekord” natychmiastowo konwertuje i aktualizuje istniejący rekord do najnowszego układu 4 bloków Notion (`structuredBlocks`, `vocabularyText`, `corrections`, `homeworkText`), synchronizuje powiązane zestawy fiszek w tle oraz usuwa zbędny szkic roboczy, eliminując duplikaty w bazie.
+- **Wyraźne podsumowanie nowości wg dat na samej górze**:
+  - Na samej górze panelu lekcji wprowadzono wyeksponowany baner analityczny badający osie czasu.
+  - System porównuje daty lekcji z Notion z najnowszą potwierdzoną datą w bazie kursanta, jasno informując lektora:
+    - Która lekcja jest najświeższa chronologicznie (`📅 YYYY-MM-DD — Temat`),
+    - Ile wpisów to całkowicie nowe lekcje,
+    - Ile wpisów to aktualizacje istniejących zajęć,
+    - Jakie konkretnie nowe terminy pojawiły się w Notion ponad dotychczasową historię ucznia.
 
 ### D. Baza Kursantów: Checkboxy, Opcje Rekordu (Notion Fetch) i Operacje Masowe
 - **Tick boxy (checkboxy) w bazie kursantów**:

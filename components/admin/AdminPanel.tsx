@@ -13,7 +13,7 @@ import VocabularyApproval from './VocabularyApproval';
 import RecallItemsReview, { ReviewedCandidate } from './RecallItemsReview';
 import { saveRecallReview } from '../../services/recallItems';
 import { countVocabularyItems, buildVocabularySetTitle, splitVocabularyLines } from '../../utils/vocabulary';
-import { isLessonPendingConfirmation } from '../../utils/lessonBlocks';
+import { isLessonPendingConfirmation, extractLessonBlocks } from '../../utils/lessonBlocks';
 import { CascadingLessonDetails } from './CascadingLessonDetails';
 import { getGeneratedScenarios } from '../../services/scenarioService';
 import React, { useState, useEffect, useRef } from 'react';
@@ -954,6 +954,87 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
     }
   };
 
+  const handleUpdateExistingLessonRecord = async (pendingRecord: LessonRecord, existingRecord: LessonRecord) => {
+    if (!selectedUser) return;
+    setIsConfirmingLessonId(pendingRecord.id);
+    try {
+      const blocks = extractLessonBlocks(pendingRecord);
+      const targetDate = (!pendingRecord.isDateMissing && pendingRecord.date && !/brak daty|empty/i.test(pendingRecord.date))
+        ? pendingRecord.date
+        : existingRecord.date;
+
+      const cleanTopic = pendingRecord.topic
+        ? pendingRecord.topic.replace(/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i, '').trim()
+        : existingRecord.topic;
+
+      const updatedFields: Partial<LessonRecord> = {
+        structuredBlocks: blocks,
+        vocabularyText: blocks.vocabulary || pendingRecord.vocabularyText || existingRecord.vocabularyText || '',
+        corrections: blocks.corrections || pendingRecord.corrections || existingRecord.corrections || '',
+        thingsToImprove: blocks.corrections || pendingRecord.thingsToImprove || existingRecord.thingsToImprove || '',
+        homeworkText: blocks.homework || pendingRecord.homeworkText || existingRecord.homeworkText || '',
+        homeworkAnswerKey: blocks.answerKey || pendingRecord.homeworkAnswerKey || existingRecord.homeworkAnswerKey || '',
+        lessonSummary: blocks.summary || pendingRecord.lessonSummary || existingRecord.lessonSummary || '',
+        studentSpeaking: blocks.learningCurve || pendingRecord.studentSpeaking || existingRecord.studentSpeaking || '',
+        nextLessonPlan: blocks.nextLesson || pendingRecord.nextLessonPlan || existingRecord.nextLessonPlan || '',
+        topic: cleanTopic,
+        date: targetDate,
+        notionPageId: pendingRecord.notionPageId || existingRecord.notionPageId,
+        source: 'notion',
+        status: 'confirmed',
+        isPendingConfirmation: false,
+        isDateMissing: false,
+        pendingReason: '',
+        updatedAt: new Date().toISOString(),
+      };
+
+      // 1. Update existing confirmed record in Firestore
+      await updateDoc(doc(db, `users/${selectedUser.id}/lessonRecords/${existingRecord.id}`), updatedFields);
+
+      // 2. If the pending record is a separate document, delete the draft doc
+      if (pendingRecord.id !== existingRecord.id) {
+        try {
+          await deleteDoc(doc(db, `users/${selectedUser.id}/lessonRecords/${pendingRecord.id}`));
+        } catch (delErr) {
+          console.warn('Could not delete pending doc after update:', delErr);
+        }
+      }
+
+      // 3. Sync flashcards if vocabulary present
+      if (updatedFields.vocabularyText && updatedFields.vocabularyText.trim().length > 0) {
+        syncFlashcardSetForLesson(
+          existingRecord.id,
+          selectedUser.id,
+          targetDate,
+          cleanTopic,
+          updatedFields.vocabularyText
+        ).catch(e => console.warn('Flashcard sync warning:', e));
+      }
+
+      const mergedRecord: LessonRecord = {
+        ...existingRecord,
+        ...updatedFields,
+      };
+
+      setLessonRecords(prev =>
+        prev
+          .filter(r => r.id !== pendingRecord.id)
+          .map(r => r.id === existingRecord.id ? mergedRecord : r)
+      );
+
+      if (viewingRecord?.id === pendingRecord.id || viewingRecord?.id === existingRecord.id) {
+        setViewingRecord(mergedRecord);
+      }
+
+      showToast(`Zaktualizowano lekcję „${cleanTopic}” (${targetDate}) do najnowszego widoku 4 bloków!`);
+    } catch (err: any) {
+      console.error('Błąd aktualizacji rekordu lekcji:', err);
+      alert('Nie udało się zaktualizować rekordu lekcji: ' + (err?.message || String(err)));
+    } finally {
+      setIsConfirmingLessonId(null);
+    }
+  };
+
   const generateStrongPassword = () => {
     const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const lowercase = "abcdefghijklmnopqrstuvwxyz";
@@ -1256,6 +1337,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   const [showBulkPreviewModal, setShowBulkPreviewModal] = useState(false);
   const [showStudentNotionSyncModal, setShowStudentNotionSyncModal] = useState(false);
   const [showCleanLessonsModal, setShowCleanLessonsModal] = useState(false);
+  const [isPendingSectionOpen, setIsPendingSectionOpen] = useState(false);
   const [bulkPreviewLessons, setBulkPreviewLessons] = useState<any[]>([]);
   const [expandedBulkIndex, setExpandedBulkIndex] = useState<number | null>(null);
   const [bulkNotes, setBulkNotes] = useState('');
@@ -2122,83 +2204,268 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   const pendingLessons = lessonRecords.filter(isLessonPendingConfirmation);
                   const confirmedLessons = lessonRecords.filter(r => !isLessonPendingConfirmation(r) && r.status !== 'rejected');
 
+                  // Helper: weryfikacja czy dana lekcja z Notion istnieje już w bazie kursanta
+                  const findExistingMatch = (pending: LessonRecord): LessonRecord | undefined => {
+                    return confirmedLessons.find(c => {
+                      if (pending.id === c.id) return false;
+                      // 1. Zgodność po ID strony Notion
+                      if (pending.notionPageId && c.notionPageId && pending.notionPageId === c.notionPageId) {
+                        return true;
+                      }
+                      // 2. Zgodność po dokładnej dacie
+                      const pDate = pending.date?.trim();
+                      const cDate = c.date?.trim();
+                      if (pDate && cDate && !pending.isDateMissing && pDate === cDate && !/brak daty|empty/i.test(pDate)) {
+                        return true;
+                      }
+                      // 3. Zgodność po znormalizowanym temacie lekcji
+                      const cleanTopic = (t?: string) =>
+                        (t || '').replace(/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i, '').trim().toLowerCase();
+                      const pTopic = cleanTopic(pending.topic);
+                      const cTopic = cleanTopic(c.topic);
+                      if (pTopic && cTopic && pTopic === cTopic && pTopic.length > 4) {
+                        return true;
+                      }
+                      return false;
+                    });
+                  };
+
+                  const pendingWithMatches = pendingLessons.map(p => ({
+                    record: p,
+                    existingMatch: findExistingMatch(p),
+                  }));
+
+                  const existingUpdates = pendingWithMatches.filter(item => Boolean(item.existingMatch));
+                  const brandNewPending = pendingWithMatches.filter(item => !item.existingMatch);
+
+                  // Analiza dat: najnowsze daty z bazy i z Notion
+                  const confirmedDates = confirmedLessons
+                    .map(l => l.date)
+                    .filter(d => d && !/brak daty/i.test(d))
+                    .sort((a, b) => b.localeCompare(a));
+                  const latestConfirmedDate = confirmedDates[0] || null;
+
+                  const pendingDates = pendingLessons
+                    .map(l => l.date)
+                    .filter(d => d && !/brak daty/i.test(d))
+                    .sort((a, b) => b.localeCompare(a));
+                  const newestPendingDate = pendingDates[0] || null;
+                  const newestPendingItem = pendingLessons.find(p => p.date === newestPendingDate);
+
+                  // Lekcje nowsze niż ostatnia zatwierdzona data kursanta
+                  const strictlyNewerLessons = brandNewPending.filter(
+                    item => item.record.date && (!latestConfirmedDate || item.record.date > latestConfirmedDate)
+                  );
+
                   return (
                     <div className="space-y-6">
-                      {/* Sekcja: Do potwierdzenia (manualny przegląd lektora) */}
+                      {/* Wyraźne podsumowanie na samej górze na podstawie dat lekcji */}
+                      {(brandNewPending.length > 0 || existingUpdates.length > 0) && (
+                        <div className="p-4 rounded-2xl bg-gradient-to-r from-primary/15 via-base-200/90 to-amber-500/10 border border-primary/30 shadow-lg space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <Sparkles size={18} className="text-primary animate-pulse shrink-0" />
+                              <h4 className="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                                <span>Nowości z Notion wg dat lekcji</span>
+                                {strictlyNewerLessons.length > 0 && (
+                                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 font-bold uppercase">
+                                    {strictlyNewerLessons.length} nowszych niż ostatnia lekcja
+                                  </span>
+                                )}
+                              </h4>
+                            </div>
+                            {latestConfirmedDate && (
+                              <span className="text-xs font-mono text-content-muted">
+                                Ostatnia data w bazie: <strong className="text-primary">{latestConfirmedDate}</strong>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            {newestPendingDate && (
+                              <span className="text-xs px-3 py-1.5 rounded-xl bg-base-100/90 text-white font-mono border border-white/10 flex items-center gap-1.5 shadow-sm">
+                                📅 <strong className="text-primary">{newestPendingDate}</strong>
+                                <span className="text-content-muted truncate max-w-[180px] sm:max-w-[320px]">
+                                  — {newestPendingItem?.topic || 'Lekcja'}
+                                </span>
+                              </span>
+                            )}
+
+                            <span className="text-xs px-2.5 py-1.5 rounded-xl bg-primary/20 text-primary border border-primary/30 font-bold flex items-center gap-1">
+                              ✨ {brandNewPending.length} nowych lekcji
+                            </span>
+
+                            {existingUpdates.length > 0 && (
+                              <span className="text-xs px-2.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1">
+                                🔄 {existingUpdates.length} do zaktualizowania w bazie
+                              </span>
+                            )}
+                          </div>
+
+                          {strictlyNewerLessons.length > 0 && (
+                            <div className="pt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span className="text-content-muted font-semibold">Nowe terminy z Notion:</span>
+                              {strictlyNewerLessons.slice(0, 5).map(({ record }) => (
+                                <span
+                                  key={record.id}
+                                  className="px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20 font-mono font-bold"
+                                >
+                                  {record.date}
+                                </span>
+                              ))}
+                              {strictlyNewerLessons.length > 5 && (
+                                <span className="text-content-muted font-mono">
+                                  +{strictlyNewerLessons.length - 5} więcej
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Sekcja: Do potwierdzenia (Notion-style Toggle Heading) */}
                       {pendingLessons.length > 0 && (
-                        <div className="p-4 sm:p-5 rounded-2xl bg-amber-950/25 border border-amber-500/35 space-y-3.5 shadow-[0_0_25px_rgba(245,158,11,0.08)]">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-                                <AlertTriangle size={18} />
+                        <div className="rounded-2xl bg-amber-950/20 border border-amber-500/30 shadow-md overflow-hidden transition-all">
+                          {/* Toggle Heading Header - Zmniejsza zajmowane miejsce */}
+                          <button
+                            type="button"
+                            onClick={() => setIsPendingSectionOpen(prev => !prev)}
+                            className="w-full p-3.5 sm:p-4 flex items-center justify-between gap-3 text-left hover:bg-amber-500/10 transition-colors cursor-pointer select-none"
+                            title="Kliknij, aby rozwinąć lub zwinąć listę lekcji do potwierdzenia"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="p-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                                {isPendingSectionOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                               </div>
-                              <div>
-                                <h4 className="text-base font-bold text-amber-300 flex items-center gap-2">
-                                  Do potwierdzenia ({pendingLessons.length})
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-sm sm:text-base font-bold text-amber-300 flex items-center gap-1.5">
+                                    Do potwierdzenia ({pendingLessons.length})
+                                  </h4>
                                   <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
                                     Tylko dla lektora
                                   </span>
-                                </h4>
-                                <p className="text-xs text-amber-200/80 mt-0.5">
-                                  Te lekcje pochodzą z Notion, lecz mają brakującą datę lub wymagają weryfikacji. Kursant ich nie widzi dopóki ich nie zatwierdzisz.
-                                </p>
+                                  {!isPendingSectionOpen && (
+                                    <span className="text-[11px] text-amber-200/70 font-mono hidden sm:inline">
+                                      ({brandNewPending.length} nowych • {existingUpdates.length} do aktualizacji — kliknij, aby rozwinąć)
+                                    </span>
+                                  )}
+                                </div>
+                                {isPendingSectionOpen && (
+                                  <p className="text-xs text-amber-200/80 mt-0.5">
+                                    Te lekcje pochodzą z Notion, lecz mają brakującą datę lub wymagają weryfikacji. Kursant ich nie widzi dopóki ich nie zatwierdzisz.
+                                  </p>
+                                )}
                               </div>
                             </div>
-                          </div>
 
-                          <div className="grid grid-cols-1 gap-2.5">
-                            {pendingLessons.map((record) => {
-                              const isDateBad = !record.date || /brak daty|empty/i.test(record.date) || record.isDateMissing;
-                              return (
-                                <div
-                                  key={record.id}
-                                  className="p-3.5 rounded-xl bg-base-200/90 border border-amber-500/25 hover:border-amber-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                                >
-                                  <div className="space-y-1 min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md ${
-                                        isDateBad ? 'bg-danger/20 text-danger border border-danger/30 animate-pulse' : 'bg-base-300 text-content-muted'
-                                      }`}>
-                                        {isDateBad ? '⚠️ Brak daty w Notion' : record.date}
-                                      </span>
-                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                                        {record.pendingReason || (record.isDateMissing ? 'Brak daty spotkania w Notion' : 'Format do weryfikacji')}
-                                      </span>
+                            <div className="text-xs font-semibold text-amber-400/80 shrink-0 flex items-center gap-1">
+                              <span>{isPendingSectionOpen ? 'Zwiń' : 'Rozwiń listę'}</span>
+                              {isPendingSectionOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </div>
+                          </button>
+
+                          {/* Zawartość Toggle Heading (rozwijana) */}
+                          {isPendingSectionOpen && (
+                            <div className="p-4 sm:p-5 pt-0 border-t border-amber-500/20 space-y-3 animate-fade-in">
+                              <div className="grid grid-cols-1 gap-2.5 pt-3">
+                                {pendingWithMatches.map(({ record, existingMatch }) => {
+                                  const isDateBad = !record.date || /brak daty|empty/i.test(record.date) || record.isDateMissing;
+                                  const isUpdatingThis = isConfirmingLessonId === record.id;
+
+                                  return (
+                                    <div
+                                      key={record.id}
+                                      className="p-3.5 rounded-xl bg-base-200/90 border border-amber-500/25 hover:border-amber-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                    >
+                                      <div className="space-y-1 min-w-0 flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md ${
+                                            isDateBad ? 'bg-danger/20 text-danger border border-danger/30 animate-pulse' : 'bg-base-300 text-content-muted'
+                                          }`}>
+                                            {isDateBad ? '⚠️ Brak daty w Notion' : record.date}
+                                          </span>
+
+                                          {existingMatch ? (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                                              <RefreshCw size={10} /> Istnieje w bazie (Aktualizacja: {existingMatch.date})
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/20 text-primary border border-primary/30 flex items-center gap-1">
+                                              <Sparkles size={10} /> Nowa lekcja
+                                            </span>
+                                          )}
+
+                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                                            {record.pendingReason || (record.isDateMissing ? 'Brak daty spotkania w Notion' : 'Format do weryfikacji')}
+                                          </span>
+                                        </div>
+
+                                        <h5 className="font-bold text-sm text-white truncate">{record.topic}</h5>
+
+                                        {record.lessonSummary ? (
+                                          <p className="text-xs text-content-muted line-clamp-1 italic">{record.lessonSummary}</p>
+                                        ) : (
+                                          <p className="text-xs text-content-muted italic">Brak wpisanego streszczenia z Notion.</p>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                        {existingMatch ? (
+                                          <Button
+                                            size="sm"
+                                            variant="primary"
+                                            onClick={() => handleUpdateExistingLessonRecord(record, existingMatch)}
+                                            isLoading={isUpdatingThis}
+                                            className="text-xs font-bold bg-gradient-to-r from-blue-600 to-primary text-white hover:brightness-110 flex items-center gap-1.5 shadow-sm"
+                                            title="Zaktualizuj istniejący rekord w bazie kursanta do widoku 4 bloków"
+                                          >
+                                            <RefreshCw size={13} />
+                                            Zaktualizuj rekord
+                                          </Button>
+                                        ) : (
+                                          <Button
+                                            size="sm"
+                                            variant="primary"
+                                            onClick={() => openLessonRecordModal('edit', record)}
+                                            className="text-xs font-bold bg-primary text-accent-ink hover:brightness-110 flex items-center gap-1.5 shadow-sm"
+                                          >
+                                            <Edit3 size={13} />
+                                            Przejrzyj i zatwierdź
+                                          </Button>
+                                        )}
+
+                                        {existingMatch && (
+                                          <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            onClick={() => openLessonRecordModal('edit', record)}
+                                            className="text-xs font-bold text-content-muted hover:text-white flex items-center gap-1"
+                                            title="Edytuj treść przed aktualizacją"
+                                          >
+                                            <Edit3 size={12} />
+                                            Edytuj
+                                          </Button>
+                                        )}
+
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleRejectNotionLesson(record)}
+                                          isLoading={isRejectingLessonId === record.id}
+                                          className="text-xs font-bold text-danger hover:bg-danger/15 hover:text-danger flex items-center gap-1"
+                                          title="Odrzuć ten wpis i zablokuj przed kolejnym importem"
+                                        >
+                                          <X size={14} />
+                                          Odrzuć
+                                        </Button>
+                                      </div>
                                     </div>
-                                    <h5 className="font-bold text-sm text-white truncate">{record.topic}</h5>
-                                    {record.lessonSummary ? (
-                                      <p className="text-xs text-content-muted line-clamp-1 italic">{record.lessonSummary}</p>
-                                    ) : (
-                                      <p className="text-xs text-content-muted italic">Brak wpisanego streszczenia z Notion.</p>
-                                    )}
-                                  </div>
-
-                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                                    <Button
-                                      size="sm"
-                                      variant="primary"
-                                      onClick={() => openLessonRecordModal('edit', record)}
-                                      className="text-xs font-bold bg-primary text-accent-ink hover:brightness-110 flex items-center gap-1.5"
-                                    >
-                                      <Edit3 size={13} />
-                                      Przejrzyj i zatwierdź
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => handleRejectNotionLesson(record)}
-                                      isLoading={isRejectingLessonId === record.id}
-                                      className="text-xs font-bold text-danger hover:bg-danger/15 hover:text-danger flex items-center gap-1"
-                                      title="Odrzuć ten wpis i zablokuj przed kolejnym importem"
-                                    >
-                                      <X size={14} />
-                                      Odrzuć
-                                    </Button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
