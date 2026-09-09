@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Database,
   Search,
@@ -22,7 +22,14 @@ import {
   RefreshCw,
   SlidersHorizontal,
   ExternalLink,
-  User as UserIcon
+  User as UserIcon,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  MoreVertical,
+  Trash2,
+  Layers,
+  Check
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import { User } from '../../types';
@@ -30,12 +37,23 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 import { useLanguage } from '../../context/LanguageContext';
+import StudentNotionSyncModal from './StudentNotionSyncModal';
+import {
+  buildBulkUpdatePayload,
+  calculateIsAllSelected,
+  calculateIsIndeterminate,
+  toggleSelectAllFilteredIds,
+} from '../../utils/studentDatabaseUtils';
 
 export interface StudentDatabaseScreenProps {
   users: User[];
   onSelectUser: (user: User, targetTab?: string) => void;
   onUpdateUserRole: (user: User, newRole: 'admin' | 'user' | 'teacher') => Promise<void>;
   onUpdateUserEmail: (userId: string, newEmail: string) => Promise<void>;
+  onDeleteUser?: (userId: string) => Promise<void>;
+  onBulkDeleteUsers?: (userIds: string[]) => Promise<void>;
+  onBulkUpdateUsers?: (userIds: string[], updates: Partial<User>) => Promise<void>;
+  onRefreshUsers?: () => Promise<void>;
   onAddNewStudent?: () => void;
   onOpenMailing?: () => void;
   onBack?: () => void;
@@ -50,6 +68,10 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
   onSelectUser,
   onUpdateUserRole,
   onUpdateUserEmail,
+  onDeleteUser,
+  onBulkDeleteUsers,
+  onBulkUpdateUsers,
+  onRefreshUsers,
   onAddNewStudent,
   onOpenMailing,
   onBack,
@@ -66,6 +88,32 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
+  // Multi-Selection State (Tick boxes)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+
+  // Per-record expanded options menu
+  const [openMenuUserId, setOpenMenuUserId] = useState<string | null>(null);
+
+  // Notion Fetch / Sync Modal State
+  const [notionSyncUser, setNotionSyncUser] = useState<User | null>(null);
+  const [showNotionSyncModal, setShowNotionSyncModal] = useState<boolean>(false);
+
+  // Single user deletion state
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState<boolean>(false);
+
+  // Bulk Edit Modal State
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState<boolean>(false);
+  const [bulkLevel, setBulkLevel] = useState<string>('no_change');
+  const [bulkRole, setBulkRole] = useState<string>('no_change');
+  const [bulkEmailNotifications, setBulkEmailNotifications] = useState<string>('no_change');
+  const [isApplyingBulkEdit, setIsApplyingBulkEdit] = useState<boolean>(false);
+  const [bulkEditSuccess, setBulkEditSuccess] = useState<boolean>(false);
+
+  // Bulk Delete Modal State
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState<boolean>(false);
+  const [isApplyingBulkDelete, setIsApplyingBulkDelete] = useState<boolean>(false);
+
   // Quick edit email modal
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editEmailInput, setEditEmailInput] = useState('');
@@ -78,6 +126,15 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
   // Export states
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingCSV, setIsExportingCSV] = useState(false);
+
+  // Close menus on outside click
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setOpenMenuUserId(null);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
 
   const isSyntheticEmail = (email?: string) => {
     if (!email) return true;
@@ -147,6 +204,91 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
       return 0;
     });
   }, [users, currentViewTab, levelFilter, roleFilter, searchQuery, sortField, sortOrder]);
+
+  const filteredUserIds = useMemo(() => filteredUsers.map((u) => u.id), [filteredUsers]);
+
+  const isAllFilteredSelected = useMemo(() => {
+    return calculateIsAllSelected(filteredUserIds, selectedUserIds);
+  }, [filteredUserIds, selectedUserIds]);
+
+  const isSomeFilteredSelected = useMemo(() => {
+    return calculateIsIndeterminate(filteredUserIds, selectedUserIds);
+  }, [filteredUserIds, selectedUserIds]);
+
+  const toggleSelectUser = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedUserIds((prev) => toggleSelectAllFilteredIds(filteredUserIds, prev));
+  };
+
+  const clearSelection = () => {
+    setSelectedUserIds(new Set());
+  };
+
+  const handleBulkEditSubmit = async () => {
+    if (selectedUserIds.size === 0) return;
+    const payload = buildBulkUpdatePayload({
+      level: bulkLevel,
+      role: bulkRole,
+      emailNotifications: bulkEmailNotifications,
+    });
+
+    if (Object.keys(payload).length === 0) {
+      alert('Nie wybrano żadnych zmian do zastosowania.');
+      return;
+    }
+
+    try {
+      setIsApplyingBulkEdit(true);
+      if (onBulkUpdateUsers) {
+        await onBulkUpdateUsers(Array.from(selectedUserIds), payload);
+      }
+      setBulkEditSuccess(true);
+      setTimeout(() => {
+        setBulkEditSuccess(false);
+        setIsBulkEditOpen(false);
+        clearSelection();
+        setBulkLevel('no_change');
+        setBulkRole('no_change');
+        setBulkEmailNotifications('no_change');
+      }, 1000);
+    } catch (err: any) {
+      console.error('Błąd masowej edycji:', err);
+      alert('Nie udało się zaktualizować wybranych użytkowników: ' + (err.message || String(err)));
+    } finally {
+      setIsApplyingBulkEdit(false);
+    }
+  };
+
+  const handleBulkDeleteSubmit = async () => {
+    if (selectedUserIds.size === 0) return;
+    try {
+      setIsApplyingBulkDelete(true);
+      if (onBulkDeleteUsers) {
+        await onBulkDeleteUsers(Array.from(selectedUserIds));
+      }
+      setIsBulkDeleteOpen(false);
+      clearSelection();
+      if (onRefreshUsers) {
+        await onRefreshUsers();
+      }
+    } catch (err: any) {
+      console.error('Błąd masowego usuwania:', err);
+      alert('Błąd podczas usuwania: ' + (err.message || String(err)));
+    } finally {
+      setIsApplyingBulkDelete(false);
+    }
+  };
 
   const handleSortToggle = (field: SortField) => {
     if (sortField === field) {
@@ -570,6 +712,23 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
             {/* Table Header */}
             <thead>
               <tr className="border-b border-white/10 bg-black/40 text-content-muted font-bold uppercase tracking-wider select-none text-[11px]">
+                {/* Select All Column */}
+                <th className="py-3 px-3 w-10 text-center">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllFiltered}
+                    className="p-1 rounded text-content-muted hover:text-white transition-colors focus:outline-none cursor-pointer"
+                    title={isAllFilteredSelected ? 'Odznacz wszystkich' : 'Zaznacz wszystkich'}
+                  >
+                    {isAllFilteredSelected ? (
+                      <CheckSquare size={16} className="text-primary" />
+                    ) : isSomeFilteredSelected ? (
+                      <MinusSquare size={16} className="text-primary" />
+                    ) : (
+                      <Square size={16} className="opacity-40 hover:opacity-100" />
+                    )}
+                  </button>
+                </th>
                 <th
                   onClick={() => handleSortToggle('name')}
                   className="py-3 px-4 cursor-pointer hover:text-white transition-colors"
@@ -621,7 +780,7 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
             <tbody className="divide-y divide-white/5">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-content-muted">
+                  <td colSpan={7} className="text-center py-12 text-content-muted">
                     <Database className="w-12 h-12 mx-auto mb-2 opacity-20" />
                     <p className="font-semibold text-sm text-white">Brak rekordów spełniających kryteria</p>
                     <p className="text-xs text-content-muted mt-0.5">Zmień frazę w wyszukiwarce lub zresetuj filtry.</p>
@@ -632,12 +791,35 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
                   const isSynth = isSyntheticEmail(user.email);
                   const isUpdatingRole = updatingRoleId === user.id;
                   const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+                  const isSelected = selectedUserIds.has(user.id);
+                  const isMenuOpen = openMenuUserId === user.id;
 
                   return (
                     <tr
                       key={user.id}
-                      className="hover:bg-white/5 transition-colors group"
+                      className={`hover:bg-white/5 transition-colors group ${
+                        isSelected ? 'bg-primary/5' : ''
+                      }`}
                     >
+                      {/* Tick Box / Checkbox Column */}
+                      <td className="py-3.5 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelectUser(user.id);
+                          }}
+                          className="p-1 rounded text-content-muted hover:text-white transition-colors focus:outline-none cursor-pointer"
+                          title={isSelected ? 'Odznacz' : 'Zaznacz'}
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={16} className="text-primary" />
+                          ) : (
+                            <Square size={16} className="opacity-30 hover:opacity-80" />
+                          )}
+                        </button>
+                      </td>
+
                       {/* Name & Avatar Column */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3 min-w-0">
@@ -746,35 +928,139 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
                         </div>
                       </td>
 
-                      {/* Direct Action Shortcuts (Go to profile / tools) */}
+                      {/* Direct Action Shortcuts & More Options Menu */}
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5 relative">
+                          {/* Fast Notion Sync Button */}
+                          <button
+                            onClick={() => {
+                              setNotionSyncUser(user);
+                              setShowNotionSyncModal(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold transition-colors flex items-center gap-1 border border-primary/25 hover:border-primary/50 cursor-pointer shadow-sm"
+                            title="Pobierz lub zaktualizuj lekcje kursanta z Notion"
+                          >
+                            <RefreshCw size={12} />
+                            <span>Notion</span>
+                          </button>
+
                           <button
                             onClick={() => onSelectUser(user, 'profile')}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-semibold transition-colors flex items-center gap-1 hover:border-primary/40 border border-transparent cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-semibold transition-colors flex items-center gap-1 hover:border-primary/40 border border-transparent cursor-pointer"
                             title="Otwórz profil i parametry tego kursanta"
                           >
                             <UserIcon size={12} className="text-primary" />
-                            <span>Profil</span>
+                            <span className="hidden sm:inline">Profil</span>
                           </button>
 
                           <button
                             onClick={() => onSelectUser(user, 'lesson-planner')}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-semibold transition-colors flex items-center gap-1 hover:border-primary/40 border border-transparent cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-semibold transition-colors flex items-center gap-1 hover:border-primary/40 border border-transparent cursor-pointer"
                             title="Otwórz planer lekcji dla tego kursanta"
                           >
                             <Sparkles size={12} className="text-primary" />
-                            <span>Planer</span>
+                            <span className="hidden sm:inline">Planer</span>
                           </button>
 
                           <button
                             onClick={() => onSelectUser(user, 'homework')}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-semibold transition-colors flex items-center gap-1 hover:border-primary/40 border border-transparent cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-semibold transition-colors flex items-center gap-1 hover:border-primary/40 border border-transparent cursor-pointer"
                             title="Otwórz prace domowe tego kursanta"
                           >
                             <BookOpen size={12} className="text-primary" />
-                            <span>Prace</span>
+                            <span className="hidden sm:inline">Prace</span>
                           </button>
+
+                          {/* "Więcej opcji" Dropdown Button */}
+                          <div className="relative inline-block text-left">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuUserId(isMenuOpen ? null : user.id);
+                              }}
+                              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                isMenuOpen
+                                  ? 'bg-primary/20 text-primary border-primary/40'
+                                  : 'bg-white/5 hover:bg-white/10 text-content-muted hover:text-white border-transparent'
+                              }`}
+                              title="Wyświetl więcej opcji dla tego rekordu"
+                            >
+                              <MoreVertical size={14} />
+                            </button>
+
+                            {isMenuOpen && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1.5 w-60 bg-base-200 border border-white/15 rounded-xl shadow-2xl p-1.5 z-40 space-y-0.5 text-left text-xs animate-fade-in backdrop-blur-xl"
+                              >
+                                <div className="px-2.5 py-1 text-[10px] font-bold text-content-muted uppercase tracking-wider border-b border-white/5 mb-1">
+                                  Opcje: {fullName}
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setOpenMenuUserId(null);
+                                    setNotionSyncUser(user);
+                                    setShowNotionSyncModal(true);
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-white flex items-center gap-2 transition-colors cursor-pointer text-left"
+                                >
+                                  <RefreshCw size={13} className="text-primary shrink-0" />
+                                  <span>Pobierz / Zaktualizuj z Notion</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setOpenMenuUserId(null);
+                                    onSelectUser(user, 'profile');
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-white flex items-center gap-2 transition-colors cursor-pointer text-left"
+                                >
+                                  <UserIcon size={13} className="text-primary shrink-0" />
+                                  <span>Przejdź do profilu</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setOpenMenuUserId(null);
+                                    onSelectUser(user, 'lesson-planner');
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-white flex items-center gap-2 transition-colors cursor-pointer text-left"
+                                >
+                                  <Sparkles size={13} className="text-primary shrink-0" />
+                                  <span>Planer lekcji</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setOpenMenuUserId(null);
+                                    onSelectUser(user, 'homework');
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-white flex items-center gap-2 transition-colors cursor-pointer text-left"
+                                >
+                                  <BookOpen size={13} className="text-primary shrink-0" />
+                                  <span>Prace domowe</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setOpenMenuUserId(null);
+                                    handleOpenEditEmail(user);
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-white flex items-center gap-2 transition-colors cursor-pointer text-left"
+                                >
+                                  <Mail size={13} className="text-primary shrink-0" />
+                                  <span>Edytuj adres e-mail</span>
+                                </button>
+                                <div className="border-t border-white/5 my-1" />
+                                <button
+                                  onClick={() => {
+                                    setOpenMenuUserId(null);
+                                    setUserToDelete(user);
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg hover:bg-danger/20 text-danger flex items-center gap-2 transition-colors cursor-pointer text-left font-semibold"
+                                >
+                                  <Trash2 size={13} className="shrink-0" />
+                                  <span>Usuń kursanta</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -787,9 +1073,16 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
 
         {/* Table Footer with Summary */}
         <div className="p-3.5 bg-black/40 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between text-xs text-content-muted gap-2">
-          <div>
-            Wyświetlono <strong className="text-white">{filteredUsers.length}</strong> z{' '}
-            <strong className="text-white">{users.length}</strong> kursantów
+          <div className="flex items-center gap-2">
+            <span>
+              Wyświetlono <strong className="text-white">{filteredUsers.length}</strong> z{' '}
+              <strong className="text-white">{users.length}</strong> kursantów
+            </span>
+            {selectedUserIds.size > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 font-bold text-[11px]">
+                Zaznaczono: {selectedUserIds.size}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <span>Uczniowie: <strong className="text-primary">{countStudents}</strong></span>
@@ -798,6 +1091,337 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Floating Bulk Action Bar */}
+      {selectedUserIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[calc(100%-2rem)] bg-base-100/95 border border-primary/40 shadow-2xl backdrop-blur-xl px-4 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary border border-primary/30 flex items-center justify-center font-bold text-xs">
+              {selectedUserIds.size}
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>Zaznaczono {selectedUserIds.size} {selectedUserIds.size === 1 ? 'kursanta' : 'kursantów'}</span>
+              </div>
+              <p className="text-[11px] text-content-muted">
+                Wybierz operację masową dla zaznaczonych rekordów
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsBulkEditOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-primary text-accent-ink hover:opacity-90 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            >
+              <SlidersHorizontal size={14} />
+              <span>Modyfikuj wspólne</span>
+            </button>
+
+            <button
+              onClick={() => setIsBulkDeleteOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-danger/15 text-danger border border-danger/30 hover:bg-danger/25 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            >
+              <Trash2 size={14} />
+              <span>Usuń</span>
+            </button>
+
+            <button
+              onClick={clearSelection}
+              className="p-2 rounded-xl hover:bg-white/10 text-content-muted hover:text-white transition-colors cursor-pointer"
+              title="Odznacz wszystkich"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notion Fetch / Sync Modal */}
+      {showNotionSyncModal && notionSyncUser && (
+        <StudentNotionSyncModal
+          isOpen={showNotionSyncModal}
+          onClose={() => {
+            setShowNotionSyncModal(false);
+            setNotionSyncUser(null);
+          }}
+          selectedUser={notionSyncUser}
+          onSyncComplete={() => {
+            if (onRefreshUsers) {
+              onRefreshUsers();
+            }
+          }}
+        />
+      )}
+
+      {/* Single User Delete Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-md bg-base-100 border border-danger/30 rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-danger/15 text-danger border border-danger/30">
+                  <Trash2 size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Usuń kursanta</h3>
+                  <p className="text-xs text-content-muted">
+                    {userToDelete.firstName || userToDelete.lastName
+                      ? `${userToDelete.firstName || ''} ${userToDelete.lastName || ''}`.trim()
+                      : userToDelete.username}{' '}
+                    <span className="font-mono">(@{userToDelete.username})</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUserToDelete(null)}
+                className="p-1 rounded-lg hover:bg-white/10 text-content-muted hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 text-xs text-danger leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertTriangle size={14} /> Ta operacja jest nieodwracalna!
+              </p>
+              <p>
+                Profil zostanie skasowany z bazy danych Firestore oraz z systemu uwierzytelniania Firebase Auth.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <Button
+                variant="secondary"
+                onClick={() => setUserToDelete(null)}
+                disabled={isDeletingUser}
+              >
+                Anuluj
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!userToDelete) return;
+                  try {
+                    setIsDeletingUser(true);
+                    if (onDeleteUser) {
+                      await onDeleteUser(userToDelete.id);
+                    }
+                    setUserToDelete(null);
+                    setSelectedUserIds((prev) => {
+                      const next = new Set(prev);
+                      next.delete(userToDelete.id);
+                      return next;
+                    });
+                  } catch (err: any) {
+                    alert('Błąd podczas usuwania: ' + (err.message || String(err)));
+                  } finally {
+                    setIsDeletingUser(false);
+                  }
+                }}
+                isLoading={isDeletingUser}
+                className="bg-danger hover:bg-danger/90 text-white font-bold"
+              >
+                Usuń trwale
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {isBulkEditOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-base-100 border border-primary/30 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-primary/15 text-primary border border-primary/25">
+                  <SlidersHorizontal size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Modyfikacja wspólnych elementów</h3>
+                  <p className="text-xs text-content-muted">
+                    Zaznaczono <strong className="text-primary">{selectedUserIds.size}</strong> {selectedUserIds.size === 1 ? 'kursanta' : 'kursantów'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBulkEditOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-content-muted hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-content-muted leading-relaxed">
+              Wybierz wartości, które chcesz przypisać wszystkim zaznaczonym użytkownikom. Pola oznaczone jako <em>„(Bez zmian)”</em> nie zmodyfikują obecnych danych kursantów.
+            </p>
+
+            <div className="space-y-4">
+              {/* CEFR Level */}
+              <div>
+                <label className="block text-xs font-bold text-content-muted mb-1.5 uppercase tracking-wider">
+                  Poziom zaawansowania (CEFR)
+                </label>
+                <select
+                  value={bulkLevel}
+                  onChange={(e) => setBulkLevel(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="no_change">— (Bez zmian) —</option>
+                  <option value="A1">A1 (Beginner)</option>
+                  <option value="A2">A2 (Elementary)</option>
+                  <option value="B1">B1 (Intermediate)</option>
+                  <option value="B2">B2 (Upper-Intermediate)</option>
+                  <option value="C1">C1 (Advanced)</option>
+                  <option value="C2">C2 (Proficiency)</option>
+                </select>
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-xs font-bold text-content-muted mb-1.5 uppercase tracking-wider">
+                  Uprawnienia i rola w systemie
+                </label>
+                <select
+                  value={bulkRole}
+                  onChange={(e) => setBulkRole(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="no_change">— (Bez zmian) —</option>
+                  <option value="user">👤 Kursant (Uczeń)</option>
+                  <option value="teacher">👨‍🏫 Nauczyciel (Lektor)</option>
+                  <option value="admin">🛡️ Administrator</option>
+                </select>
+              </div>
+
+              {/* Email Notifications */}
+              <div>
+                <label className="block text-xs font-bold text-content-muted mb-1.5 uppercase tracking-wider">
+                  Powiadomienia e-mail (Mailing)
+                </label>
+                <select
+                  value={bulkEmailNotifications}
+                  onChange={(e) => setBulkEmailNotifications(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="no_change">— (Bez zmian) —</option>
+                  <option value="enabled">Włącz powiadomienia e-mail (aktywne)</option>
+                  <option value="disabled">Wyłącz powiadomienia e-mail (wypisany)</option>
+                </select>
+              </div>
+            </div>
+
+            {bulkEditSuccess && (
+              <div className="p-3 bg-primary/10 border border-primary/30 text-primary rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in">
+                <CheckCircle2 size={16} />
+                <span>Pomyślnie zaktualizowano dane zaznaczonych kursantów!</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <Button
+                variant="secondary"
+                onClick={() => setIsBulkEditOpen(false)}
+                disabled={isApplyingBulkEdit}
+              >
+                Anuluj
+              </Button>
+              <Button
+                onClick={handleBulkEditSubmit}
+                isLoading={isApplyingBulkEdit}
+                disabled={
+                  bulkLevel === 'no_change' &&
+                  bulkRole === 'no_change' &&
+                  bulkEmailNotifications === 'no_change'
+                }
+                className="bg-primary text-accent-ink font-bold"
+              >
+                Zapisz zmiany ({selectedUserIds.size})
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {isBulkDeleteOpen && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-base-100 border border-danger/40 rounded-2xl p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-danger/15 text-danger border border-danger/30">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Masowe usuwanie kursantów</h3>
+                  <p className="text-xs text-content-muted">
+                    Zaznaczono <strong className="text-danger">{selectedUserIds.size}</strong> {selectedUserIds.size === 1 ? 'konto' : 'kont'} do usunięcia
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBulkDeleteOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-content-muted hover:text-white transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-danger/10 border border-danger/20 text-xs text-danger leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertTriangle size={15} /> Ta operacja jest całkowicie NIEODWRACALNA!
+              </p>
+              <p>
+                Wszystkie zaznaczone profile zostaną trwale skasowane z bazy danych Firestore oraz z systemu Firebase Authentication. Kursanci stracą dostęp do platformy, a ich historia lekcji i prac domowych zostanie usunięta.
+              </p>
+            </div>
+
+            {/* List of users to be deleted */}
+            <div>
+              <label className="block text-xs font-bold text-content-muted mb-1.5 uppercase tracking-wider">
+                Lista kont do usunięcia:
+              </label>
+              <div className="max-h-40 overflow-y-auto rounded-xl bg-black/40 border border-white/10 p-2 space-y-1.5 divide-y divide-white/5">
+                {users
+                  .filter((u) => selectedUserIds.has(u.id))
+                  .map((u) => (
+                    <div key={u.id} className="pt-1.5 first:pt-0 flex items-center justify-between text-xs">
+                      <div className="min-w-0 pr-2">
+                        <div className="font-semibold text-white truncate">
+                          {u.firstName || u.lastName ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : u.username}
+                        </div>
+                        <div className="text-[11px] text-content-muted font-mono truncate">
+                          {u.email || `@${u.username}`}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-content-muted uppercase">
+                        {u.role || 'user'}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <Button
+                variant="secondary"
+                onClick={() => setIsBulkDeleteOpen(false)}
+                disabled={isApplyingBulkDelete}
+              >
+                Anuluj
+              </Button>
+              <Button
+                onClick={handleBulkDeleteSubmit}
+                isLoading={isApplyingBulkDelete}
+                className="bg-danger hover:bg-danger/90 text-white font-bold flex items-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                <span>Potwierdź i usuń trwale ({selectedUserIds.size})</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Student Email Modal */}
       {editingUser && (
@@ -879,3 +1503,4 @@ export const StudentDatabaseScreen: React.FC<StudentDatabaseScreenProps> = ({
 };
 
 export default StudentDatabaseScreen;
+

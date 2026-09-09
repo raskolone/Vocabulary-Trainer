@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, query, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { User } from '../../types';
 import { StudentDatabaseScreen } from './StudentDatabaseScreen';
@@ -23,7 +23,7 @@ export const StandaloneStudentDatabaseScreen: React.FC<StandaloneStudentDatabase
   const { language } = useLanguage();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { createUser, changeUserEmail } = useFirebaseAdminApi();
+  const { createUser, changeUserEmail, deleteUser, changeUserRole } = useFirebaseAdminApi();
 
   // Create Student Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -88,6 +88,61 @@ export const StandaloneStudentDatabaseScreen: React.FC<StandaloneStudentDatabase
       console.error('Błąd zmiany emaila:', e);
       alert('Błąd podczas zmiany adresu e-mail: ' + (e.message || String(e)));
     }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!userId) return;
+    try {
+      try {
+        await deleteUser(userId);
+      } catch (authErr) {
+        console.warn(`Auth delete warning for ${userId}:`, authErr);
+      }
+      await deleteDoc(doc(db, 'users', userId));
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (e: any) {
+      console.error('Błąd usuwania użytkownika:', e);
+      throw e;
+    }
+  };
+
+  const handleBulkDeleteUsers = async (userIds: string[]) => {
+    if (!userIds.length) return;
+    for (const userId of userIds) {
+      try {
+        await deleteUser(userId);
+      } catch (authErr) {
+        console.warn(`Auth delete warning for ${userId}:`, authErr);
+      }
+      try {
+        await deleteDoc(doc(db, 'users', userId));
+      } catch (dbErr) {
+        console.error(`Firestore delete error for ${userId}:`, dbErr);
+      }
+    }
+    setUsers((prev) => prev.filter((u) => !userIds.includes(u.id)));
+  };
+
+  const handleBulkUpdateUsers = async (userIds: string[], updates: Partial<User>) => {
+    if (!userIds.length || Object.keys(updates).length === 0) return;
+    for (const userId of userIds) {
+      try {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, updates);
+        if (updates.role) {
+          try {
+            await changeUserRole(userId, updates.role);
+          } catch (authErr) {
+            console.warn(`Auth role update warning for ${userId}:`, authErr);
+          }
+        }
+      } catch (err) {
+        console.error(`Błąd masowej aktualizacji użytkownika ${userId}:`, err);
+      }
+    }
+    setUsers((prev) =>
+      prev.map((u) => (userIds.includes(u.id) ? { ...u, ...updates } : u))
+    );
   };
 
   const normalizeUsername = (u: string) =>
@@ -209,6 +264,10 @@ export const StandaloneStudentDatabaseScreen: React.FC<StandaloneStudentDatabase
           }}
           onUpdateUserRole={handleUpdateUserRole}
           onUpdateUserEmail={handleUpdateUserEmail}
+          onDeleteUser={handleDeleteUser}
+          onBulkDeleteUsers={handleBulkDeleteUsers}
+          onBulkUpdateUsers={handleBulkUpdateUsers}
+          onRefreshUsers={fetchUsers}
           onAddNewStudent={() => setShowCreateModal(true)}
           onOpenMailing={onOpenMailing}
           onBack={onBack}

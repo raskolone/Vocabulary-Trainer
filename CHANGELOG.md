@@ -94,7 +94,22 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
   - Ukryto wiązanie ze scenariuszami na rzecz bezpośredniego, czytelnego układu blokowego Notion.
   - Dodano narzędzie retroaktywnego czyszczenia i migracji starszych lekcji do nowego formatu ([CleanLessonsModal.tsx](components/admin/CleanLessonsModal.tsx)).
 
-### D. Architektura Panelu Nauczyciela & Poprawki UI/UX
+### D. Baza Kursantów: Checkboxy, Opcje Rekordu (Notion Fetch) i Operacje Masowe
+- **Tick boxy (checkboxy) w bazie kursantów**:
+  - Wdrożono kolumnę tick boxów w [StudentDatabaseScreen.tsx](components/admin/StudentDatabaseScreen.tsx) dla każdego kursanta oraz nadrzędny checkbox w nagłówku tabeli (z obsługą stanu częściowego zaznaczenia `indeterminate` i szybkiego zaznaczania/odznaczania wszystkich przefiltrowanych).
+- **Rozszerzone opcje rekordu i bezpośredni Notion Fetch**:
+  - Dodano dedykowany przycisk oraz pozycję w menu rozwijanym `...` (**Więcej opcji**) umożliwiającą natychmiastowe uruchomienie **Pobierz / Zaktualizuj z Notion** dla konkretnego kursanta przy użyciu zintegrowanego modalu [StudentNotionSyncModal.tsx](components/admin/StudentNotionSyncModal.tsx).
+  - Dodatkowe szybkie akcje w menu wiersza: przejście do profilu, planer lekcji, prace domowe, szybka edycja adresu e-mail oraz bezpieczne usuwanie kursanta.
+- **Pływający pasek akcji masowych (Bulk Action Bar)**:
+  - Automatycznie pojawia się na dole ekranu po zaznaczeniu $\ge 1$ kursantów.
+  - Wyświetla licznik zaznaczonych, przycisk **Modyfikuj wspólne**, przycisk **Usuń** (styl `danger`) oraz przycisk odznaczenia wszystkich.
+- **Modal modyfikacji wspólnych elementów (Bulk Edit Modal)**:
+  - Pozwala na jednoczesną zmianę poziomu zaawansowania (CEFR: A1–C2), uprawnień/roli (`user`, `teacher`, `admin`) oraz preferencji mailingu (włączenie/wyłączenie powiadomień) z opcją *(Bez zmian)* dla pól nieedytowanych.
+  - Narzędzia pomocnicze w [utils/studentDatabaseUtils.ts](utils/studentDatabaseUtils.ts).
+- **Bezpieczne usuwanie (Bulk Delete & Single Delete)**:
+  - Modal masowego usuwania z listą usuwanych użytkowników, wyraźnym ostrzeżeniem o nieodwracalności oraz usunięciem kont zarówno z bazy Firestore, jak i z systemu Firebase Authentication.
+
+### E. Architektura Panelu Nauczyciela & Poprawki UI/UX
 - **Wydzielenie bazy kursantów**:
   - Utworzono niezależny ekran bazy uczniów [StandaloneStudentDatabaseScreen.tsx](components/admin/StandaloneStudentDatabaseScreen.tsx).
   - Usunięto problematyczny kafelek z panelu nauczyciela, rozwiązując błędy z zapętlonym routingiem i nieintencjonalnym spadaniem do panelu kursanta.
@@ -105,9 +120,10 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 - **Wymiana natywnych alertów**:
   - Wszystkie przeglądarkowe wywołania `window.alert(...)` zastąpiono nowoczesnym, wycentrowanym oknem modalnym [AdminMessageModal.tsx](components/ui/AdminMessageModal.tsx).
 
-### E. Jakość Kodu, Typowanie i Testy Automatyczne
-- **Testy jednostkowe (Vitest)**:
-  - Przechodzi **135 na 135 testów jednostkowych** (100% pass):
+### F. Jakość Kodu, Typowanie i Testy Automatyczne
+- **Testy jednostkowe**:
+  - Przechodzi **144 na 144 testów jednostkowych** (100% pass):
+    - `tests/studentDatabaseBulk.test.ts` (9 testów operacji masowych i selekcji)
     - `tests/lessonBlocks.test.ts` (19 testów podziału na 4 bloki i ich konwersji)
     - `tests/homework.test.ts` (35 testów logiki prac domowych i typów odpowiedzi)
     - `tests/notionSync.test.ts` (28 testów synchronizacji z Notion i blacklisty)
