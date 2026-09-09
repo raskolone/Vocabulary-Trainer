@@ -5,7 +5,7 @@ import { User, SpecialTask, HomeworkType, TranslationExercise, FillInTheBlankExe
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { generateTranslationExercises, generateFillInTheBlankExercises, evaluateErrorCorrectionSentence, evaluateTranslations, evaluateTeacherHomework, processBulkSentences, generateHomeworkChatPipeline } from '../../services/geminiService';
-import { isTaskForStudent, studentTasksQuery, taskOwnerFields } from '../../utils/homework';
+import { isTaskForStudent, studentTasksQuery, taskOwnerFields, homeworkItemType } from '../../utils/homework';
 import { backfillTaskOwners } from '../../utils/backfillTaskOwners';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -79,6 +79,152 @@ export const formatTaskDateTime = (val: any): string => {
   const dateStr = d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const timeStr = d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
   return `${dateStr}, ${timeStr}`;
+};
+
+export const renderStudentAnswerDisplay = (stAns: any, item?: any): React.ReactNode => {
+  if (stAns === undefined || stAns === null || stAns === '') {
+    return <span className="text-danger italic">(Brak odpowiedzi)</span>;
+  }
+
+  // If stAns is an object with BLANK_ keys or other key-value map
+  if (typeof stAns === 'object' && !Array.isArray(stAns)) {
+    const entries = Object.entries(stAns);
+    if (entries.length === 0) {
+      return <span className="text-danger italic">(Brak odpowiedzi)</span>;
+    }
+    return (
+      <div className="flex flex-wrap gap-2 mt-1">
+        {entries
+          .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+          .map(([key, value]) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-base-200 border border-white/15 text-xs font-mono text-white shadow-sm"
+            >
+              <span className="text-primary font-bold">{key.replace(/^BLANK_/, 'Luka ')}:</span>
+              <span className="text-primary font-semibold">{String(value)}</span>
+            </span>
+          ))}
+      </div>
+    );
+  }
+
+  // If stAns is an array (e.g. word order chunks or reordered fragments)
+  if (Array.isArray(stAns)) {
+    if (item?.chunks && Array.isArray(item.chunks)) {
+      const text = stAns.map((i) => item.chunks[i] ?? i).join(' ');
+      return <span className="text-primary font-medium">{text}</span>;
+    }
+    return <span className="text-primary font-medium">{stAns.join(' ')}</span>;
+  }
+
+  // If stAns is a number (multiple choice option index)
+  if (typeof stAns === 'number') {
+    if (item?.options && Array.isArray(item.options)) {
+      return (
+        <span className="text-primary font-medium">
+          {item.options[stAns] || `Opcja ${stAns + 1}`}
+        </span>
+      );
+    }
+    return <span className="text-primary font-medium">{String(stAns)}</span>;
+  }
+
+  return <span className="text-primary font-medium">{String(stAns)}</span>;
+};
+
+export const renderExercisePrompt = (item: any, itemType: HomeworkType): React.ReactNode => {
+  if (itemType === 'fill_in_the_blank') {
+    const textWithBlanks = item.textWithBlanks || item.sentenceWithBlank || item.fullSentence || '';
+    const blanks = item.blanks;
+    return (
+      <div className="space-y-1.5 text-sm">
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Tekst z lukami:</span>
+          <p className="font-semibold text-white leading-relaxed">{textWithBlanks}</p>
+        </div>
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Wzorzec (poprawne uzupełnienie):</span>
+          {blanks && typeof blanks === 'object' ? (
+            <div className="flex flex-wrap gap-1.5 mt-0.5">
+              {Object.entries(blanks)
+                .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+                .map(([k, v]) => (
+                  <span key={k} className="px-2 py-0.5 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary">
+                    {k.replace(/^BLANK_/, 'Luka ')}: <strong>{String(v)}</strong>
+                  </span>
+                ))}
+            </div>
+          ) : (
+            <p className="text-primary font-medium">{item.missingWord || item.correctSentence || '—'}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (itemType === 'multiple_choice') {
+    return (
+      <div className="space-y-1.5 text-sm">
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Pytanie:</span>
+          <p className="font-semibold text-white">{item.question}</p>
+        </div>
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Poprawna opcja:</span>
+          <p className="text-primary font-medium">
+            {item.options?.[item.correctIndex] || `Opcja ${item.correctIndex + 1}`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (itemType === 'word_order') {
+    return (
+      <div className="space-y-1.5 text-sm">
+        {item.polishHint && (
+          <div>
+            <span className="text-xs text-content-muted block mb-0.5">Znaczenie PL:</span>
+            <p className="font-semibold text-white">{item.polishHint}</p>
+          </div>
+        )}
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Poprawne zdanie (wzorzec):</span>
+          <p className="text-primary font-medium">{item.correctSentence}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (itemType === 'find_errors') {
+    return (
+      <div className="space-y-1.5 text-sm">
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Zdanie z błędem do korekty:</span>
+          <p className="font-semibold text-warn">{item.incorrectSentence}</p>
+        </div>
+        <div>
+          <span className="text-xs text-content-muted block mb-0.5">Poprawna wersja:</span>
+          <p className="text-primary font-medium">{item.correctSentence}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // translation
+  return (
+    <div className="space-y-1.5 text-sm">
+      <div>
+        <span className="text-xs text-content-muted block mb-0.5">Po polsku (zadanie):</span>
+        <p className="font-semibold text-white">{item.polishSentence || item.polish}</p>
+      </div>
+      <div>
+        <span className="text-xs text-content-muted block mb-0.5">Wzorzec angielski:</span>
+        <p className="text-primary font-medium">{item.englishTranslation || item.english || item.englishSentence}</p>
+      </div>
+    </div>
+  );
 };
 
 export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
@@ -782,7 +928,13 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
     if (!activeTask || !activeTask.id) return;
 
     const sentenceCount = activeTask.sentences.length;
-    const answeredCount = Object.keys(studentAnswers).filter(k => (studentAnswers[Number(k)] || '').trim().length > 0).length;
+    const answeredCount = Object.keys(studentAnswers).filter(k => {
+      const val = studentAnswers[Number(k)];
+      if (!val) return false;
+      if (typeof val === 'string') return val.trim().length > 0;
+      if (typeof val === 'object') return Object.keys(val).length > 0;
+      return true;
+    }).length;
 
     if (answeredCount < sentenceCount) {
       if (!confirm(`Wypełniłeś ${answeredCount} z ${sentenceCount} zdań. Czy na pewno chcesz wysłać pracę domową w takim stanie?`)) {
@@ -803,7 +955,12 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
           englishTranslation: s.englishTranslation,
           hint: s.hint
         }));
-        const answers = activeTask.sentences.map((_, idx) => studentAnswers[idx] || '');
+        const answers = activeTask.sentences.map((_, idx) => {
+          const raw = studentAnswers[idx];
+          if (typeof raw === 'string') return raw;
+          if (typeof raw === 'object' && raw !== null) return JSON.stringify(raw);
+          return String(raw || '');
+        });
 
         const evalArray = await evaluateTranslations(
           exercises,
@@ -820,7 +977,8 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
           });
         } else {
           activeTask.sentences.forEach((item: any, i: number) => {
-            const stAns = studentAnswers[i] || '';
+            const rawAns = studentAnswers[i];
+            const stAns = typeof rawAns === 'string' ? rawAns : typeof rawAns === 'object' && rawAns !== null ? JSON.stringify(rawAns) : String(rawAns || '');
             evalResults.push({
               polishSentence: item.polishSentence,
               correctTranslation: item.englishTranslation,
@@ -836,7 +994,8 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         // Evaluate error correction exercises
         for (let i = 0; i < activeTask.sentences.length; i++) {
           const item = activeTask.sentences[i];
-          const stAns = studentAnswers[i] || '';
+          const rawAns = studentAnswers[i];
+          const stAns = typeof rawAns === 'string' ? rawAns : typeof rawAns === 'object' && rawAns !== null ? JSON.stringify(rawAns) : String(rawAns || '');
           const res = await evaluateErrorCorrectionSentence(
             item.incorrectSentence,
             item.correctSentence,
@@ -1305,13 +1464,13 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                     {activeTask.type === 'fill_in_the_blank' ? (
                       <>
                         <p className="text-sm text-danger">Błędne zdanie: {res.incorrectSentence}</p>
-                        <p className="text-sm text-content">Twoja odpowiedź: <span className="text-primary font-medium">{res.studentAnswer || '(brak)'}</span></p>
+                        <div className="text-sm text-content">Twoja odpowiedź: {renderStudentAnswerDisplay(res.studentAnswer)}</div>
                         <p className="text-sm text-primary">Poprawna wersja: {res.correctSentence}</p>
                       </>
                     ) : (
                       <>
                         <p className="text-sm text-content">Zdanie PL: {res.polishSentence}</p>
-                        <p className="text-sm text-content">Twoja odpowiedź: <span className="text-primary font-medium">{res.studentAnswer || '(brak)'}</span></p>
+                        <div className="text-sm text-content">Twoja odpowiedź: {renderStudentAnswerDisplay(res.studentAnswer)}</div>
                         <p className="text-sm text-primary">Wzorcowe tłumaczenie: {res.correctTranslation}</p>
                       </>
                     )}
@@ -2529,34 +2688,22 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
               {reviewTask.sentences.map((item: any, idx: number) => {
                 const stAns = reviewTask.studentAnswers ? (reviewTask.studentAnswers as any)[idx] : '';
                 const evalItem = reviewTask.evaluationResults ? reviewTask.evaluationResults[idx] : null;
-                const isTranslation = (reviewTask.type || 'translation') === 'translation';
+                const itemType = homeworkItemType(item, reviewTask);
 
                 return (
                   <div key={idx} className="p-4 rounded-xl bg-base-200/60 border border-white/5 space-y-2">
                     <div className="flex justify-between items-center text-xs font-mono text-content-muted">
-                      <span>Zdanie #{idx + 1}</span>
+                      <span>Zadanie #{idx + 1}</span>
                       {evalItem?.score !== undefined && (
                         <span className="text-primary font-bold">Wynik AI: {Number.isNaN(Number(evalItem.score)) ? 0 : evalItem.score}%</span>
                       )}
                     </div>
 
-                    {isTranslation ? (
-                      <>
-                        <p className="text-sm font-medium text-white">PL: {item.polishSentence}</p>
-                        <p className="text-sm text-primary">Wzorzec EN: {item.englishTranslation}</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-sm font-medium text-warn">Z błędem: {item.incorrectSentence}</p>
-                        <p className="text-sm text-primary">Wzorzec: {item.correctSentence}</p>
-                      </>
-                    )}
+                    {renderExercisePrompt(item, itemType)}
 
                     <div className="p-2.5 rounded-lg bg-base-100 border border-white/10 text-sm">
                       <span className="text-xs font-semibold text-content-muted block mb-0.5">Odpowiedź kursanta:</span>
-                      <span className={stAns ? 'text-primary font-medium' : 'text-danger italic'}>
-                        {stAns || '(Brak odpowiedzi)'}
-                      </span>
+                      {renderStudentAnswerDisplay(stAns, item)}
                     </div>
 
                     {evalItem?.explanation && (
@@ -2704,61 +2851,32 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
             {/* Sentences List */}
             <div className="space-y-3.5 max-h-[55vh] overflow-y-auto pr-1">
               {previewTask.sentences?.map((item: any, idx: number) => {
-                const isTranslation = (previewTask.type || 'translation') === 'translation';
+                const itemType = homeworkItemType(item, previewTask);
                 const stAns = previewTask.studentAnswers ? (previewTask.studentAnswers as any)[idx] : undefined;
                 const evalItem = previewTask.evaluationResults ? (previewTask.evaluationResults as any)[idx] : undefined;
 
                 return (
                   <div key={idx} className="p-4 rounded-xl bg-base-200/50 border border-white/5 space-y-2.5">
                     <div className="flex items-center justify-between text-xs font-mono text-content-muted">
-                      <span className="font-bold text-primary">Zdanie #{idx + 1}</span>
+                      <span className="font-bold text-primary">Zadanie #{idx + 1}</span>
                       {evalItem?.score !== undefined && (
                         <span className="text-primary font-bold">Ocena AI: {evalItem.score}%</span>
                       )}
                     </div>
 
-                    {isTranslation ? (
-                      <div className="space-y-1.5 text-sm">
-                        <div>
-                          <span className="text-xs text-content-muted block">Po polsku (zadanie):</span>
-                          <p className="font-semibold text-white">{item.polishSentence}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs text-content-muted block">Wzorzec angielski:</span>
-                          <p className="text-primary font-medium">{item.englishTranslation || item.englishSentence}</p>
-                        </div>
-                        {item.hint && (
-                          <div className="text-xs text-text-2 bg-base-100/60 p-2 rounded-lg border border-white/5 flex items-start gap-1.5">
-                            <span className="text-warn">💡</span>
-                            <span>Wskazówka: {item.hint}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5 text-sm">
-                        <div>
-                          <span className="text-xs text-content-muted block">Zdanie z błędem do korekty:</span>
-                          <p className="font-semibold text-warn">{item.incorrectSentence}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs text-content-muted block">Poprawna wersja:</span>
-                          <p className="text-primary font-medium">{item.correctSentence}</p>
-                        </div>
-                        {item.hint && (
-                          <div className="text-xs text-text-2 bg-base-100/60 p-2 rounded-lg border border-white/5 flex items-start gap-1.5">
-                            <span className="text-warn">💡</span>
-                            <span>Wskazówka: {item.hint}</span>
-                          </div>
-                        )}
+                    {renderExercisePrompt(item, itemType)}
+
+                    {item.hint && (
+                      <div className="text-xs text-text-2 bg-base-100/60 p-2 rounded-lg border border-white/5 flex items-start gap-1.5">
+                        <span className="text-warn">💡</span>
+                        <span>Wskazówka: {item.hint}</span>
                       </div>
                     )}
 
                     {stAns !== undefined && (
                       <div className="p-2.5 rounded-lg bg-base-100 border border-white/10 text-xs sm:text-sm">
                         <span className="text-xs font-semibold text-content-muted block mb-0.5">Odpowiedź kursanta:</span>
-                        <span className={stAns ? 'text-primary font-medium' : 'text-danger italic'}>
-                          {stAns || '(Brak odpowiedzi)'}
-                        </span>
+                        {renderStudentAnswerDisplay(stAns, item)}
                       </div>
                     )}
 

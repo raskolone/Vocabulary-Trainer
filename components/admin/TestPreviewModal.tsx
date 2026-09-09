@@ -108,7 +108,7 @@ export const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ test, isOpen
             {test.questions?.map((q, idx) => {
               const studentAns = test.studentAnswers?.[q.id];
               const isSubmitted = test.status === 'completed' || test.status === 'graded';
-              const isCorrect = isSubmitted && studentAns && studentAns.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase();
+              const isCorrect = isSubmitted && typeof studentAns === 'string' && studentAns.trim().toLowerCase() === String(q.correctAnswer || '').trim().toLowerCase();
 
               return (
                 <div key={q.id || idx} className="p-4 bg-base-200/40 rounded-xl border border-white/10 space-y-3">
@@ -219,7 +219,7 @@ export const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ test, isOpen
                             isCorrect ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-danger/10 border-danger/20 text-danger'
                           }`}>
                             <span className="text-xs opacity-75 block">{i18n.t("Odpowiedź kursanta:")}</span>
-                            <span className="font-bold whitespace-pre-wrap block leading-relaxed">{studentAns ? normalizePromptLines(studentAns) : i18n.t("Brak odpowiedzi")}</span>
+                            <span className="font-bold whitespace-pre-wrap block leading-relaxed">{typeof studentAns === 'string' ? normalizePromptLines(studentAns) : (studentAns ? String(studentAns) : i18n.t("Brak odpowiedzi"))}</span>
                           </div>
                         )}
                       </div>

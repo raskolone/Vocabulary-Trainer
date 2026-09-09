@@ -229,3 +229,26 @@ export const isTaskForStudent = (task: Partial<SpecialTask> | any, user: Partial
 
   return false;
 };
+
+/**
+ * Formats any student answer into a clean human-readable text string.
+ * Safely handles string, object (such as { BLANK_1: "...", BLANK_2: "..." }),
+ * array (such as word order indices/words), numbers, and null/undefined.
+ */
+export const formatHomeworkAnswerText = (ans: any, fallback = '(Brak odpowiedzi)'): string => {
+  if (ans === null || ans === undefined || ans === '') return fallback;
+  if (typeof ans === 'string') return ans.trim() || fallback;
+  if (typeof ans === 'number') return String(ans);
+  if (Array.isArray(ans)) {
+    const res = ans.join(' ').trim();
+    return res || fallback;
+  }
+  if (typeof ans === 'object') {
+    const entries = Object.entries(ans).filter(([_, v]) => v !== undefined && v !== null && String(v).trim() !== '');
+    if (entries.length === 0) return fallback;
+    return entries
+      .map(([k, v]) => `${k.replace('BLANK_', '#')}: ${String(v).trim()}`)
+      .join(', ');
+  }
+  return String(ans).trim() || fallback;
+};

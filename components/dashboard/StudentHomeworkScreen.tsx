@@ -64,7 +64,7 @@ interface StudentHomeworkScreenProps {
 interface EvaluationRow {
   polishSentence: string;
   correctTranslation: string;
-  studentAnswer: string;
+  studentAnswer: any;
   isCorrect: boolean;
   score: number;
   explanation?: string;
@@ -77,6 +77,29 @@ const normalize = (text: string): string =>
     .replace(/[’']/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
+
+/** Bezpieczne renderowanie odpowiedzi kursanta w UI (nawet jeśli odpowiedź to obiekt BLANK_*). */
+const formatStudentAnswer = (ans: any): React.ReactNode => {
+  if (ans === null || ans === undefined || ans === '') return '—';
+  if (typeof ans === 'object') {
+    if (Array.isArray(ans)) {
+      return ans.join(' ');
+    }
+    const entries = Object.entries(ans).filter(([_, v]) => v !== undefined && v !== null && v !== '');
+    if (entries.length === 0) return '—';
+    return (
+      <span className="inline-flex flex-wrap gap-1.5 align-middle">
+        {entries.map(([k, v]) => (
+          <span key={k} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-xs font-mono">
+            <span className="text-content-muted">{k.replace('BLANK_', '#')}:</span>
+            <span className="text-primary font-medium">{String(v)}</span>
+          </span>
+        ))}
+      </span>
+    );
+  }
+  return String(ans);
+};
 
 /** Tekst odpowiedzi do zapisania — czytelny dla lektora, nie surowy stan UI. */
 const answerToText = (type: HomeworkType, item: any, answer: any): string => {
@@ -620,7 +643,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
               </div>
               <p className="text-[13px] text-content">
                 <span className="text-content-muted">{L.yourAnswer}: </span>
-                {row.studentAnswer || '—'}
+                {formatStudentAnswer(row.studentAnswer)}
               </p>
               {!row.isCorrect && (
                 <p className="text-[13px] text-primary/90 font-mono">
@@ -914,7 +937,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                               </p>
                               <p className="text-[13px] text-content">
                                 <span className="text-content-muted">{L.yourAnswer}: </span>
-                                {row.studentAnswer || '—'}
+                                {formatStudentAnswer(row.studentAnswer)}
                               </p>
                             </div>
                           ))}
@@ -1035,7 +1058,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                               </p>
                               <p className="text-[13px] text-content">
                                 <span className="text-content-muted">{L.yourAnswer}: </span>
-                                {row.studentAnswer || '—'}
+                                {formatStudentAnswer(row.studentAnswer)}
                               </p>
                               {!row.isCorrect && row.correctTranslation && (
                                 <p className="text-[13px] text-primary/90 font-mono">
