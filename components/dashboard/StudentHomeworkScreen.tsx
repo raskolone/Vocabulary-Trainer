@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Award,
@@ -14,6 +15,7 @@ import {
   Eye,
   GraduationCap,
   Loader2,
+  MessageSquareQuote,
   Send,
   Sparkles,
   X as XIcon,
@@ -120,6 +122,76 @@ const answerToText = (type: HomeworkType, item: any, answer: any): string => {
   return String(answer || '');
 };
 
+export interface ReviewExerciseItem {
+  index: number;
+  prompt: string;
+  expected: string;
+  studentAnswer: any;
+  isCorrect: boolean;
+  score: number;
+  explanation?: string;
+  type: HomeworkType;
+}
+
+const getExerciseReviewRows = (task: SpecialTask): ReviewExerciseItem[] => {
+  const sentences = task.sentences || [];
+  const evalResults = Array.isArray(task.evaluationResults) ? task.evaluationResults : [];
+  const studentAnswers = task.studentAnswers || {};
+
+  return sentences.map((item: any, i: number) => {
+    const ev = evalResults[i] || {};
+    const itemType = homeworkItemType(item, task);
+
+    const rawAns =
+      ev.studentAnswer !== undefined
+        ? ev.studentAnswer
+        : typeof studentAnswers === 'object' && studentAnswers !== null
+        ? (studentAnswers as any)[i]
+        : undefined;
+
+    const prompt =
+      ev.polishSentence ||
+      item.polishSentence ||
+      item.polish ||
+      item.question ||
+      item.textWithBlanks ||
+      item.correctSentence ||
+      `Zadanie #${i + 1}`;
+
+    let expected = ev.correctTranslation || item.englishTranslation || item.english || '';
+    if (!expected) {
+      if (itemType === 'word_order') expected = item.correctSentence || '';
+      else if (itemType === 'multiple_choice') expected = item.options?.[item.correctIndex] || '';
+      else if (itemType === 'fill_in_the_blank' && item.blanks) {
+        expected = Object.entries(item.blanks)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ');
+      }
+    }
+
+    const isCorrect =
+      typeof ev.isCorrect === 'boolean'
+        ? ev.isCorrect
+        : typeof ev.score === 'number'
+        ? ev.score >= 80
+        : false;
+
+    const score = typeof ev.score === 'number' ? ev.score : isCorrect ? 100 : 0;
+    const explanation = ev.explanation || item.explanation;
+
+    return {
+      index: i + 1,
+      prompt,
+      expected,
+      studentAnswer: rawAns,
+      isCorrect,
+      score,
+      explanation,
+      type: itemType,
+    };
+  });
+};
+
 const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   initialTaskId = null,
   studentId,
@@ -150,6 +222,10 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   const [confirmedIncomplete, setConfirmedIncomplete] = useState(false);
   const [result, setResult] = useState<{ score: number; rows: EvaluationRow[] } | null>(null);
   const [openResultId, setOpenResultId] = useState<string | null>(null);
+  const [viewingGradedTask, setViewingGradedTask] = useState<SpecialTask | null>(null);
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'errors' | 'correct'>('all');
+  const [resultFilter, setResultFilter] = useState<'all' | 'errors' | 'correct'>('all');
+  const handledGradedUserRef = React.useRef<string | null>(null);
   // Rozwinięcie spisu bloków na liście. Praca domowa zostaje jedną pozycją,
   // a kursant może zajrzeć, z czego się składa, zanim ją otworzy.
   const [openBlocksId, setOpenBlocksId] = useState<string | null>(null);
@@ -207,6 +283,10 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
 
   useEffect(() => {
     if (user?.hasGradedHomework && user?.id) {
+      const currentKey = `${user.id}_${user.lastGradedHomeworkId || 'all'}`;
+      if (handledGradedUserRef.current === currentKey) return;
+      handledGradedUserRef.current = currentKey;
+
       const updates: any = { hasGradedHomework: false };
       if (user.lastGradedHomeworkId) {
         const currentDismissed = user.dismissedNotifications || [];
@@ -224,7 +304,7 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
         updateDoc(doc(db, 'users', user.id), { hasGradedHomework: false }).catch(console.error);
       });
     }
-  }, [user?.id, user?.hasGradedHomework, user?.lastGradedHomeworkId, user?.dismissedNotifications]);
+  }, [user?.id, user?.hasGradedHomework, user?.lastGradedHomeworkId]);
 
   useEffect(() => {
     if (!initialTaskId || activeTask || isPreview) return;
@@ -232,8 +312,9 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
     if (found && (found.status === 'pending' || !found.status)) {
       startTask(found);
     } else if (found && (found.status === 'graded' || found.status === 'submitted')) {
-      setOpenResultId(found.id);
-      if (found.status === 'graded' && user?.id) {
+      setViewingGradedTask(found);
+      setOpenResultId(found.id || null);
+      if (found.status === 'graded' && user?.id && found.id) {
         try {
           localStorage.setItem(`dismissed_graded_hw_${user.id}_${found.id}`, 'true');
         } catch (e) {}
@@ -244,6 +325,15 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTaskId, tasks, isPreview]);
+
+  useEffect(() => {
+    if (viewingGradedTask?.id) {
+      const updated = tasks.find((t) => t.id === viewingGradedTask.id);
+      if (updated) {
+        setViewingGradedTask(updated);
+      }
+    }
+  }, [tasks, viewingGradedTask?.id]);
 
   const isDateOverdue = (dateStr?: string | null): boolean => {
     if (!dateStr) return false;
@@ -613,56 +703,528 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
 
   // ————— Wynik po wysłaniu —————
   if (activeTask && result) {
+    const correctCount = result.rows.filter((r) => r.isCorrect).length;
+    const errorCount = result.rows.filter((r) => !r.isCorrect).length;
+    const totalCount = result.rows.length;
+
+    const filteredRows = result.rows.filter((r) => {
+      if (resultFilter === 'errors') return !r.isCorrect;
+      if (resultFilter === 'correct') return r.isCorrect;
+      return true;
+    });
+
     return (
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        <header className="text-center py-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/25 flex items-center justify-center mx-auto mb-4">
-            <Check className="w-7 h-7 text-primary" />
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+        <header className="text-center py-4 space-y-3">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-500/15 border-2 border-emerald-500/30 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+            <Check className="w-8 h-8 text-emerald-400 stroke-[3]" />
           </div>
-          <h1 className="text-xl font-extrabold text-white">{L.resultTitle}</h1>
-          <p className="text-sm text-content-muted mt-1">{L.resultBody(result.score)}</p>
+          <div>
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mb-2">
+              Praca odesłana
+            </span>
+            <h1 className="text-2xl font-extrabold text-white">{L.resultTitle}</h1>
+            <p className="text-xs sm:text-sm text-content-muted mt-1.5 max-w-md mx-auto leading-relaxed">
+              {language === 'pl'
+                ? 'Twoje odpowiedzi trafiły do lektora, który wkrótce je zweryfikuje i doda swój komentarz. Poniżej znajduje się wstępna analiza automatyczna.'
+                : 'Your answers have been sent to your teacher for review. Below is an initial automated check.'}
+            </p>
+          </div>
         </header>
 
-        <ul className="space-y-2">
-          {result.rows.map((row, i) => (
-            <li
-              key={i}
-              className={`rounded-xl border p-3 space-y-1.5 ${
-                row.isCorrect ? 'border-primary/25 bg-primary/[0.06]' : 'border-warn/25 bg-warn/[0.06]'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                {row.isCorrect ? (
-                  <Check size={14} className="text-primary shrink-0" />
-                ) : (
-                  <XIcon size={14} className="text-warn shrink-0" />
+        {/* Score & Summary KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-4 rounded-2xl bg-base-200/70 border border-white/10 text-center space-y-1">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-content-muted block">
+              Wynik wstępny
+            </span>
+            <span className="text-2xl font-black font-mono text-primary">
+              {result.score}%
+            </span>
+          </div>
+          <div className="p-4 rounded-2xl bg-emerald-500/[0.08] border border-emerald-500/30 text-center space-y-1 flex flex-col justify-center">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center justify-center gap-1">
+              <Check size={13} className="stroke-[3]" /> Zrobione dobrze
+            </span>
+            <span className="text-2xl font-black font-mono text-emerald-300">
+              {correctCount} <span className="text-xs font-sans text-emerald-400/70 font-normal">/ {totalCount}</span>
+            </span>
+          </div>
+          <div className="p-4 rounded-2xl bg-amber-500/[0.08] border border-amber-500/30 text-center space-y-1 flex flex-col justify-center">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center justify-center gap-1">
+              <AlertTriangle size={13} /> Wymaga poprawy
+            </span>
+            <span className="text-2xl font-black font-mono text-amber-300">
+              {errorCount} <span className="text-xs font-sans text-amber-400/70 font-normal">/ {totalCount}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Visual Ratio Progress Bar */}
+        {totalCount > 0 && (
+          <div className="space-y-1.5 px-1">
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden flex">
+              <div
+                className="h-full bg-emerald-500 transition-all"
+                style={{ width: `${(correctCount / totalCount) * 100}%` }}
+                title={`Poprawne: ${correctCount}`}
+              />
+              <div
+                className="h-full bg-amber-500 transition-all"
+                style={{ width: `${(errorCount / totalCount) * 100}%` }}
+                title={`Do poprawy: ${errorCount}`}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] font-mono text-content-muted">
+              <span>Poprawne: {Math.round((correctCount / totalCount) * 100)}%</span>
+              <span>Do poprawy: {Math.round((errorCount / totalCount) * 100)}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 p-1 rounded-xl bg-base-200/80 border border-white/10">
+          <button
+            onClick={() => setResultFilter('all')}
+            className={`flex-1 min-h-[2.25rem] rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              resultFilter === 'all'
+                ? 'bg-primary text-accent-ink shadow-sm'
+                : 'text-content-muted hover:text-white'
+            }`}
+          >
+            Wszystkie ({totalCount})
+          </button>
+          <button
+            onClick={() => setResultFilter('errors')}
+            className={`flex-1 min-h-[2.25rem] rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+              resultFilter === 'errors'
+                ? 'bg-amber-500 text-black shadow-sm'
+                : 'text-amber-400/80 hover:text-amber-300'
+            }`}
+          >
+            <AlertTriangle size={13} />
+            <span>Do poprawy ({errorCount})</span>
+          </button>
+          <button
+            onClick={() => setResultFilter('correct')}
+            className={`flex-1 min-h-[2.25rem] rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+              resultFilter === 'correct'
+                ? 'bg-emerald-500 text-black shadow-sm'
+                : 'text-emerald-400/80 hover:text-emerald-300'
+            }`}
+          >
+            <Check size={13} className="stroke-[3]" />
+            <span>Poprawne ({correctCount})</span>
+          </button>
+        </div>
+
+        {/* Exercises List */}
+        <div className="space-y-3">
+          {filteredRows.length === 0 ? (
+            <p className="text-center py-8 text-xs text-content-muted">
+              Brak zadań w wybranej kategorii.
+            </p>
+          ) : (
+            filteredRows.map((row, i) => (
+              <div
+                key={i}
+                className={`rounded-2xl border p-4 sm:p-5 space-y-3 transition-all ${
+                  row.isCorrect
+                    ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.06] to-base-200/50'
+                    : 'border-amber-500/35 bg-gradient-to-br from-amber-500/[0.08] to-base-200/60 shadow-lg shadow-amber-950/20'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-content-muted">
+                    Zadanie #{i + 1}
+                  </span>
+                  {row.isCorrect ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 shadow-sm">
+                      <Check size={13} className="stroke-[3]" />
+                      <span>Zrobione dobrze</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                      <AlertTriangle size={13} className="stroke-[2.5]" />
+                      <span>Wymaga poprawy</span>
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-content-muted block mb-1">
+                    Treść zadania:
+                  </span>
+                  <p className="prose-justified text-[15px] font-semibold text-white leading-relaxed">
+                    {row.polishSentence}
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-base-100/70 border border-white/10 space-y-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-content-muted block">
+                    Twoja odpowiedź:
+                  </span>
+                  <div
+                    className={`text-[14px] leading-relaxed ${
+                      row.isCorrect ? 'text-white font-medium' : 'text-amber-200 font-medium'
+                    }`}
+                  >
+                    {formatStudentAnswer(row.studentAnswer)}
+                  </div>
+                </div>
+
+                {!row.isCorrect && row.correctTranslation && (
+                  <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                      <Check size={13} className="stroke-[3]" /> Wzorzec lektora (poprawna wersja):
+                    </span>
+                    <p className="text-[14px] text-white font-semibold font-mono leading-relaxed">
+                      {row.correctTranslation}
+                    </p>
+                  </div>
                 )}
-                <span className="prose-justified text-[14px] font-semibold text-white leading-snug">
-                  {row.polishSentence}
-                </span>
+
+                {row.explanation && (
+                  <div className="p-3 rounded-xl bg-primary/[0.06] border border-primary/20 flex items-start gap-2.5">
+                    <Sparkles size={15} className="text-primary shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-primary block">
+                        Wskazówka / Wyjaśnienie:
+                      </span>
+                      <p className="text-[13px] text-content leading-relaxed font-sans">
+                        {row.explanation}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <p className="text-[13px] text-content">
-                <span className="text-content-muted">{L.yourAnswer}: </span>
-                {formatStudentAnswer(row.studentAnswer)}
-              </p>
-              {!row.isCorrect && (
-                <p className="text-[13px] text-primary/90 font-mono">
-                  <span className="text-content-muted font-sans">{L.expected}: </span>
-                  {row.correctTranslation}
-                </p>
-              )}
-              {row.explanation && (
-                <p className="prose-justified text-[13px] text-warn leading-relaxed">
-                  {row.explanation}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+            ))
+          )}
+        </div>
 
         <button
           onClick={closeTask}
-          className="w-full min-h-[3.25rem] rounded-xl bg-primary text-accent-ink font-bold"
+          className="w-full min-h-[3.5rem] rounded-2xl bg-primary text-accent-ink font-bold text-base shadow-lg shadow-primary/25 hover:shadow-primary/45 transition-all cursor-pointer"
+        >
+          {L.backToList}
+        </button>
+      </div>
+    );
+  }
+
+  // ————— Podgląd ocenionej / oddanej pracy domowej —————
+  if (viewingGradedTask) {
+    const rows = getExerciseReviewRows(viewingGradedTask);
+    const correctCount = rows.filter((r) => r.isCorrect).length;
+    const errorCount = rows.filter((r) => !r.isCorrect).length;
+    const totalCount = rows.length;
+    const score =
+      viewingGradedTask.grade !== undefined
+        ? viewingGradedTask.grade
+        : totalCount > 0
+        ? Math.round((correctCount / totalCount) * 100)
+        : 0;
+
+    const isGraded =
+      viewingGradedTask.status === 'graded' ||
+      Boolean(viewingGradedTask.reviewedAt) ||
+      Boolean(viewingGradedTask.teacherFeedback);
+
+    const filteredRows = rows.filter((r) => {
+      if (reviewFilter === 'errors') return !r.isCorrect;
+      if (reviewFilter === 'correct') return r.isCorrect;
+      return true;
+    });
+
+    const scoreColorClass =
+      score >= 80
+        ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/35'
+        : score >= 50
+        ? 'text-amber-400 bg-amber-500/15 border-amber-500/35'
+        : 'text-rose-400 bg-rose-500/15 border-rose-500/35';
+
+    const scoreAssessment =
+      score >= 80
+        ? 'Znakomity wynik! Świetnie opanowany materiał.'
+        : score >= 50
+        ? 'Dobra próba! Sprawdź poniżej elementy, które wymagają drobnej korekty.'
+        : 'Wymaga powtórki. Przeanalizuj poniższe poprawne wzorce i wskazówki.';
+
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-5 space-y-6">
+        {/* Navigation & Header */}
+        <div className="space-y-3">
+          <button
+            onClick={() => setViewingGradedTask(null)}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-white/12 text-content-muted hover:text-white hover:bg-white/5 transition-colors text-xs font-semibold cursor-pointer"
+          >
+            <ArrowLeft size={16} />
+            <span>Wróć do listy prac</span>
+          </button>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isGraded ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-primary/20 text-primary border border-primary/30">
+                  <CheckCheck size={14} />
+                  Ocenione przez lektora
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-warn/20 text-warn border border-warn/30">
+                  <Clock size={14} />
+                  Czeka na sprawdzenie
+                </span>
+              )}
+            </div>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-tight">
+              {viewingGradedTask.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-muted font-mono pt-1">
+              {viewingGradedTask.createdAt && (
+                <span className="inline-flex items-center gap-1">
+                  <Calendar size={12} /> Zadano: {formatTaskDateTime(viewingGradedTask.createdAt)}
+                </span>
+              )}
+              {viewingGradedTask.submittedAt && (
+                <span className="inline-flex items-center gap-1">
+                  · <Clock size={12} /> Odesłano: {formatTaskDateTime(viewingGradedTask.submittedAt)}
+                </span>
+              )}
+              {viewingGradedTask.reviewedAt && (
+                <span className="inline-flex items-center gap-1 text-primary">
+                  · <CheckCheck size={12} /> Sprawdzono: {formatTaskDateTime(viewingGradedTask.reviewedAt)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Teacher Feedback Card */}
+        {viewingGradedTask.teacherFeedback ? (
+          <div className="rounded-3xl bg-gradient-to-br from-primary/[0.14] via-base-200 to-base-200 border-2 border-primary/40 p-5 sm:p-6 shadow-xl shadow-primary/10 relative overflow-hidden space-y-3">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-48 h-48 bg-primary/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative z-10 space-y-2">
+              <div className="flex items-center gap-2 text-primary font-mono text-xs font-bold uppercase tracking-wider">
+                <MessageSquareQuote size={18} />
+                <span>{L.teacherFeedback}</span>
+              </div>
+              <p className="text-[15px] sm:text-[16px] text-white leading-relaxed whitespace-pre-wrap font-sans font-medium">
+                {viewingGradedTask.teacherFeedback}
+              </p>
+              {viewingGradedTask.reviewedAt && (
+                <p className="text-[11px] font-mono text-content-muted pt-1">
+                  Wystawiono: {formatTaskDateTime(viewingGradedTask.reviewedAt)}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : isGraded ? (
+          <div className="rounded-2xl bg-base-200/60 border border-white/10 p-4 text-xs text-content-muted leading-relaxed flex items-center gap-3">
+            <CheckCheck size={20} className="text-primary shrink-0" />
+            <span>Lektor sprawdził Twoje odpowiedzi i zatwierdził zadania bez dodatkowego komentarza ogólnego.</span>
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-warn/[0.08] border border-warn/30 p-4 sm:p-5 flex items-start gap-3">
+            <Clock className="w-5 h-5 text-warn shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-white">Praca czeka na weryfikację lektora</h3>
+              <p className="text-xs text-content-muted leading-relaxed">
+                Twoje odpowiedzi zostały przekazane nauczycielowi. Po sprawdzeniu pojawi się tutaj ocena końcowa oraz szczegółowe uwagi.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Score & Summary KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`p-4 rounded-2xl border text-center space-y-1 ${scoreColorClass}`}>
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider opacity-80 block">
+              Ocena pracy
+            </span>
+            <span className="text-3xl font-black font-mono">
+              {score}%
+            </span>
+            <span className="text-[10px] block opacity-90 font-sans">
+              {scoreAssessment}
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-emerald-500/[0.08] border border-emerald-500/30 text-center space-y-1 flex flex-col justify-center">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center justify-center gap-1">
+              <Check size={13} className="stroke-[3]" /> Zrobione dobrze
+            </span>
+            <span className="text-2xl font-black font-mono text-emerald-300">
+              {correctCount} <span className="text-xs font-sans text-emerald-400/70 font-normal">/ {totalCount}</span>
+            </span>
+            <span className="text-[11px] text-content-muted">
+              {totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0}% poprawności
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-amber-500/[0.08] border border-amber-500/30 text-center space-y-1 flex flex-col justify-center">
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center justify-center gap-1">
+              <AlertTriangle size={13} /> Wymaga poprawy
+            </span>
+            <span className="text-2xl font-black font-mono text-amber-300">
+              {errorCount} <span className="text-xs font-sans text-amber-400/70 font-normal">/ {totalCount}</span>
+            </span>
+            <span className="text-[11px] text-content-muted">
+              {errorCount === 0 ? 'Brak błędów!' : `${errorCount} do analizy`}
+            </span>
+          </div>
+        </div>
+
+        {/* Visual Ratio Progress Bar */}
+        {totalCount > 0 && (
+          <div className="space-y-1.5 px-1">
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden flex">
+              <div
+                className="h-full bg-emerald-500 transition-all"
+                style={{ width: `${(correctCount / totalCount) * 100}%` }}
+                title={`Poprawne: ${correctCount}`}
+              />
+              <div
+                className="h-full bg-amber-500 transition-all"
+                style={{ width: `${(errorCount / totalCount) * 100}%` }}
+                title={`Do poprawy: ${errorCount}`}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] font-mono text-content-muted">
+              <span>Poprawne: {Math.round((correctCount / totalCount) * 100)}%</span>
+              <span>Do poprawy: {Math.round((errorCount / totalCount) * 100)}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 p-1 rounded-xl bg-base-200/80 border border-white/10">
+          <button
+            onClick={() => setReviewFilter('all')}
+            className={`flex-1 min-h-[2.5rem] rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              reviewFilter === 'all'
+                ? 'bg-primary text-accent-ink shadow-sm'
+                : 'text-content-muted hover:text-white'
+            }`}
+          >
+            Wszystkie ({totalCount})
+          </button>
+          <button
+            onClick={() => setReviewFilter('errors')}
+            className={`flex-1 min-h-[2.5rem] rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+              reviewFilter === 'errors'
+                ? 'bg-amber-500 text-black shadow-sm'
+                : 'text-amber-400/80 hover:text-amber-300'
+            }`}
+          >
+            <AlertTriangle size={13} />
+            <span>Do poprawy ({errorCount})</span>
+          </button>
+          <button
+            onClick={() => setReviewFilter('correct')}
+            className={`flex-1 min-h-[2.5rem] rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+              reviewFilter === 'correct'
+                ? 'bg-emerald-500 text-black shadow-sm'
+                : 'text-emerald-400/80 hover:text-emerald-300'
+            }`}
+          >
+            <Check size={13} className="stroke-[3]" />
+            <span>Poprawne ({correctCount})</span>
+          </button>
+        </div>
+
+        {/* Detailed Exercise Cards */}
+        <div className="space-y-3">
+          {filteredRows.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-base-200/40 p-8 text-center text-xs text-content-muted">
+              Brak zadań w wybranej kategorii.
+            </div>
+          ) : (
+            filteredRows.map((row) => (
+              <div
+                key={row.index}
+                className={`rounded-2xl border p-4 sm:p-5 space-y-3 transition-all ${
+                  row.isCorrect
+                    ? 'border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.06] to-base-200/50'
+                    : 'border-amber-500/35 bg-gradient-to-br from-amber-500/[0.08] to-base-200/60 shadow-lg shadow-amber-950/20'
+                }`}
+              >
+                {/* Header with index and distinct badge */}
+                <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-white/[0.06]">
+                  <span className="text-xs font-mono font-bold text-content-muted">
+                    Zadanie #{row.index} · {typeLabel(row.type)}
+                  </span>
+                  {row.isCorrect ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 shadow-sm">
+                      <Check size={13} className="stroke-[3]" />
+                      <span>Zrobione dobrze</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                      <AlertTriangle size={13} className="stroke-[2.5]" />
+                      <span>Wymaga poprawy</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Prompt */}
+                <div>
+                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-content-muted block mb-1">
+                    Treść zadania:
+                  </span>
+                  <p className="prose-justified text-[15px] font-semibold text-white leading-relaxed">
+                    {row.prompt}
+                  </p>
+                </div>
+
+                {/* Student's answer */}
+                <div className="p-3 rounded-xl bg-base-100/70 border border-white/10 space-y-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-content-muted block">
+                    Twoja odpowiedź:
+                  </span>
+                  <div
+                    className={`text-[14px] leading-relaxed ${
+                      row.isCorrect ? 'text-white font-medium' : 'text-amber-200 font-medium'
+                    }`}
+                  >
+                    {formatStudentAnswer(row.studentAnswer)}
+                  </div>
+                </div>
+
+                {/* Expected answer if incorrect */}
+                {!row.isCorrect && row.expected && (
+                  <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                      <Check size={13} className="stroke-[3]" /> Wzorzec lektora (poprawna wersja):
+                    </span>
+                    <p className="text-[14px] text-white font-semibold font-mono leading-relaxed">
+                      {row.expected}
+                    </p>
+                  </div>
+                )}
+
+                {/* Explanation or tip */}
+                {row.explanation && (
+                  <div className="p-3 rounded-xl bg-primary/[0.06] border border-primary/20 flex items-start gap-2.5">
+                    <Sparkles size={15} className="text-primary shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-primary block">
+                        Wskazówka / Wyjaśnienie:
+                      </span>
+                      <p className="text-[13px] text-content leading-relaxed font-sans">
+                        {row.explanation}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Back Button */}
+        <button
+          onClick={() => setViewingGradedTask(null)}
+          className="w-full min-h-[3.5rem] rounded-2xl bg-base-100 border border-white/15 text-white font-bold text-base hover:bg-white/5 transition-all cursor-pointer"
         >
           {L.backToList}
         </button>
@@ -892,60 +1454,33 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                 <span className="ml-auto font-mono text-xs">{submittedTasks.length}</span>
               </h2>
               <ul className="rounded-2xl border border-white/10 bg-base-200/40 divide-y divide-white/[0.06] overflow-hidden">
-                {submittedTasks.map((task) => {
-                  const isOpen = openResultId === task.id;
-                  return (
-                    <li key={task.id}>
-                      <button
-                        onClick={() => setOpenResultId(isOpen ? null : task.id || null)}
-                        className="w-full min-h-[3.5rem] flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] cursor-pointer"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <span className="block text-[15px] font-semibold text-content leading-snug truncate">
-                            {task.title}
-                          </span>
-                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-content-muted mt-0.5">
-                            <span className="font-semibold text-warn">
-                              {L.statusSubmitted}
-                            </span>
-                            {task.submittedAt && (
-                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
-                                · <Clock size={11} /> Odesłano: {formatTaskDateTime(task.submittedAt)}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        <span className="text-xs text-content-muted shrink-0 font-mono">
-                          {isOpen ? 'Zwiń' : 'Podgląd'}
+                {submittedTasks.map((task) => (
+                  <li key={task.id}>
+                    <button
+                      onClick={() => setViewingGradedTask(task)}
+                      className="w-full min-h-[3.5rem] flex items-center justify-between gap-3 px-4 py-3 text-left active:bg-white/[0.04] hover:bg-white/[0.02] cursor-pointer transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-[15px] font-semibold text-content leading-snug truncate">
+                          {task.title}
                         </span>
-                      </button>
-
-                      {isOpen && (
-                        <div className="px-4 pb-4 space-y-2">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-muted pb-2 border-b border-white/5 font-mono">
-                            {task.createdAt && <span>Zadano: <strong>{formatTaskDateTime(task.createdAt)}</strong></span>}
-                            {task.submittedAt && <span>• Odesłano: <strong>{formatTaskDateTime(task.submittedAt)}</strong></span>}
-                            {task.dueDate && <span>• Termin: {task.dueDate}</span>}
-                          </div>
-                          {(task.evaluationResults || []).map((row: any, i: number) => (
-                            <div
-                              key={i}
-                              className="rounded-xl bg-base-100/50 border border-white/[0.07] p-3 space-y-1"
-                            >
-                              <p className="prose-justified text-[13px] text-white font-semibold leading-snug">
-                                {row.polishSentence}
-                              </p>
-                              <p className="text-[13px] text-content">
-                                <span className="text-content-muted">{L.yourAnswer}: </span>
-                                {formatStudentAnswer(row.studentAnswer)}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-content-muted mt-0.5">
+                          <span className="font-semibold text-warn flex items-center gap-1">
+                            <Clock size={12} /> {L.statusSubmitted}
+                          </span>
+                          {task.submittedAt && (
+                            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                              · <Clock size={11} /> Odesłano: {formatTaskDateTime(task.submittedAt)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <span className="text-xs text-content-muted flex items-center gap-1 shrink-0 font-mono">
+                        Podgląd <ChevronRight size={13} />
+                      </span>
+                    </button>
+                  </li>
+                ))}
               </ul>
             </section>
           )}
@@ -982,93 +1517,82 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
             ) : (
               <ul className="rounded-2xl border border-primary/25 bg-base-200/40 divide-y divide-white/[0.06] overflow-hidden">
                 {gradedTasks.map((task) => {
-                  const isOpen = openResultId === task.id;
+                  const rows = getExerciseReviewRows(task);
+                  const correctCount = rows.filter((r) => r.isCorrect).length;
+                  const errorCount = rows.filter((r) => !r.isCorrect).length;
+
                   return (
                     <li key={task.id}>
-                      <button
+                      <div
                         onClick={() => {
-                          const nextOpen = isOpen ? null : task.id || null;
-                          setOpenResultId(nextOpen);
-                          if (nextOpen && task.id) {
-                            if (user?.id) {
-                              try {
-                                localStorage.setItem(`dismissed_graded_hw_${user.id}_${task.id}`, 'true');
-                              } catch (e) {}
-                            }
+                          setViewingGradedTask(task);
+                          if (task.id && user?.id) {
+                            try {
+                              localStorage.setItem(`dismissed_graded_hw_${user.id}_${task.id}`, 'true');
+                            } catch (e) {}
                             updateDoc(doc(db, 'specialTasks', task.id), {
                               feedbackReadByStudent: true,
                             }).catch(() => {});
                           }
                         }}
-                        className="w-full min-h-[3.5rem] flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] cursor-pointer"
+                        className="w-full min-h-[4rem] p-4 text-left active:bg-white/[0.04] hover:bg-white/[0.02] cursor-pointer transition-colors space-y-2.5"
                       >
-                        <div className="min-w-0 flex-1">
-                          <span className="block text-[15px] font-semibold text-content leading-snug truncate">
-                            {task.title}
-                          </span>
-                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-content-muted mt-0.5">
-                            <span className="font-semibold text-primary flex items-center gap-1">
-                              <CheckCheck size={12} /> {L.statusGraded}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <span className="block text-[15px] font-bold text-white leading-snug truncate">
+                              {task.title}
                             </span>
-                            {task.reviewedAt && (
-                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
-                                · Sprawdzono: {formatTaskDateTime(task.reviewedAt)}
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-content-muted mt-0.5">
+                              <span className="font-semibold text-primary flex items-center gap-1">
+                                <CheckCheck size={13} /> {L.statusGraded}
                               </span>
-                            )}
-                            {task.submittedAt && (
-                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
-                                · Odesłano: {formatTaskDateTime(task.submittedAt)}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                        {task.grade !== undefined && (
-                          <span className="flex items-center gap-1 font-mono text-[13px] font-bold text-primary shrink-0 px-2 py-0.5 rounded-full bg-primary/15 border border-primary/30">
-                            <Award size={13} />
-                            {task.grade}%
-                          </span>
-                        )}
-                      </button>
-
-                      {isOpen && (
-                        <div className="px-4 pb-4 space-y-2.5">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-muted pb-2 border-b border-white/5 font-mono">
-                            {task.createdAt && <span>Zadano: <strong>{formatTaskDateTime(task.createdAt)}</strong></span>}
-                            {task.submittedAt && <span>• Odesłano: <strong>{formatTaskDateTime(task.submittedAt)}</strong></span>}
-                            {task.reviewedAt && <span>• Oceniono: <strong>{formatTaskDateTime(task.reviewedAt)}</strong></span>}
-                            {task.dueDate && <span>• Termin: {task.dueDate}</span>}
-                          </div>
-                          {task.teacherFeedback && (
-                            <div className="rounded-xl bg-primary/[0.08] border border-primary/25 p-3.5 space-y-1">
-                              <span className="block text-[11px] font-mono font-bold uppercase tracking-wider text-primary">
-                                {L.teacherFeedback}
-                              </span>
-                              <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap font-sans">
-                                {task.teacherFeedback}
-                              </p>
-                            </div>
-                          )}
-                          {(task.evaluationResults || []).map((row: any, i: number) => (
-                            <div
-                              key={i}
-                              className="rounded-xl bg-base-100/50 border border-white/[0.07] p-3 space-y-1"
-                            >
-                              <p className="prose-justified text-[13px] text-white font-semibold leading-snug">
-                                {row.polishSentence}
-                              </p>
-                              <p className="text-[13px] text-content">
-                                <span className="text-content-muted">{L.yourAnswer}: </span>
-                                {formatStudentAnswer(row.studentAnswer)}
-                              </p>
-                              {!row.isCorrect && row.correctTranslation && (
-                                <p className="text-[13px] text-primary/90 font-mono">
-                                  {row.correctTranslation}
-                                </p>
+                              {task.reviewedAt && (
+                                <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                                  · Sprawdzono: {formatTaskDateTime(task.reviewedAt)}
+                                </span>
                               )}
-                            </div>
-                          ))}
+                              {task.submittedAt && (
+                                <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                                  · Odesłano: {formatTaskDateTime(task.submittedAt)}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+
+                          {task.grade !== undefined && (
+                            <span className="flex items-center gap-1 font-mono text-[13px] font-bold text-primary shrink-0 px-2.5 py-1 rounded-full bg-primary/15 border border-primary/30">
+                              <Award size={14} />
+                              {task.grade}%
+                            </span>
+                          )}
                         </div>
-                      )}
+
+                        {/* Quick Summary Badges & Teacher Comment Snippet */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <div className="flex items-center gap-2 text-xs font-mono">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                              <Check size={11} className="stroke-[3]" /> {correctCount} dobrych
+                            </span>
+                            {errorCount > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                                <AlertTriangle size={11} /> {errorCount} do poprawy
+                              </span>
+                            )}
+                          </div>
+
+                          <span className="text-xs font-bold text-primary flex items-center gap-1 hover:underline">
+                            <span>Zobacz ocenę i feedback</span>
+                            <ChevronRight size={14} />
+                          </span>
+                        </div>
+
+                        {task.teacherFeedback && (
+                          <p className="text-xs text-primary/85 bg-primary/[0.06] border border-primary/15 px-3 py-2 rounded-xl line-clamp-2 italic font-sans flex items-start gap-2">
+                            <MessageSquareQuote size={13} className="shrink-0 mt-0.5 text-primary" />
+                            <span>"{task.teacherFeedback}"</span>
+                          </p>
+                        )}
+                      </div>
                     </li>
                   );
                 })}

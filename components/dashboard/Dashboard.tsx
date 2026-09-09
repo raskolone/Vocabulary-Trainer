@@ -538,7 +538,7 @@ const Dashboard: React.FC = () => {
         }}
       />
       <main className="flex-1 overflow-y-auto overflow-x-hidden relative min-w-0">
-        <StudentNotifications onNavigate={(newView) => handleNavigate(newView)} />
+        <StudentNotifications onNavigate={(newView) => handleNavigate(newView)} currentView={view} />
         {isTeacher && (
           <TeacherHomeworkNotification
             onOpenHomework={(taskId) =>
@@ -546,7 +546,7 @@ const Dashboard: React.FC = () => {
             }
           />
         )}
-        {!isTeacher && (
+        {!isTeacher && view !== 'homework' && (
           <StudentHomeworkGradedModal
             onOpenHomework={(taskId) => handleNavigate('homework', { taskId })}
           />

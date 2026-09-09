@@ -12,9 +12,10 @@ import { useEscapeModal } from '../../hooks/useEscapeModal';
 
 interface StudentNotificationsProps {
   onNavigate: (view: any, extra?: any) => void;
+  currentView?: string;
 }
 
-const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate }) => {
+const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate, currentView }) => {
   const { user } = useAuth();
   const { language } = useLanguage();
   const { sets } = useFlashcards();
@@ -167,7 +168,10 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
   };
 
   const currentHomework = assignedHomework[0];
-  const isHomeworkModalOpen = isStudentView && (assignedHomework.length > 0 || shouldShowGenericHomework);
+  const isHomeworkModalOpen =
+    isStudentView &&
+    currentView !== 'homework' &&
+    (assignedHomework.length > 0 || shouldShowGenericHomework);
 
   useEscapeModal(isHomeworkModalOpen, () => {
     const hwId = currentHomework?.id || ('generic_homework_' + (user?.id || ''));
@@ -180,7 +184,7 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
     <>
       {/* Pop-up Modal dla nowej pracy domowej */}
       <AnimatePresence>
-        {(assignedHomework.length > 0 || shouldShowGenericHomework) && (
+        {isHomeworkModalOpen && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -205,7 +209,7 @@ const StudentNotifications: React.FC<StudentNotificationsProps> = ({ onNavigate 
                 </span>
                 <button 
                   onClick={() => {
-                    const hwId = currentHomework?.id || ('generic_homework_' + user.id);
+                    const hwId = currentHomework?.id || ('generic_homework_' + (user?.id || ''));
                     handleHomeworkAction(hwId, false);
                   }}
                   className="p-1.5 text-content-muted hover:text-white rounded-full hover:bg-white/10 transition-colors cursor-pointer"
