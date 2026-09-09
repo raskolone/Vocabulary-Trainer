@@ -369,7 +369,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
               onClick={() => handleNavigate('mailing')}
               isActive={currentView === 'mailing' || currentView === 'admin-mailing'}
             >
-              <span>{language === 'pl' ? 'Poczta & Mailing' : 'Mailing & Emails'}</span>
+              <span>Mailing</span>
             </NavLink>
           )}
 

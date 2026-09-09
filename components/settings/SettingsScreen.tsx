@@ -11,7 +11,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { FREQUENCIES } from '../../constants';
 import { RevisionFrequency, TTSAccent, VoiceGender, VoiceSpeed, SoundEngine, canUserViewAiMonitor } from '../../types';
-import { LogOut, Volume2, Play, CheckCircle2, RefreshCw, VolumeX, Sparkles, Sliders, Check, Flame, Mail } from 'lucide-react';
+import { LogOut, Volume2, Play, CheckCircle2, RefreshCw, VolumeX, Sparkles, Sliders, Check, Flame, Mail, Key, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { playSpeech } from '../../services/ttsService';
 import i18n from "i18next";
 import { useEscapeModal } from '../../hooks/useEscapeModal';
@@ -22,6 +22,80 @@ const SettingsScreen: React.FC = () => {
     const { language } = useLanguage();
     const { linkGoogleAccount, user, logout } = useAuth();
     const canViewAiModels = canUserViewAiMonitor(user);
+    const isTeacherOrAdmin = user?.role === 'admin' || user?.role === 'teacher';
+
+    // Resend API key state for Admin / Teacher
+    const [resendApiKeyInput, setResendApiKeyInput] = useState<string>('');
+    const [showResendApiKey, setShowResendApiKey] = useState<boolean>(false);
+    const [isSavingApiKey, setIsSavingApiKey] = useState<boolean>(false);
+    const [apiKeySaveSuccess, setApiKeySaveSuccess] = useState<boolean>(false);
+    const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+    const [serverKeyStatus, setServerKeyStatus] = useState<{
+        configured: boolean;
+        maskedKey?: string | null;
+        fromAddress?: string;
+    }>({ configured: false });
+
+    // Fetch Resend API key status on mount for admin/teacher
+    React.useEffect(() => {
+        if (!isTeacherOrAdmin) return;
+        const fetchKeyStatus = async () => {
+            try {
+                const token = await auth.currentUser?.getIdToken();
+                if (!token) return;
+                const res = await fetch('/api/mailing/status', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setServerKeyStatus(data);
+                }
+            } catch (e) {
+                console.warn('Nie udało się sprawdzić statusu klucza poczty:', e);
+            }
+        };
+        fetchKeyStatus();
+    }, [isTeacherOrAdmin]);
+
+    const handleSaveResendKey = async () => {
+        const cleanKey = resendApiKeyInput.trim();
+        if (!cleanKey || !cleanKey.startsWith('re_')) {
+            setApiKeyError(language === 'pl' ? 'Podaj prawidłowy klucz Resend API (zaczyna się od "re_").' : 'Enter a valid Resend API key starting with "re_".');
+            return;
+        }
+        setIsSavingApiKey(true);
+        setApiKeyError(null);
+        try {
+            const token = await auth.currentUser?.getIdToken();
+            if (!token) throw new Error('Brak uprawnień administratora.');
+
+            const res = await fetch('/api/mailing/save-key', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ apiKey: cleanKey }),
+            });
+
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Błąd zapisu klucza.');
+
+            setServerKeyStatus({
+                configured: true,
+                maskedKey: data.maskedKey || `${cleanKey.slice(0, 6)}••••${cleanKey.slice(-4)}`,
+            });
+            setApiKeySaveSuccess(true);
+            setResendApiKeyInput('');
+            setTimeout(() => setApiKeySaveSuccess(false), 4000);
+        } catch (err: any) {
+            console.error('Błąd zapisu klucza Resend:', err);
+            setApiKeyError(err?.message || 'Nie udało się zapisać klucza Resend.');
+        } finally {
+            setIsSavingApiKey(false);
+        }
+    };
+
     const [isSavingStreakPref, setIsSavingStreakPref] = useState(false);
     const [isSavingEmailPref, setIsSavingEmailPref] = useState(false);
     const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
@@ -511,6 +585,99 @@ const SettingsScreen: React.FC = () => {
                         />
                     </label>
                 </Card>
+
+                {/* ADMIN ONLY: RESEND API CONFIGURATION */}
+                {isTeacherOrAdmin && (
+                    <Card className="border border-primary/30 bg-gradient-to-br from-base-200/90 via-base-200/70 to-primary/10 shadow-lg md:col-span-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-4 border-b border-white/10">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                                    <Key className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                        {language === 'pl' ? 'Konfiguracja Resend API (Mailing)' : 'Resend API Configuration'}
+                                        {serverKeyStatus.configured ? (
+                                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30 uppercase tracking-wider flex items-center gap-1 font-bold">
+                                                <CheckCircle2 size={11} /> {serverKeyStatus.maskedKey || 'Skonfigurowany'}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider font-bold">
+                                                {language === 'pl' ? 'Wymagany klucz' : 'Key required'}
+                                            </span>
+                                        )}
+                                    </h2>
+                                    <p className="text-xs text-content-muted">
+                                        {language === 'pl'
+                                            ? 'Klucz do wysyłki e-maili i powiadomień o pracach domowych z platformy CRIBRO ENGLISH'
+                                            : 'API key for sending emails and homework notifications from CRIBRO ENGLISH'}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <p className="text-xs text-content-muted leading-relaxed">
+                                Klucz API pobierzesz z panelu{' '}
+                                <a
+                                    href="https://resend.com/api-keys"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-primary underline font-semibold hover:text-white"
+                                >
+                                    resend.com/api-keys
+                                </a>. Wklej poniżej klucz rozpoczynający się od <code>re_</code>.
+                            </p>
+
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                <div className="relative flex-1">
+                                    <input
+                                        type={showResendApiKey ? 'text' : 'password'}
+                                        value={resendApiKeyInput}
+                                        onChange={(e) => {
+                                            setResendApiKeyInput(e.target.value);
+                                            setApiKeyError(null);
+                                        }}
+                                        placeholder="re_123456789abcdef..."
+                                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary pr-10"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowResendApiKey(!showResendApiKey)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-content-muted hover:text-white"
+                                        title={showResendApiKey ? 'Ukryj' : 'Pokaż'}
+                                    >
+                                        {showResendApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+                                    </button>
+                                </div>
+
+                                <Button
+                                    onClick={handleSaveResendKey}
+                                    disabled={isSavingApiKey || !resendApiKeyInput.trim().startsWith('re_')}
+                                    isLoading={isSavingApiKey}
+                                    className="shrink-0"
+                                >
+                                    {language === 'pl' ? 'Zapisz klucz API' : 'Save API Key'}
+                                </Button>
+                            </div>
+
+                            {apiKeyError && (
+                                <p className="text-xs text-danger font-semibold flex items-center gap-1 mt-1">
+                                    <AlertTriangle size={13} /> {apiKeyError}
+                                </p>
+                            )}
+
+                            {apiKeySaveSuccess && (
+                                <p className="text-xs text-primary font-semibold flex items-center gap-1 mt-1 animate-fade-in">
+                                    <CheckCircle2 size={14} />
+                                    {language === 'pl'
+                                        ? 'Klucz Resend API został pomyślnie zapisany w pliku .env oraz w bazie danych!'
+                                        : 'Resend API key saved successfully in .env and Firestore!'}
+                                </p>
+                            )}
+                        </div>
+                    </Card>
+                )}
 
                 <Card className="border-danger/30 bg-danger/5 md:col-span-2">
                     <h2 className="text-xl font-bold mb-4 text-danger">{i18n.t("Danger Zone")}</h2>

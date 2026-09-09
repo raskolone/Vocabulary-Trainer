@@ -50,7 +50,8 @@ import {
   Trash2, Download, Printer, FileText, CheckCircle2, AlertCircle,
   User as UserIcon, Users, Search, X, ChevronRight, ChevronDown, ChevronUp, Sparkles, BarChart2, Clock, 
   BookOpen, BookMarked, UserCheck, Filter, Award, Activity, Calendar, 
-  RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay, Mail, Database, Wand2
+  RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay, Mail, Database, Wand2,
+  AlertTriangle, Edit3
 } from 'lucide-react';
 import i18n from "i18next";
 import html2pdf from 'html2pdf.js';
@@ -1584,7 +1585,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             title="Przejdź do panelu zarządzania pocztą i powiadomieniami"
           >
             <Mail size={16} className={activeTab === 'mailing' ? 'text-black' : 'text-primary'} />
-            Poczta & Mailing
+            Mailing
           </button>
           <button
             onClick={() => setShowAIModal(true)}
@@ -1856,7 +1857,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               },
               {
                 id: 'mailing',
-                title: 'Poczta & Mailing',
+                title: 'Mailing',
                 badge: 'Resend & Skrzynka',
                 desc: 'Szablony, skrzynka i monitoring',
                 icon: Mail
@@ -1930,7 +1931,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               {activeTab === 'tests' && 'Generowanie i przegląd testów AI'}
               {activeTab === 'vocabulary' && 'Zestawy słówek i Zadania Specjalne AI'}
               {activeTab === 'homework' && 'Praca domowa kursanta'}
-              {activeTab === 'mailing' && 'Zarządzanie pocztą i powiadomieniami e-mail (Resend & Monitoring odpowiedzi)'}
+              {activeTab === 'mailing' && 'Mailing'}
             </h2>
           </div>
           {selectedUser ? (
