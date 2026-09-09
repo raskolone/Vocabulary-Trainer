@@ -12,6 +12,7 @@ import {
 } from '../../services/homeworkGenerator';
 import { taskOwnerFields } from '../../utils/homework';
 import { cleanVocabularyTopic } from '../../utils/vocabulary';
+import HomeworkEmailConfirmationModal from './HomeworkEmailConfirmationModal';
 
 /**
  * Kreator pracy domowej — jeden ekran, cztery decyzje.
@@ -76,6 +77,8 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
   const [sections, setSections] = useState<GeneratedSection[]>([]);
   const [modelUsed, setModelUsed] = useState<string>('');
   const [assignedCount, setAssignedCount] = useState(0);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [pendingEmailTask, setPendingEmailTask] = useState<any>(null);
 
   const student = students.find((s) => s.id === studentId);
 
@@ -202,7 +205,7 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
         ? `Praca domowa: ${sourceLabel}`
         : 'Praca domowa';
 
-      await addDoc(collection(db, 'specialTasks'), {
+      const taskPayload = {
         ...taskOwnerFields(studentId),
         studentName: student ? studentLabel(student) : 'Kursant',
         studentEmail: student?.email || '',
@@ -217,9 +220,14 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
           .join(' '),
         createdAt: nowIso,
         dueDate,
-        status: 'pending',
+        status: 'pending' as const,
         sentences: items,
-      });
+        manualEmailConfirmationRequired: true,
+        skipAutoEmail: true,
+        emailNotificationSent: false,
+      };
+
+      const docRef = await addDoc(collection(db, 'specialTasks'), taskPayload);
 
       try {
         await updateDoc(doc(db, 'users', studentId), { hasNewHomework: true });
@@ -230,7 +238,11 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
 
       setAssignedCount(items.length);
       setSections([]);
-      if (onAssigned) onAssigned();
+      setPendingEmailTask({
+        id: docRef.id,
+        ...taskPayload,
+      });
+      setIsEmailModalOpen(true);
     } catch (e: any) {
       setError(e?.message || 'Nie udało się przypisać pracy domowej.');
     } finally {
@@ -498,6 +510,29 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
             )}
           </button>
         </section>
+      )}
+
+      {isEmailModalOpen && pendingEmailTask && (
+        <HomeworkEmailConfirmationModal
+          isOpen={isEmailModalOpen}
+          student={student || null}
+          task={pendingEmailTask}
+          onEmailSent={() => {
+            setIsEmailModalOpen(false);
+            setPendingEmailTask(null);
+            if (onAssigned) onAssigned();
+          }}
+          onSkip={() => {
+            setIsEmailModalOpen(false);
+            setPendingEmailTask(null);
+            if (onAssigned) onAssigned();
+          }}
+          onClose={() => {
+            setIsEmailModalOpen(false);
+            setPendingEmailTask(null);
+            if (onAssigned) onAssigned();
+          }}
+        />
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import i18n from "i18next";
 import { LessonSelectionModal } from '../dashboard/LessonSelectionModal';
 import { taskOwnerFields } from '../../utils/homework';
 import { useEscapeModal } from '../../hooks/useEscapeModal';
+import HomeworkEmailConfirmationModal from './HomeworkEmailConfirmationModal';
 
 interface TeacherSpecialTaskModalProps {
   user: User;
@@ -55,6 +56,8 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [createdTaskForEmail, setCreatedTaskForEmail] = useState<any>(null);
 
   // Chat conversation state
   const [chatTurns, setChatTurns] = useState<ChatTurnItem[]>(() => {
@@ -313,10 +316,21 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
         })),
       };
 
-      await addDoc(collection(db, 'specialTasks'), taskData);
+      const taskPayload = {
+        ...taskData,
+        manualEmailConfirmationRequired: true,
+        skipAutoEmail: true,
+        emailNotificationSent: false,
+      };
+
+      const docRef = await addDoc(collection(db, 'specialTasks'), taskPayload);
       await updateDoc(doc(db, 'users', user.id), { hasNewHomework: true });
-      onTaskCreated();
-      onClose();
+      
+      setCreatedTaskForEmail({
+        id: docRef.id,
+        ...taskPayload,
+      });
+      setIsEmailModalOpen(true);
     } catch (err: any) {
       console.error(err);
       setError(`Błąd zapisu w bazie danych: ${err.message}`);
@@ -752,6 +766,29 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
         onSave={(ids) => setSelectedLessonIds(ids)}
         studentName={user.firstName}
       />
+
+      {isEmailModalOpen && createdTaskForEmail && (
+        <HomeworkEmailConfirmationModal
+          isOpen={isEmailModalOpen}
+          student={user}
+          task={createdTaskForEmail}
+          onEmailSent={() => {
+            setIsEmailModalOpen(false);
+            onTaskCreated();
+            onClose();
+          }}
+          onSkip={() => {
+            setIsEmailModalOpen(false);
+            onTaskCreated();
+            onClose();
+          }}
+          onClose={() => {
+            setIsEmailModalOpen(false);
+            onTaskCreated();
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 };

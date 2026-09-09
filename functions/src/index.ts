@@ -58,6 +58,16 @@ export const notifyStudentOnHomework = onDocumentCreated(
       return;
     }
 
+    if (task.manualEmailConfirmationRequired || task.skipAutoEmail || task.emailNotificationSent) {
+      logger.info('Wysyłka e-mail wymaga ręcznego zatwierdzenia przez nauczyciela lub została wstrzymana', {
+        taskId,
+        manualEmailConfirmationRequired: task.manualEmailConfirmationRequired ?? false,
+        skipAutoEmail: task.skipAutoEmail ?? false,
+        emailNotificationSent: task.emailNotificationSent ?? false,
+      });
+      return;
+    }
+
     // `studentUid` to jedyne pole, które na pewno trzyma UID konta — reszta
     // (studentId, userId) bywa w starszych dokumentach nazwiskiem albo e-mailem.
     // Patrz utils/homework.ts w głównym projekcie.

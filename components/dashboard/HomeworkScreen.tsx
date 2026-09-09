@@ -12,6 +12,7 @@ import Button from '../ui/Button';
 import ConfirmModal from '../ui/ConfirmModal';
 import { LessonSelectionModal } from './LessonSelectionModal';
 import HomeworkComposer from '../admin/HomeworkComposer';
+import HomeworkEmailConfirmationModal from '../admin/HomeworkEmailConfirmationModal';
 import { TestPreviewModal } from '../admin/TestPreviewModal';
 import { exportTestToPDF } from '../../utils/pdfExport';
 import { FillInTheBlankTask } from '../practice/FillInTheBlankTask';
@@ -250,6 +251,11 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus || 'all');
   const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
   const [previewTest, setPreviewTest] = useState<StudentTest | null>(null);
+
+  // Email confirmation modal state
+  const [isEmailConfirmationModalOpen, setIsEmailConfirmationModalOpen] = useState<boolean>(false);
+  const [createdTaskForEmail, setCreatedTaskForEmail] = useState<any>(null);
+  const [studentForEmail, setStudentForEmail] = useState<User | null>(null);
 
   useEffect(() => {
     if (initialFilterStatus) {
@@ -832,6 +838,9 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         : [selectedStudentId];
 
       const nowIso = new Date().toISOString();
+      let lastCreatedTask: any = null;
+      let lastTargetStudent: User | null = null;
+
       for (const stId of targetStudentIds) {
         const studentObj = students.find(s => s.id === stId);
         const studentName = studentObj 
@@ -849,18 +858,23 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
           createdAt: nowIso,
           dueDate,
           status: 'pending',
-          sentences: sentences
+          sentences: sentences,
+          manualEmailConfirmationRequired: true,
+          skipAutoEmail: true,
+          emailNotificationSent: false,
         };
 
-        await addDoc(collection(db, 'specialTasks'), taskData);
+        const docRef = await addDoc(collection(db, 'specialTasks'), taskData);
         try {
           await updateDoc(doc(db, 'users', stId), { hasNewHomework: true });
         } catch (uErr) {
           console.warn('Could not update hasNewHomework for user:', uErr);
         }
+
+        lastCreatedTask = { id: docRef.id, ...taskData };
+        lastTargetStudent = studentObj || null;
       }
 
-      alert('Praca domowa została pomyślnie przypisana!');
       // Reset form
       setTranslationItems([]);
       setErrorCorrectionItems([]);
@@ -870,6 +884,14 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
       setActiveTab('list');
       localStorage.removeItem('homework_draft');
       await loadData();
+
+      if (lastCreatedTask && lastTargetStudent) {
+        setCreatedTaskForEmail(lastCreatedTask);
+        setStudentForEmail(lastTargetStudent);
+        setIsEmailConfirmationModalOpen(true);
+      } else {
+        alert('Praca domowa została pomyślnie przypisana!');
+      }
     } catch (err: any) {
       console.error(err);
       alert(`Błąd zapisywania pracy domowej: ${err.message}`);
@@ -2975,6 +2997,32 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         test={previewTest}
         onClose={() => setPreviewTest(null)}
       />
+
+      {isEmailConfirmationModalOpen && createdTaskForEmail && (
+        <HomeworkEmailConfirmationModal
+          isOpen={isEmailConfirmationModalOpen}
+          student={studentForEmail}
+          task={createdTaskForEmail}
+          onEmailSent={() => {
+            setIsEmailConfirmationModalOpen(false);
+            setCreatedTaskForEmail(null);
+            setStudentForEmail(null);
+            loadData();
+          }}
+          onSkip={() => {
+            setIsEmailConfirmationModalOpen(false);
+            setCreatedTaskForEmail(null);
+            setStudentForEmail(null);
+            loadData();
+          }}
+          onClose={() => {
+            setIsEmailConfirmationModalOpen(false);
+            setCreatedTaskForEmail(null);
+            setStudentForEmail(null);
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 };
