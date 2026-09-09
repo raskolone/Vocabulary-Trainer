@@ -92,6 +92,7 @@ type Feedback = null | 'correct' | 'wrong';
 const TodayScreen: React.FC<TodayScreenProps> = ({
   onOpenExtraPractice,
   onOpenHomework,
+  onOpenTests,
   studentId,
   onStudySet,
   onPracticeAI,

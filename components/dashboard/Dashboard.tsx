@@ -88,6 +88,7 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [homeworkFilterStatus, setHomeworkFilterStatus] = useState<string | null>(null);
 
   const handleNavigate = (newView: View, extra?: any) => {
@@ -102,6 +103,12 @@ const Dashboard: React.FC = () => {
       setActiveTaskId(extra.taskId);
     } else if (newView !== 'homework') {
       setActiveTaskId(null);
+    }
+
+    if (extra && extra.testId) {
+      setActiveTestId(extra.testId);
+    } else if (newView !== 'tests') {
+      setActiveTestId(null);
     }
 
     if (extra && extra.filterStatus) {
@@ -205,7 +212,7 @@ const Dashboard: React.FC = () => {
       );
     }
     if (view === 'tests') {
-      return <StudentTestsScreen onBack={() => handleNavigate('dashboard')} />;
+      return <StudentTestsScreen initialTestId={activeTestId || undefined} onBack={() => handleNavigate('dashboard')} />;
     }
     if (view === 'flashcard-sets') {
       return (
@@ -332,7 +339,7 @@ const Dashboard: React.FC = () => {
               studentId={id}
               onOpenExtraPractice={() => handleNavigate('extra-practice')}
               onOpenHomework={(taskId) => handleNavigate('homework', taskId ? { taskId } : undefined)}
-              onOpenTests={() => handleNavigate('tests')}
+              onOpenTests={(testId) => handleNavigate('tests', testId ? { testId } : undefined)}
               onStudySet={(setId) => {
                 (window as any)._initialStudyMode = 'flashcards';
                 handleNavigate('flashcard-study', { setId });
@@ -387,7 +394,8 @@ const Dashboard: React.FC = () => {
         onOpenExtraPractice: () => handleNavigate('extra-practice'),
         onOpenHomework: (taskId?: string) =>
           handleNavigate('homework', taskId ? { taskId } : undefined),
-        onOpenTests: () => handleNavigate('tests'),
+        onOpenTests: (testId?: string) =>
+          handleNavigate('tests', testId ? { testId } : undefined),
         onStudySet: (setId: string) => {
           (window as any)._initialStudyMode = 'flashcards';
           handleNavigate('flashcard-study', { setId });

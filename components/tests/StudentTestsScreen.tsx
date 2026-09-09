@@ -15,10 +15,11 @@ import { useEscapeModal } from '../../hooks/useEscapeModal';
 interface StudentTestsScreenProps {
   /** Podgląd testów konkretnego kursanta (lektor). Domyślnie własne konto. */
   studentId?: string;
+  initialTestId?: string;
   onBack: () => void;
 }
 
-const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ studentId, onBack }) => {
+const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ studentId, initialTestId, onBack }) => {
   const { user } = useAuth();
   const targetId = studentId || user?.id || '';
   // Lektor ogląda cudzy test tylko po to, żeby zobaczyć, co dostał kursant —
@@ -42,7 +43,18 @@ const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ studentId, onBa
     try {
       const q = query(collection(db, `users/${targetId}/tests`), orderBy('createdAt', 'desc'));
       const snap = await getDocs(q);
-      setTests(snap.docs.map(d => ({ id: d.id, ...d.data() } as StudentTest)));
+      const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() } as StudentTest));
+      setTests(loaded);
+      if (initialTestId) {
+        const found = loaded.find(t => t.id === initialTestId);
+        if (found) {
+          if (found.completed) {
+            setFeedbackTest(found);
+          } else if (!isPreview) {
+            setActiveTest(found);
+          }
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
