@@ -32,6 +32,7 @@ import TeacherOverview from './TeacherOverview';
 import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
 import NotionSyncButton from './NotionSyncButton';
+import StudentNotionSyncModal from './StudentNotionSyncModal';
 import AdminMailingScreen from './AdminMailingScreen';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
@@ -1139,6 +1140,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   const [showAIModal, setShowAIModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showBulkPreviewModal, setShowBulkPreviewModal] = useState(false);
+  const [showStudentNotionSyncModal, setShowStudentNotionSyncModal] = useState(false);
   const [bulkPreviewLessons, setBulkPreviewLessons] = useState<any[]>([]);
   const [expandedBulkIndex, setExpandedBulkIndex] = useState<number | null>(null);
   const [bulkNotes, setBulkNotes] = useState('');
@@ -1383,6 +1385,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   useEscapeModal(showAIModal, () => setShowAIModal(false));
   useEscapeModal(showBulkModal, () => setShowBulkModal(false));
   useEscapeModal(showBulkPreviewModal, () => setShowBulkPreviewModal(false));
+  useEscapeModal(showStudentNotionSyncModal, () => setShowStudentNotionSyncModal(false));
   useEscapeModal(showLessonRecordModal, () => closeLessonRecordModal());
   useEscapeModal(!!userToDelete, () => setUserToDelete(null), 5);
   useEscapeModal(!!(profileSaveModal && profileSaveModal.isOpen), () => setProfileSaveModal(null), 5);
@@ -1944,6 +1947,16 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                     >
                       <Download className="w-4 h-4" />
                       {isExportingPDF ? 'Generowanie PDF...' : 'Eksportuj do PDF'}
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="secondary" 
+                      onClick={() => setShowStudentNotionSyncModal(true)}
+                      className="flex items-center gap-1.5 text-white font-medium border-white/10 hover:border-primary/50"
+                      title="Sprawdź bazę Notion i zsynchronizuj lekcje kursanta"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-primary" />
+                      <span>{i18n.t("Synchronizuj z Notion")}</span>
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => setShowAIModal(true)}>
                       {i18n.t("✨ AI Lesson Summary")}
@@ -4201,6 +4214,20 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             </div>
           </div>
         </div>
+      )}
+
+      {showStudentNotionSyncModal && (
+        <StudentNotionSyncModal
+          isOpen={showStudentNotionSyncModal}
+          onClose={() => setShowStudentNotionSyncModal(false)}
+          selectedUser={selectedUser}
+          onSyncComplete={() => {
+            if (selectedUser) {
+              fetchUserLogsAndStats(selectedUser.id);
+            }
+            fetchUsers();
+          }}
+        />
       )}
     </div>
   );

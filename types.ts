@@ -57,6 +57,7 @@ export interface User {
    */
   isArchived?: boolean;
   archivedAt?: string;
+  notionPageId?: string;
   tempPasswordLogins?: number;
   frequentErrors?: any[];
   onboardingCompleted?: boolean;
