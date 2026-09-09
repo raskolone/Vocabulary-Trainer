@@ -16,6 +16,15 @@ import { functions } from '../firebase';
 
 export type MatchReason = 'notion' | 'email' | 'name' | 'username';
 
+export interface NotionLessonItem {
+  id: string;
+  topic: string;
+  date: string;
+  isDateMissing?: boolean;
+  url?: string;
+  lastEditedTime?: string;
+}
+
 export interface StudentPreview {
   notionId: string;
   name: string;
@@ -30,6 +39,8 @@ export interface StudentPreview {
   emailNeedsFix?: boolean;
   /** Ile lekcji z Notion leży już w aplikacji. */
   importedCount?: number;
+  /** Lista lekcji przypisanych do tego kursanta w Notion. */
+  lessons?: NotionLessonItem[];
 }
 
 export interface PreviewResult {
@@ -41,6 +52,8 @@ export interface PreviewResult {
 export interface ImportSelection {
   notionId: string;
   createAccount?: boolean;
+  /** Opcjonalnie: lista wybranych ID stron lekcji z Notion do zaimportowania. */
+  lessonIds?: string[];
 }
 
 export interface ImportReport {

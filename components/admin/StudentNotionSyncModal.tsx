@@ -14,6 +14,7 @@ import {
   ListChecks,
   Loader2,
   RefreshCw,
+  Search,
   Sparkles,
   Square,
   Target,
@@ -26,6 +27,7 @@ import { LessonRecord, RejectedNotionItem, User } from '../../types';
 import {
   ImportReport,
   MatchReason,
+  NotionLessonItem,
   PreviewResult,
   StudentPreview,
   importNotionSelection,
@@ -103,6 +105,14 @@ const StudentNotionSyncModal: React.FC<Props> = ({
   const [stagedLessons, setStagedLessons] = useState<StagedLesson[]>([]);
   const [activeStagedIndex, setActiveStagedIndex] = useState<number>(0);
 
+  // Stan wyboru konkretnych lekcji z Notion do zaimportowania
+  const [selectedLessonIds, setSelectedLessonIds] = useState<Set<string>>(new Set());
+  const [existingDocIds, setExistingDocIds] = useState<Set<string>>(new Set());
+  const [existingNotionPageIds, setExistingNotionPageIds] = useState<Set<string>>(new Set());
+  const [existingTopicKeys, setExistingTopicKeys] = useState<Set<string>>(new Set());
+  const [lessonFilter, setLessonFilter] = useState<'all' | 'new' | 'already_imported'>('all');
+  const [lessonSearchTerm, setLessonSearchTerm] = useState<string>('');
+
   // Uruchomienie sprawdzania bazy Notion przy otwarciu okna
   useEffect(() => {
     if (isOpen && selectedUser) {
@@ -125,6 +135,77 @@ const StudentNotionSyncModal: React.FC<Props> = ({
     setRejectedNotionLessons([]);
     setStagedLessons([]);
     setActiveStagedIndex(0);
+    setSelectedLessonIds(new Set());
+    setExistingDocIds(new Set());
+    setExistingNotionPageIds(new Set());
+    setExistingTopicKeys(new Set());
+    setLessonFilter('all');
+    setLessonSearchTerm('');
+  };
+
+  const isLessonAlreadyImported = (lesson: NotionLessonItem): boolean => {
+    if (existingDocIds.has(lesson.id)) return true;
+    if (existingNotionPageIds.has(lesson.id)) return true;
+    if (lesson.topic && existingTopicKeys.has(normalize(lesson.topic))) return true;
+    return false;
+  };
+
+  const isLessonRejected = (lesson: NotionLessonItem): boolean => {
+    return rejectedNotionLessons.some(
+      (rej) => rej.id === lesson.id || (lesson.topic && normalize(rej.topic) === normalize(lesson.topic))
+    );
+  };
+
+  const initializeSelectedLessons = (
+    lessons: NotionLessonItem[],
+    docIds: Set<string>,
+    pageIds: Set<string>,
+    topicKeys: Set<string>,
+    rejList: RejectedNotionItem[]
+  ) => {
+    const newItems = lessons.filter((l) => {
+      const alreadyIn =
+        docIds.has(l.id) || pageIds.has(l.id) || (l.topic && topicKeys.has(normalize(l.topic)));
+      const isRej = rejList.some(
+        (r) => r.id === l.id || (l.topic && normalize(r.topic) === normalize(l.topic))
+      );
+      return !alreadyIn && !isRej;
+    });
+
+    if (newItems.length > 0) {
+      setSelectedLessonIds(new Set(newItems.map((l) => l.id)));
+    } else {
+      setSelectedLessonIds(new Set());
+    }
+  };
+
+  const toggleLessonSelection = (id: string) => {
+    setSelectedLessonIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selectOnlyNewLessons = () => {
+    if (!matchedStudent?.lessons) return;
+    const newItems = matchedStudent.lessons.filter(
+      (l) => !isLessonAlreadyImported(l) && !isLessonRejected(l)
+    );
+    setSelectedLessonIds(new Set(newItems.map((l) => l.id)));
+  };
+
+  const selectAllLessons = () => {
+    if (!matchedStudent?.lessons) return;
+    setSelectedLessonIds(new Set(matchedStudent.lessons.map((l) => l.id)));
+  };
+
+  const deselectAllLessons = () => {
+    setSelectedLessonIds(new Set());
   };
 
   const findBestMatch = (students: StudentPreview[], user: User): StudentPreview | null => {
@@ -178,10 +259,26 @@ const StudentNotionSyncModal: React.FC<Props> = ({
       const recordsSnap = await getDocs(qRecords);
       setLocalLessonCount(recordsSnap.size);
 
+      const docIds = new Set<string>();
+      const pageIds = new Set<string>();
+      const topicKeys = new Set<string>();
+
+      recordsSnap.docs.forEach((docSnap) => {
+        docIds.add(docSnap.id);
+        const data = docSnap.data();
+        if (data.notionPageId) pageIds.add(data.notionPageId);
+        if (data.topic) topicKeys.add(normalize(data.topic));
+      });
+
+      setExistingDocIds(docIds);
+      setExistingNotionPageIds(pageIds);
+      setExistingTopicKeys(topicKeys);
+
       // Pobierz listę odrzuconych tematów
+      let rejList: RejectedNotionItem[] = [];
       try {
-        const rej = await getRejectedNotionLessons(selectedUser.id);
-        setRejectedNotionLessons(rej);
+        rejList = await getRejectedNotionLessons(selectedUser.id);
+        setRejectedNotionLessons(rejList);
       } catch (e) {
         console.warn('Nie udało się pobrać odrzuconych tematów:', e);
       }
@@ -196,9 +293,11 @@ const StudentNotionSyncModal: React.FC<Props> = ({
       if (matched) {
         setMatchedStudent(matched);
         setSelectedNotionId(matched.notionId);
+        initializeSelectedLessons(matched.lessons || [], docIds, pageIds, topicKeys, rejList);
       } else {
         setMatchedStudent(null);
         setSelectedNotionId(result.students[0]?.notionId || '');
+        setSelectedLessonIds(new Set());
       }
 
       setStep('verification');
@@ -213,6 +312,15 @@ const StudentNotionSyncModal: React.FC<Props> = ({
     setSelectedNotionId(notionId);
     const chosen = allStudents.find((s) => s.notionId === notionId) || null;
     setMatchedStudent(chosen);
+    if (chosen) {
+      initializeSelectedLessons(
+        chosen.lessons || [],
+        existingDocIds,
+        existingNotionPageIds,
+        existingTopicKeys,
+        rejectedNotionLessons
+      );
+    }
   };
 
   const handleRunImport = async () => {
@@ -222,11 +330,15 @@ const StudentNotionSyncModal: React.FC<Props> = ({
     setErrorMsg('');
 
     try {
-      // Krok 1: Wywołanie importu zaznaczonej karty z Notion
+      const chosenLessonIdsArray =
+        selectedLessonIds.size > 0 ? Array.from(selectedLessonIds) : undefined;
+
+      // Krok 1: Wywołanie importu zaznaczonej karty z Notion z przekazaniem wybranych lekcji
       const report = await importNotionSelection([
         {
           notionId: selectedNotionId,
           createAccount: false,
+          lessonIds: chosenLessonIdsArray,
         },
       ]);
       setImportReport(report);
@@ -242,8 +354,23 @@ const StudentNotionSyncModal: React.FC<Props> = ({
       });
 
       // Krok 3: Przygotowanie lekcji do etapu Stagingu i Weryfikacji AI
-      // Bierzemy najnowsze lekcje (np. do 15 lekcji zsynchronizowanych lub wszystkich)
-      const stageItems: StagedLesson[] = allRecords.slice(0, 15).map((rec) => {
+      // Bierzemy DOKŁADNIE lekcje, które lektor wybrał do zaimportowania!
+      let recordsForStaging = allRecords;
+      if (chosenLessonIdsArray && chosenLessonIdsArray.length > 0) {
+        const chosenSet = new Set(chosenLessonIdsArray);
+        const filtered = allRecords.filter(
+          (r) => chosenSet.has(r.id) || (r.notionPageId && chosenSet.has(r.notionPageId))
+        );
+        if (filtered.length > 0) {
+          recordsForStaging = filtered;
+        } else {
+          recordsForStaging = allRecords.slice(0, chosenLessonIdsArray.length);
+        }
+      } else {
+        recordsForStaging = allRecords.slice(0, 15);
+      }
+
+      const stageItems: StagedLesson[] = recordsForStaging.map((rec) => {
         const blocks = extractLessonBlocks(rec);
         const isDateMissing = Boolean(rec.isDateMissing || !rec.date || /brak daty/i.test(rec.date));
         let cleanTopic = rec.topic || 'Lekcja bez tematu';
@@ -407,8 +534,33 @@ const StudentNotionSyncModal: React.FC<Props> = ({
   if (!isOpen || !selectedUser) return null;
 
   const studentName = `${selectedUser.firstName || ''} ${selectedUser.lastName || selectedUser.username}`.trim();
+  const notionLessons = matchedStudent?.lessons || [];
   const notionLessonCount = matchedStudent ? matchedStudent.lessonCount : 0;
-  const newLessonsCount = Math.max(0, notionLessonCount - localLessonCount);
+
+  const newLessonItems = notionLessons.filter(
+    (l) => !isLessonAlreadyImported(l) && !isLessonRejected(l)
+  );
+  const newLessonsCount =
+    notionLessons.length > 0
+      ? newLessonItems.length
+      : Math.max(0, notionLessonCount - localLessonCount);
+  const importedLessonItemsCount = notionLessons.filter((l) => isLessonAlreadyImported(l)).length;
+
+  const filteredNotionLessons = notionLessons.filter((l) => {
+    if (lessonFilter === 'new') {
+      if (isLessonAlreadyImported(l) || isLessonRejected(l)) return false;
+    } else if (lessonFilter === 'already_imported') {
+      if (!isLessonAlreadyImported(l)) return false;
+    }
+    if (lessonSearchTerm.trim()) {
+      const q = normalize(lessonSearchTerm);
+      const matchTopic = normalize(l.topic).includes(q);
+      const matchDate = (l.date || '').toLowerCase().includes(q);
+      if (!matchTopic && !matchDate) return false;
+    }
+    return true;
+  });
+
   const activeStaged = stagedLessons[activeStagedIndex] || null;
 
   return (
@@ -579,6 +731,186 @@ const StudentNotionSyncModal: React.FC<Props> = ({
                 </div>
               )}
 
+              {/* SEKCJA WYBORU LEKCJI DO IMPORTU */}
+              {notionLessons.length > 0 && (
+                <div className="p-4 rounded-2xl bg-base-200/90 border border-white/10 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Layers size={16} className="text-primary" />
+                        <h5 className="font-bold text-white text-sm">Wybór lekcji do zaimportowania</h5>
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-primary/20 text-primary border border-primary/30">
+                          Zaznaczono {selectedLessonIds.size} z {notionLessons.length}
+                        </span>
+                      </div>
+                      <p className="text-xs text-content-muted mt-0.5 leading-relaxed">
+                        Zaznacz tematy, które chcesz zsynchronizować. Wpisy oznaczone jako <strong className="text-white">Już w aplikacji</strong> możesz pominąć, aby nie powielać pracy.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={selectOnlyNewLessons}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Zaznacz tylko nowe lekcje"
+                      >
+                        <Sparkles size={13} />
+                        Tylko nowe ({newLessonItems.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={selectAllLessons}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-base-300 text-content-muted border border-white/10 hover:text-white hover:bg-base-200 transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <CheckSquare size={13} />
+                        Wszystkie
+                      </button>
+                      <button
+                        type="button"
+                        onClick={deselectAllLessons}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-base-300 text-content-muted border border-white/10 hover:text-white hover:bg-base-200 transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Square size={13} />
+                        Odznacz
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Wyszukiwarka i filtr zakładek */}
+                  <div className="flex items-center gap-2 pt-1 flex-wrap sm:flex-nowrap">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-muted" />
+                      <input
+                        type="text"
+                        value={lessonSearchTerm}
+                        onChange={(e) => setLessonSearchTerm(e.target.value)}
+                        placeholder="Szukaj po temacie lub dacie (np. Cybersecurity, 2026-09)..."
+                        className="w-full bg-base-300 border border-white/10 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder:text-content-muted focus:outline-none focus:border-primary"
+                      />
+                      {lessonSearchTerm && (
+                        <button
+                          type="button"
+                          onClick={() => setLessonSearchTerm('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-content-muted hover:text-white cursor-pointer"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-base-300 p-1 rounded-xl border border-white/10 text-[11px] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setLessonFilter('all')}
+                        className={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                          lessonFilter === 'all' ? 'bg-base-100 text-white font-bold' : 'text-content-muted hover:text-white'
+                        }`}
+                      >
+                        Wszystkie ({notionLessons.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLessonFilter('new')}
+                        className={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                          lessonFilter === 'new' ? 'bg-primary/20 text-primary font-bold' : 'text-content-muted hover:text-white'
+                        }`}
+                      >
+                        Nowe ({newLessonItems.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLessonFilter('already_imported')}
+                        className={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                          lessonFilter === 'already_imported' ? 'bg-base-100 text-white font-bold' : 'text-content-muted hover:text-white'
+                        }`}
+                      >
+                        W aplikacji ({importedLessonItemsCount})
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lista tematów lekcji z Notion */}
+                  <div className="max-h-64 overflow-y-auto rounded-xl border border-white/10 bg-base-300/60 divide-y divide-white/5 custom-scrollbar">
+                    {filteredNotionLessons.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-content-muted">
+                        Brak tematów spełniających wybrane kryteria.
+                      </div>
+                    ) : (
+                      filteredNotionLessons.map((lesson) => {
+                        const isSelected = selectedLessonIds.has(lesson.id);
+                        const isAlreadyIn = isLessonAlreadyImported(lesson);
+                        const isRej = isLessonRejected(lesson);
+
+                        return (
+                          <div
+                            key={lesson.id}
+                            onClick={() => toggleLessonSelection(lesson.id)}
+                            className={`p-2.5 sm:p-3 flex items-center justify-between gap-3 hover:bg-white/[0.04] transition-colors cursor-pointer select-none ${
+                              isSelected ? 'bg-primary/[0.07]' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="shrink-0 mt-0.5">
+                                {isSelected ? (
+                                  <CheckSquare size={17} className="text-primary" />
+                                ) : (
+                                  <Square size={17} className="text-content-muted hover:text-white" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {lesson.isDateMissing ? (
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                      ⚠️ Brak daty w Notion
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-base-200 text-content-muted border border-white/5">
+                                      📅 {lesson.date}
+                                    </span>
+                                  )}
+                                  <span className="text-xs font-bold text-white truncate max-w-sm sm:max-w-md">
+                                    {lesson.topic}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isRej ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-danger/20 text-danger border border-danger/30">
+                                  🛡️ Odrzucona w Recall
+                                </span>
+                              ) : isAlreadyIn ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-white/5 text-content-muted border border-white/10">
+                                  💾 Już w aplikacji
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/20 text-primary border border-primary/30">
+                                  ✨ Nowa w Notion
+                                </span>
+                              )}
+                              {lesson.url && (
+                                <a
+                                  href={lesson.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 text-content-muted hover:text-white transition-colors"
+                                  title="Otwórz stronę w Notion"
+                                >
+                                  <ExternalLink size={13} />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Weryfikacja zgodności z Wytycznymi AI */}
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2.5 text-xs">
                 <h5 className="font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide text-[11px]">
@@ -614,11 +946,18 @@ const StudentNotionSyncModal: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={handleRunImport}
-                  disabled={!selectedNotionId}
+                  disabled={
+                    !selectedNotionId ||
+                    (notionLessons.length > 0 && selectedLessonIds.size === 0)
+                  }
                   className="px-5 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_20px_rgba(114,240,180,0.3)] transition-all cursor-pointer"
                 >
                   <Sparkles size={14} />
-                  Pobierz i przejdź do weryfikacji bloków
+                  {notionLessons.length > 0
+                    ? selectedLessonIds.size > 0
+                      ? `Pobierz wybrane lekcje (${selectedLessonIds.size}) i przejdź do weryfikacji`
+                      : 'Zaznacz lekcje do importu'
+                    : 'Pobierz i przejdź do weryfikacji bloków'}
                 </button>
               </div>
             </div>

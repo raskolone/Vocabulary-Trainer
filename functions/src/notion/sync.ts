@@ -107,6 +107,15 @@ const propEmails = (page: NotionPage, name: string): string[] => {
 /** Jak konto zostało rozpoznane — lektor widzi to przy każdej pozycji. */
 export type MatchReason = 'notion' | 'email' | 'name' | 'username';
 
+export interface NotionLessonItem {
+  id: string;
+  topic: string;
+  date: string;
+  isDateMissing?: boolean;
+  url?: string;
+  lastEditedTime?: string;
+}
+
 export interface StudentPreview {
   notionId: string;
   name: string;
@@ -128,6 +137,8 @@ export interface StudentPreview {
    * a to pierwsze pytanie, które zadaje po kliknięciu.
    */
   importedCount?: number;
+  /** Lista kart lekcji przypisanych do tego kursanta w Notion. */
+  lessons?: NotionLessonItem[];
 }
 
 export interface PreviewResult {
@@ -183,12 +194,41 @@ export const previewSync = async (token: string): Promise<PreviewResult> => {
   const refs = lessonRefs(lessons);
   const byNotionId = new Map<string, number>();
   const byName = new Map<string, number>();
+  const lessonsByNotionStudentId = new Map<string, NotionLessonItem[]>();
+  const lessonsByStudentName = new Map<string, NotionLessonItem[]>();
+
   for (const ref of refs) {
+    const rawDate = propText(ref.page, 'Data lekcji');
+    const isDateMissing = !rawDate || /brak/i.test(rawDate);
+    const date = isDateMissing ? '' : rawDate.slice(0, 10);
+    const rawTopic = propText(ref.page, 'Temat lekcji') || 'Lekcja bez tematu';
+    let topic = rawTopic;
+    if (/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i.test(topic)) {
+      topic = topic.replace(/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i, '');
+    }
+
+    const item: NotionLessonItem = {
+      id: ref.page.id,
+      topic,
+      date,
+      isDateMissing,
+      url: ref.page.url || '',
+      lastEditedTime: ref.page.last_edited_time,
+    };
+
     if (ref.notionStudentId) {
       byNotionId.set(ref.notionStudentId, (byNotionId.get(ref.notionStudentId) || 0) + 1);
+      const list = lessonsByNotionStudentId.get(ref.notionStudentId) || [];
+      list.push(item);
+      lessonsByNotionStudentId.set(ref.notionStudentId, list);
     }
     const key = normalize(ref.studentName);
-    if (key) byName.set(key, (byName.get(key) || 0) + 1);
+    if (key) {
+      byName.set(key, (byName.get(key) || 0) + 1);
+      const list = lessonsByStudentName.get(key) || [];
+      list.push(item);
+      lessonsByStudentName.set(key, list);
+    }
   }
 
   const students: StudentPreview[] = [];
@@ -202,6 +242,15 @@ export const previewSync = async (token: string): Promise<PreviewResult> => {
     const lessonCount = byNotionId.get(page.id) ?? byName.get(normalize(name)) ?? 0;
     assigned += lessonCount;
 
+    const studentLessons =
+      lessonsByNotionStudentId.get(page.id) ??
+      lessonsByStudentName.get(normalize(name)) ??
+      [];
+    // Sortuj od najnowszej do najstarszej:
+    studentLessons.sort((a, b) =>
+      (b.date || b.lastEditedTime || '').localeCompare(a.date || a.lastEditedTime || '')
+    );
+
     const preview: StudentPreview = {
       notionId: page.id,
       name,
@@ -211,6 +260,7 @@ export const previewSync = async (token: string): Promise<PreviewResult> => {
       isGroup: propText(page, 'Typ') === 'Grupa',
       inactive: propText(page, 'Status współpracy') === 'Nieaktywny',
       lessonCount,
+      lessons: studentLessons,
     };
 
     const match = findAccount(usersSnap.docs, page.id, emails, name);
@@ -328,6 +378,8 @@ export interface ImportSelection {
   notionId: string;
   /** Założyć konto, gdy kursant jeszcze go nie ma. */
   createAccount?: boolean;
+  /** Opcjonalnie: lista wybranych ID stron lekcji z Notion do zaimportowania. */
+  lessonIds?: string[];
 }
 
 export interface ImportReport {
@@ -512,6 +564,19 @@ export const importSelection = async (
       uidByName.get(normalize(ref.studentName));
 
     if (!uid) continue;
+
+    // Sprawdzenie czy lektor ograniczył import do wybranych lekcji kursanta
+    const studentNotionId =
+      ref.notionStudentId ||
+      Array.from(uidByNotionId.entries()).find(([, u]) => u === uid)?.[0];
+    const selection = studentNotionId ? wanted.get(studentNotionId) : undefined;
+
+    if (selection?.lessonIds && selection.lessonIds.length > 0) {
+      if (!selection.lessonIds.includes(ref.page.id)) {
+        report.lessonsSkipped += 1;
+        continue;
+      }
+    }
 
     const topic = propText(ref.page, 'Temat lekcji') || 'Lekcja';
 
