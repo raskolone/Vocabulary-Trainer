@@ -55,6 +55,7 @@ var require_firebase_applet_config = __commonJS({
 var import_firebase_applet_config = __toESM(require_firebase_applet_config(), 1);
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
@@ -639,21 +640,126 @@ function createApp() {
       return res.status(500).json({ error: "B\u0142\u0105d zapisu preferencji powiadomie\u0144: " + formatErrorString(err) });
     }
   });
+  app2.get("/api/mailing/status", requireFirebaseAdmin, async (_req, res) => {
+    try {
+      let dbKey = null;
+      if (adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const mailingDoc = await adminDb.collection("system").doc("mailing").get();
+          if (mailingDoc.exists && mailingDoc.data()?.resendApiKey) {
+            dbKey = String(mailingDoc.data()?.resendApiKey).trim();
+          }
+        } catch {
+        }
+      }
+      const envKey = process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.trim() : null;
+      const activeKey = envKey || dbKey;
+      const maskedKey = activeKey ? `${activeKey.slice(0, 6)}\u2022\u2022\u2022\u2022${activeKey.slice(-4)}` : null;
+      return res.json({
+        configured: !!activeKey,
+        hasEnvKey: !!envKey,
+        hasDbKey: !!dbKey,
+        maskedKey,
+        fromAddress: process.env.FROM_ADDRESS || "CRIBRO ENGLISH <powiadomienia@send.maciej.pro>"
+      });
+    } catch (err) {
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+  app2.post("/api/mailing/save-key", requireFirebaseAdmin, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+      if (!apiKey || typeof apiKey !== "string" || !apiKey.trim().startsWith("re_")) {
+        return res.status(400).json({ error: 'Podaj poprawny klucz Resend API (musi zaczyna\u0107 si\u0119 od "re_").' });
+      }
+      const cleanKey = apiKey.trim();
+      process.env.RESEND_API_KEY = cleanKey;
+      try {
+        const envPath = path.resolve(process.cwd(), ".env");
+        if (fs.existsSync(envPath)) {
+          let content = fs.readFileSync(envPath, "utf8");
+          if (content.includes("RESEND_API_KEY=")) {
+            content = content.replace(/RESEND_API_KEY=.*(\r?\n|$)/, `RESEND_API_KEY=${cleanKey}
+`);
+          } else {
+            content += `
+RESEND_API_KEY=${cleanKey}
+`;
+          }
+          fs.writeFileSync(envPath, content, "utf8");
+        }
+      } catch (e) {
+        console.warn("Nie uda\u0142o si\u0119 zapisa\u0107 RESEND_API_KEY do .env:", e);
+      }
+      if (adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          await adminDb.collection("system").doc("mailing").set({
+            resendApiKey: cleanKey,
+            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          }, { merge: true });
+        } catch (e) {
+          console.warn("Nie uda\u0142o si\u0119 zapisa\u0107 resendApiKey do Firestore:", e);
+        }
+      }
+      return res.json({
+        ok: true,
+        maskedKey: `${cleanKey.slice(0, 6)}\u2022\u2022\u2022\u2022${cleanKey.slice(-4)}`,
+        message: "Klucz Resend API zosta\u0142 pomy\u015Blnie zapisany i uaktywniony."
+      });
+    } catch (err) {
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
   app2.post("/api/mailing/test-send", requireFirebaseAdmin, async (req, res) => {
     try {
-      const { to, subject, html, text } = req.body;
+      const { to, subject, html, text, apiKey: clientApiKey } = req.body;
       if (!to || typeof to !== "string" || !to.includes("@")) {
         return res.status(400).json({ error: "Wymagany jest poprawny adres e-mail odbiorcy." });
       }
-      const apiKey = process.env.RESEND_API_KEY;
+      let apiKey = typeof clientApiKey === "string" && clientApiKey.trim() || process.env.RESEND_API_KEY;
+      if (!apiKey && adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const mailingDoc = await adminDb.collection("system").doc("mailing").get();
+          if (mailingDoc.exists && mailingDoc.data()?.resendApiKey) {
+            apiKey = String(mailingDoc.data()?.resendApiKey).trim();
+          }
+        } catch {
+        }
+      }
+      if (clientApiKey && typeof clientApiKey === "string" && clientApiKey.trim().startsWith("re_")) {
+        const cleanKey = clientApiKey.trim();
+        process.env.RESEND_API_KEY = cleanKey;
+        try {
+          const envPath = path.resolve(process.cwd(), ".env");
+          if (fs.existsSync(envPath)) {
+            let content = fs.readFileSync(envPath, "utf8");
+            if (content.includes("RESEND_API_KEY=")) {
+              content = content.replace(/RESEND_API_KEY=.*(\r?\n|$)/, `RESEND_API_KEY=${cleanKey}
+`);
+            } else {
+              content += `
+RESEND_API_KEY=${cleanKey}
+`;
+            }
+            fs.writeFileSync(envPath, content, "utf8");
+          }
+        } catch (e) {
+          console.warn("Nie uda\u0142o si\u0119 zapisa\u0107 RESEND_API_KEY do .env:", e);
+        }
+      }
       if (!apiKey) {
-        return res.status(500).json({ error: "Brak zmiennej \u015Brodowiskowej RESEND_API_KEY na serwerze." });
+        return res.status(500).json({
+          error: 'Brak klucza API Resend na serwerze. Wprowad\u017A klucz RESEND_API_KEY (zaczynaj\u0105cy si\u0119 od "re_") w zak\u0142adce Ustawienia lub poni\u017Cej w oknie testowym.'
+        });
       }
       const fromAddress = process.env.FROM_ADDRESS || "CRIBRO ENGLISH <powiadomienia@send.maciej.pro>";
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey.trim()}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -1381,12 +1487,12 @@ Zwr\xF3\u0107 obiekt JSON z polami: overallTeacherCommentary (string), keyStreng
       const fileName = `tts_cache/${hash}.mp3`;
       const os = await import("os");
       const path2 = await import("path");
-      const fs = await import("fs/promises");
+      const fs2 = await import("fs/promises");
       const localCacheDir = path2.join(os.tmpdir(), "tts_cache");
-      await fs.mkdir(localCacheDir, { recursive: true });
+      await fs2.mkdir(localCacheDir, { recursive: true });
       const localFileName = path2.join(localCacheDir, `${hash}.mp3`);
       try {
-        const localBuffer = await fs.readFile(localFileName);
+        const localBuffer = await fs2.readFile(localFileName);
         res.set({
           "Content-Type": "audio/mpeg",
           "Cache-Control": "public, max-age=31536000",
@@ -1406,7 +1512,7 @@ Zwr\xF3\u0107 obiekt JSON z polami: overallTeacherCommentary (string), keyStreng
           const [exists] = await file.exists();
           if (exists) {
             const [audioBuffer] = await file.download();
-            fs.writeFile(localFileName, audioBuffer).catch(() => {
+            fs2.writeFile(localFileName, audioBuffer).catch(() => {
             });
             res.set({
               "Content-Type": "audio/mpeg",
@@ -1541,7 +1647,7 @@ Zwr\xF3\u0107 obiekt JSON z polami: overallTeacherCommentary (string), keyStreng
         }
       }
       if (finalAudioBuffer) {
-        fs.writeFile(localFileName, finalAudioBuffer).catch(() => {
+        fs2.writeFile(localFileName, finalAudioBuffer).catch(() => {
         });
         if (bucket) {
           const file = bucket.file(fileName);

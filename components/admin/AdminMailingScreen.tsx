@@ -26,7 +26,10 @@ import {
   Trash2,
   Reply,
   CheckCheck,
-  Settings
+  Settings,
+  Key,
+  Lock,
+  EyeOff
 } from 'lucide-react';
 import { collection, query, getDocs, getDoc, doc, updateDoc, setDoc, addDoc, deleteDoc, orderBy, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../../firebase';
@@ -352,6 +355,77 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
   const selectedTemplate = TEMPLATES.find((t) => t.id === selectedTemplateId) || TEMPLATES[0];
 
+  // Resend API key management
+  const [resendApiKeyInput, setResendApiKeyInput] = useState<string>('');
+  const [showResendApiKey, setShowResendApiKey] = useState<boolean>(false);
+  const [isSavingApiKey, setIsSavingApiKey] = useState<boolean>(false);
+  const [apiKeySaveSuccess, setApiKeySaveSuccess] = useState<boolean>(false);
+  const [serverKeyStatus, setServerKeyStatus] = useState<{
+    configured: boolean;
+    hasEnvKey?: boolean;
+    hasDbKey?: boolean;
+    maskedKey?: string | null;
+    fromAddress?: string;
+  }>({ configured: false });
+
+  const fetchKeyStatus = async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+      const res = await fetch('/api/mailing/status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setServerKeyStatus(data);
+      }
+    } catch (e) {
+      console.warn('Nie udało się sprawdzić statusu klucza poczty:', e);
+    }
+  };
+
+  const handleSaveApiKey = async (customKey?: string) => {
+    const keyToSave = (customKey || resendApiKeyInput || settings.resendApiKey || '').trim();
+    if (!keyToSave || !keyToSave.startsWith('re_')) {
+      alert('Podaj prawidłowy klucz Resend API (zaczyna się od "re_").');
+      return false;
+    }
+    setIsSavingApiKey(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Brak uprawnień administratora.');
+
+      const res = await fetch('/api/mailing/save-key', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ apiKey: keyToSave }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Błąd zapisu klucza.');
+
+      setSettings((prev) => ({ ...prev, resendApiKey: keyToSave }));
+      setServerKeyStatus({
+        configured: true,
+        maskedKey: data.maskedKey || `${keyToSave.slice(0, 6)}••••${keyToSave.slice(-4)}`,
+        hasEnvKey: true,
+        hasDbKey: true,
+      });
+      setApiKeySaveSuccess(true);
+      setTimeout(() => setApiKeySaveSuccess(false), 4000);
+      return true;
+    } catch (err: any) {
+      console.error('Błąd zapisu klucza Resend:', err);
+      alert('Nie udało się zapisać klucza Resend: ' + (err?.message || err));
+      return false;
+    } finally {
+      setIsSavingApiKey(false);
+    }
+  };
+
   const fetchSettings = async () => {
     setIsLoadingSettings(true);
     try {
@@ -359,6 +433,9 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
       if (snap.exists()) {
         const d = snap.data() as MailingSettings;
         setSettings((prev) => ({ ...prev, ...d }));
+        if (d.resendApiKey) {
+          setResendApiKeyInput(d.resendApiKey);
+        }
       }
     } catch (err) {
       console.warn('Nie udało się pobrać konfiguracji poczty:', err);
@@ -388,6 +465,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
   useEffect(() => {
     fetchStudents();
     fetchSettings();
+    fetchKeyStatus();
 
     const q = query(collection(db, 'inboundMessages'), orderBy('receivedAt', 'desc'));
     const unsubscribe = onSnapshot(
@@ -513,6 +591,8 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
       const html = selectedTemplate.renderHtml(selectedTemplate.sampleData);
       const text = selectedTemplate.renderText(selectedTemplate.sampleData);
 
+      const apiKeyToSend = (resendApiKeyInput || settings.resendApiKey || '').trim() || undefined;
+
       const res = await fetch('/api/mailing/test-send', {
         method: 'POST',
         headers: {
@@ -524,6 +604,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
           subject,
           html,
           text,
+          apiKey: apiKeyToSend,
         }),
       });
 
@@ -536,6 +617,15 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
         success: true,
         message: `Wiadomość testowa wysłana na adres ${testRecipient}! Identyfikator: ${data.id || 'OK'}`,
       });
+
+      if (apiKeyToSend) {
+        setServerKeyStatus({
+          configured: true,
+          maskedKey: `${apiKeyToSend.slice(0, 6)}••••${apiKeyToSend.slice(-4)}`,
+          hasEnvKey: true,
+          hasDbKey: true,
+        });
+      }
     } catch (err: any) {
       setTestResult({
         success: false,
@@ -844,15 +934,77 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
             {/* Test Send Box */}
             <Card className="mt-6 border border-primary/30 bg-primary/5">
-              <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
-                <Send size={15} className="text-primary" />
-                Wyślij podgląd testowy (Resend)
-              </h4>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Send size={15} className="text-primary" />
+                  Wyślij podgląd testowy (Resend)
+                </h4>
+                {serverKeyStatus.configured ? (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40 font-mono font-semibold flex items-center gap-1">
+                    <CheckCircle2 size={11} />
+                    {serverKeyStatus.maskedKey || 'Aktywny'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1">
+                    <AlertTriangle size={11} />
+                    Brak klucza API
+                  </span>
+                )}
+              </div>
+
               <p className="text-xs text-content-muted mb-3">
                 Wysyła prawdziwą wiadomość testową wybranego szablonu na Twój e-mail z bramki <code>send.maciej.pro</code>.
               </p>
 
               <div className="space-y-3">
+                {/* Resend API key configuration if not set or user wants to provide it */}
+                {!serverKeyStatus.configured && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Key size={15} className="shrink-0 mt-0.5 text-amber-400" />
+                      <div>
+                        <span className="text-xs font-bold block text-amber-200">Wymagany klucz Resend API</span>
+                        <span className="text-[11px] text-amber-200/80 leading-relaxed block mt-0.5">
+                          Wklej poniżej swój klucz API z panelu <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="underline font-semibold hover:text-white">resend.com</a> (np. <code>re_123...</code>). Zostanie automatycznie zapisany na serwerze.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type={showResendApiKey ? 'text' : 'password'}
+                          value={resendApiKeyInput}
+                          onChange={(e) => setResendApiKeyInput(e.target.value)}
+                          placeholder="re_123456789abcdef..."
+                          className="flex-1 px-3 py-1.5 rounded-lg bg-black/60 border border-amber-500/40 text-white text-xs font-mono focus:outline-none focus:border-primary"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowResendApiKey(!showResendApiKey)}
+                          className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-content-muted hover:text-white"
+                          title={showResendApiKey ? 'Ukryj' : 'Pokaż'}
+                        >
+                          {showResendApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveApiKey()}
+                          disabled={!resendApiKeyInput.trim().startsWith('re_') || isSavingApiKey}
+                          className="px-2.5 py-1.5 rounded-lg bg-primary text-accent-ink font-bold text-xs disabled:opacity-40 hover:opacity-90 transition-opacity"
+                        >
+                          {isSavingApiKey ? '...' : 'Zapisz'}
+                        </button>
+                      </div>
+                      {apiKeySaveSuccess && (
+                        <p className="text-[10px] text-primary font-semibold flex items-center gap-1">
+                          <CheckCircle2 size={11} /> Klucz został zapisany i uaktywniony!
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-[11px] font-bold text-content-muted block mb-1 uppercase">
                     Adres docelowy
@@ -869,7 +1021,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
                 <Button
                   onClick={handleSendTestEmail}
                   isLoading={isSendingTest}
-                  disabled={!testRecipient}
+                  disabled={!testRecipient || (!serverKeyStatus.configured && !resendApiKeyInput.trim().startsWith('re_'))}
                   className="w-full text-xs font-bold py-2.5"
                 >
                   <Send size={14} />
@@ -1240,6 +1392,76 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
               </div>
 
               <div className="space-y-3.5">
+                {/* Resend API Key Input & Status */}
+                <div className="p-3.5 rounded-xl bg-black/50 border border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
+                      <Key size={14} className="text-primary" />
+                      Klucz Resend API (RESEND_API_KEY)
+                    </label>
+                    {serverKeyStatus.configured ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/40 font-mono font-bold flex items-center gap-1">
+                        <CheckCircle2 size={11} /> {serverKeyStatus.maskedKey || 'Skonfigurowany'}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1">
+                        <AlertTriangle size={11} /> Brak klucza
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-content-muted leading-relaxed">
+                    Klucz do autoryzacji wysyłki e-maili przez API Resend. Możesz go pobrać z panelu{' '}
+                    <a
+                      href="https://resend.com/api-keys"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline font-semibold hover:text-white"
+                    >
+                      resend.com/api-keys
+                    </a>.
+                  </p>
+
+                  <div className="flex items-center gap-1.5 pt-1">
+                    <div className="relative flex-1">
+                      <input
+                        type={showResendApiKey ? 'text' : 'password'}
+                        value={resendApiKeyInput}
+                        onChange={(e) => {
+                          setResendApiKeyInput(e.target.value);
+                          setSettings({ ...settings, resendApiKey: e.target.value });
+                        }}
+                        placeholder="re_123456789abcdef..."
+                        className="w-full px-3.5 py-2 rounded-lg bg-black/70 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResendApiKey(!showResendApiKey)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-content-muted hover:text-white"
+                        title={showResendApiKey ? 'Ukryj' : 'Pokaż'}
+                      >
+                        {showResendApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSaveApiKey()}
+                      disabled={!resendApiKeyInput.trim().startsWith('re_') || isSavingApiKey}
+                      className="px-3 py-2 rounded-lg bg-primary text-accent-ink font-bold text-xs disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0 flex items-center gap-1"
+                    >
+                      {isSavingApiKey ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                      Zapisz klucz
+                    </button>
+                  </div>
+
+                  {apiKeySaveSuccess && (
+                    <p className="text-[11px] text-primary font-semibold flex items-center gap-1 pt-1">
+                      <CheckCircle2 size={12} /> Klucz Resend API został pomyślnie zapisany w pliku .env i w bazie Firestore!
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-xs font-bold text-content-muted uppercase tracking-wider block mb-1.5">
                     Nazwa nadawcy (Sender Name)

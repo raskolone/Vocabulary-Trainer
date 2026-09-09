@@ -147,6 +147,7 @@ async function callOpenAIServerFallback(prompt, system, schema) {
 
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
@@ -656,17 +657,130 @@ export function createApp() {
     }
   });
 
+  // Admin mailing status
+  app.get('/api/mailing/status', requireFirebaseAdmin, async (_req, res) => {
+    try {
+      let dbKey: string | null = null;
+      if (adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const mailingDoc = await adminDb.collection('system').doc('mailing').get();
+          if (mailingDoc.exists && mailingDoc.data()?.resendApiKey) {
+            dbKey = String(mailingDoc.data()?.resendApiKey).trim();
+          }
+        } catch {}
+      }
+
+      const envKey = process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.trim() : null;
+      const activeKey = envKey || dbKey;
+      const maskedKey = activeKey ? `${activeKey.slice(0, 6)}••••${activeKey.slice(-4)}` : null;
+
+      return res.json({
+        configured: !!activeKey,
+        hasEnvKey: !!envKey,
+        hasDbKey: !!dbKey,
+        maskedKey,
+        fromAddress: process.env.FROM_ADDRESS || 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
+  // Admin mailing save Resend API key
+  app.post('/api/mailing/save-key', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+      if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim().startsWith('re_')) {
+        return res.status(400).json({ error: 'Podaj poprawny klucz Resend API (musi zaczynać się od "re_").' });
+      }
+
+      const cleanKey = apiKey.trim();
+      process.env.RESEND_API_KEY = cleanKey;
+
+      // Persist to local .env if file exists
+      try {
+        const envPath = path.resolve(process.cwd(), '.env');
+        if (fs.existsSync(envPath)) {
+          let content = fs.readFileSync(envPath, 'utf8');
+          if (content.includes('RESEND_API_KEY=')) {
+            content = content.replace(/RESEND_API_KEY=.*(\r?\n|$)/, `RESEND_API_KEY=${cleanKey}\n`);
+          } else {
+            content += `\nRESEND_API_KEY=${cleanKey}\n`;
+          }
+          fs.writeFileSync(envPath, content, 'utf8');
+        }
+      } catch (e) {
+        console.warn('Nie udało się zapisać RESEND_API_KEY do .env:', e);
+      }
+
+      // Persist to Firestore system/mailing
+      if (adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          await adminDb.collection('system').doc('mailing').set({
+            resendApiKey: cleanKey,
+            updatedAt: new Date().toISOString(),
+          }, { merge: true });
+        } catch (e) {
+          console.warn('Nie udało się zapisać resendApiKey do Firestore:', e);
+        }
+      }
+
+      return res.json({
+        ok: true,
+        maskedKey: `${cleanKey.slice(0, 6)}••••${cleanKey.slice(-4)}`,
+        message: 'Klucz Resend API został pomyślnie zapisany i uaktywniony.',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
   // Admin mailing test email sender
   app.post('/api/mailing/test-send', requireFirebaseAdmin, async (req, res) => {
     try {
-      const { to, subject, html, text } = req.body;
+      const { to, subject, html, text, apiKey: clientApiKey } = req.body;
       if (!to || typeof to !== 'string' || !to.includes('@')) {
         return res.status(400).json({ error: 'Wymagany jest poprawny adres e-mail odbiorcy.' });
       }
 
-      const apiKey = process.env.RESEND_API_KEY;
+      let apiKey = (typeof clientApiKey === 'string' && clientApiKey.trim()) || process.env.RESEND_API_KEY;
+
+      if (!apiKey && adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const mailingDoc = await adminDb.collection('system').doc('mailing').get();
+          if (mailingDoc.exists && mailingDoc.data()?.resendApiKey) {
+            apiKey = String(mailingDoc.data()?.resendApiKey).trim();
+          }
+        } catch {}
+      }
+
+      // If key was supplied in request body and valid, persist it
+      if (clientApiKey && typeof clientApiKey === 'string' && clientApiKey.trim().startsWith('re_')) {
+        const cleanKey = clientApiKey.trim();
+        process.env.RESEND_API_KEY = cleanKey;
+        try {
+          const envPath = path.resolve(process.cwd(), '.env');
+          if (fs.existsSync(envPath)) {
+            let content = fs.readFileSync(envPath, 'utf8');
+            if (content.includes('RESEND_API_KEY=')) {
+              content = content.replace(/RESEND_API_KEY=.*(\r?\n|$)/, `RESEND_API_KEY=${cleanKey}\n`);
+            } else {
+              content += `\nRESEND_API_KEY=${cleanKey}\n`;
+            }
+            fs.writeFileSync(envPath, content, 'utf8');
+          }
+        } catch (e) {
+          console.warn('Nie udało się zapisać RESEND_API_KEY do .env:', e);
+        }
+      }
+
       if (!apiKey) {
-        return res.status(500).json({ error: 'Brak zmiennej środowiskowej RESEND_API_KEY na serwerze.' });
+        return res.status(500).json({
+          error: 'Brak klucza API Resend na serwerze. Wprowadź klucz RESEND_API_KEY (zaczynający się od "re_") w zakładce Ustawienia lub poniżej w oknie testowym.',
+        });
       }
 
       const fromAddress = process.env.FROM_ADDRESS || 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>';
@@ -674,7 +788,7 @@ export function createApp() {
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey.trim()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
