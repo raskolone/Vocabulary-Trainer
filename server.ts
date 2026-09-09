@@ -740,7 +740,7 @@ export function createApp() {
   // Admin mailing test email sender
   app.post('/api/mailing/test-send', requireFirebaseAdmin, async (req, res) => {
     try {
-      const { to, subject, html, text, apiKey: clientApiKey } = req.body;
+      const { to, subject, html, text, apiKey: clientApiKey, replyTo } = req.body;
       if (!to || typeof to !== 'string' || !to.includes('@')) {
         return res.status(400).json({ error: 'Wymagany jest poprawny adres e-mail odbiorcy.' });
       }
@@ -784,6 +784,7 @@ export function createApp() {
       }
 
       const fromAddress = process.env.FROM_ADDRESS || 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>';
+      const replyToAddress = (typeof replyTo === 'string' && replyTo.trim()) || process.env.REPLY_TO_ADDRESS || 'kontakt@maciej.pro';
 
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -794,7 +795,8 @@ export function createApp() {
         body: JSON.stringify({
           from: fromAddress,
           to: [to.trim()],
-          subject: `[TEST] ${subject || 'Testowe powiadomienie CRIBRO'}`,
+          reply_to: replyToAddress,
+          subject: subject || 'Powiadomienie CRIBRO ENGLISH',
           html: html || '<p>To jest testowa wiadomość wysłana z panelu CRIBRO ENGLISH.</p>',
           text: text || 'To jest testowa wiadomość wysłana z panelu CRIBRO ENGLISH.',
         }),

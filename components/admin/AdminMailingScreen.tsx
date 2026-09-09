@@ -40,6 +40,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { useFirebaseAdminApi } from '../../hooks/useFirebaseAdminApi';
 import { formatTaskDateTime } from '../dashboard/HomeworkScreen';
+import { formatPolishGreeting } from '../../utils/polishVocative';
 
 interface AdminMailingScreenProps {
   onBack?: () => void;
@@ -74,8 +75,9 @@ const TEMPLATES: Array<{
       instructions: 'Zwróć uwagę na określenia czasu (for, since, ago) i poprawne formy nieregularne.',
       unsubscribeUrl: 'https://app.maciej.pro/unsubscribe?uid=demo&token=sample',
     },
-    renderHtml: (data) => `
-<!doctype html>
+    renderHtml: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `<!doctype html>
 <html lang="pl">
   <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
@@ -84,7 +86,7 @@ const TEMPLATES: Array<{
           <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7c8798;">CRIBRO ENGLISH</p>
           <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Nowa praca domowa</h1>
           <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            Cześć ${data.studentName}, czeka na Ciebie zadanie <strong style="color:#111820;">${data.title}</strong>.
+            ${greeting} Czeka na Ciebie zadanie <strong style="color:#111820;">${data.title}</strong>.
           </p>
           <p style="margin:20px 0 0;color:#3b4655;font-size:14px;line-height:1.6;">
             ${data.instructions}
@@ -127,9 +129,12 @@ const TEMPLATES: Array<{
       </tr>
     </table>
   </body>
-</html>`,
-    renderText: (data) =>
-      `Cześć ${data.studentName},\n\nczeka na Ciebie nowa praca domowa: „${data.title}".\n\nLiczba ćwiczeń: ${data.itemCount} zadań\nTermin: ${data.dueDate}\nOd: ${data.assignedBy}\nWskazówki: ${data.instructions}\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`,
+</html>`;
+    },
+    renderText: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `${greeting}\n\nCzeka na Ciebie nowa praca domowa: „${data.title}".\n\nLiczba ćwiczeń: ${data.itemCount} zadań\nTermin: ${data.dueDate}\nOd: ${data.assignedBy}\nWskazówki: ${data.instructions}\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`;
+    },
   },
   {
     id: 'homework_reminder_24h',
@@ -146,8 +151,9 @@ const TEMPLATES: Array<{
       itemCount: 10,
       unsubscribeUrl: 'https://app.maciej.pro/unsubscribe?uid=demo&token=sample',
     },
-    renderHtml: (data) => `
-<!doctype html>
+    renderHtml: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `<!doctype html>
 <html lang="pl">
   <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
@@ -156,7 +162,7 @@ const TEMPLATES: Array<{
           <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#d97706;font-weight:700;">PRZYPOMNIENIE O TERMINIE</p>
           <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Zbliża się termin zadania</h1>
           <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            Cześć ${data.studentName}, przypominamy o pracy domowej: <strong style="color:#111820;">${data.title}</strong>.
+            ${greeting} Przypominamy o zbliżającym się terminie zadania: <strong style="color:#111820;">${data.title}</strong>.
           </p>
         </td>
       </tr>
@@ -192,9 +198,12 @@ const TEMPLATES: Array<{
       </tr>
     </table>
   </body>
-</html>`,
-    renderText: (data) =>
-      `Cześć ${data.studentName},\n\nprzypominamy, że termin zadania „${data.title}" upływa: ${data.dueDate}.\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`,
+</html>`;
+    },
+    renderText: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `${greeting}\n\nPrzypominamy, że termin zadania „${data.title}" upływa: ${data.dueDate}.\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`;
+    },
   },
   {
     id: 'homework_graded',
@@ -211,8 +220,9 @@ const TEMPLATES: Array<{
       feedback: 'Świetna robota! Bogate słownictwo i bardzo płynna struktura argumentów.',
       unsubscribeUrl: 'https://app.maciej.pro/unsubscribe?uid=demo&token=sample',
     },
-    renderHtml: (data) => `
-<!doctype html>
+    renderHtml: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `<!doctype html>
 <html lang="pl">
   <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
@@ -221,7 +231,7 @@ const TEMPLATES: Array<{
           <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#0f7a52;font-weight:700;">WYNIK PRACY DOMOWEJ</p>
           <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Praca została sprawdzona!</h1>
           <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            Cześć ${data.studentName}, lektor sprawdził Twoje zadanie <strong style="color:#111820;">${data.title}</strong>.
+            ${greeting} Lektor sprawdził Twoje zadanie <strong style="color:#111820;">${data.title}</strong>.
           </p>
         </td>
       </tr>
@@ -248,9 +258,12 @@ const TEMPLATES: Array<{
       </tr>
     </table>
   </body>
-</html>`,
-    renderText: (data) =>
-      `Cześć ${data.studentName},\n\nTwoja praca domowa „${data.title}" została sprawdzona!\nWynik: ${data.score}\nKomentarz lektora: ${data.feedback}\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`,
+</html>`;
+    },
+    renderText: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `${greeting}\n\nTwoja praca domowa „${data.title}" została sprawdzona!\nWynik: ${data.score}\nKomentarz lektora: ${data.feedback}\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`;
+    },
   },
   {
     id: 'lesson_summary_vocab',
@@ -266,8 +279,9 @@ const TEMPLATES: Array<{
       wordCount: 12,
       unsubscribeUrl: 'https://app.maciej.pro/unsubscribe?uid=demo&token=sample',
     },
-    renderHtml: (data) => `
-<!doctype html>
+    renderHtml: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `<!doctype html>
 <html lang="pl">
   <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
@@ -276,7 +290,7 @@ const TEMPLATES: Array<{
           <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7c8798;">CRIBRO ENGLISH</p>
           <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Nowe materiały z lekcji</h1>
           <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            Cześć ${data.studentName}, w aplikacji czeka podsumowanie lekcji <strong style="color:#111820;">${data.lessonTopic}</strong> oraz <strong>${data.wordCount} nowych słówek</strong> do powtórki.
+            ${greeting} W aplikacji czeka podsumowanie lekcji <strong style="color:#111820;">${data.lessonTopic}</strong> oraz <strong>${data.wordCount} nowych słówek</strong> do powtórki.
           </p>
           <p style="margin:24px 0 0;">
             <a href="https://app.maciej.pro" style="display:inline-block;background:#0f7a52;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;">
@@ -295,9 +309,12 @@ const TEMPLATES: Array<{
       </tr>
     </table>
   </body>
-</html>`,
-    renderText: (data) =>
-      `Cześć ${data.studentName},\n\nw aplikacji czeka podsumowanie lekcji: ${data.lessonTopic} oraz ${data.wordCount} nowych słówek do powtórki!\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`,
+</html>`;
+    },
+    renderText: (data) => {
+      const greeting = formatPolishGreeting(data.studentName);
+      return `${greeting}\n\nW aplikacji czeka podsumowanie lekcji „${data.lessonTopic}" oraz ${data.wordCount} nowych słówek do powtórki.\n\nOtwórz aplikację: https://app.maciej.pro\n\nWypisz się z powiadomień: ${data.unsubscribeUrl}\n\n—\nCRIBRO ENGLISH`;
+    },
   },
 ];
 
@@ -605,6 +622,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
           html,
           text,
           apiKey: apiKeyToSend,
+          replyTo: settings.replyToEmail || currentUser?.email || 'kontakt@maciej.pro',
         }),
       });
 

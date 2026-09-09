@@ -52,6 +52,99 @@ const plural = (n: number, one: string, few: string, many: string): string => {
   return many;
 };
 
+export function toPolishVocative(rawName?: string | null): string {
+  if (!rawName || typeof rawName !== 'string') return '';
+  const trimmed = rawName.trim();
+  if (!trimmed) return '';
+  const name = trimmed.split(/\s+/)[0];
+
+  const irregulars: Record<string, string> = {
+    'anna': 'Anno',
+    'marta': 'Marto',
+    'kuba': 'Kubo',
+    'tomek': 'Tomku',
+    'bartek': 'Bartku',
+    'wojtek': 'Wojtku',
+    'przemek': 'Przemku',
+    'kacper': 'Kacprze',
+    'piotr': 'Piotrze',
+    'paweł': 'Pawle',
+    'pawel': 'Pawle',
+    'michał': 'Michale',
+    'michal': 'Michale',
+    'marek': 'Marku',
+    'jacek': 'Jacku',
+    'aleksander': 'Aleksandrze',
+    'artur': 'Arturze',
+    'wiktor': 'Wiktorze',
+    'igor': 'Igorze',
+    'grzegorz': 'Grzegorzu',
+    'łukasz': 'Łukaszu',
+    'lukasz': 'Łukaszu',
+    'mateusz': 'Mateuszu',
+    'bartosz': 'Bartoszu',
+    'tomasz': 'Tomaszu',
+    'maciej': 'Macieju',
+    'andrzej': 'Andrzeju',
+    'mikołaj': 'Mikołaju',
+    'mikolaj': 'Mikołaju',
+    'rafał': 'Rafale',
+    'rafal': 'Rafale',
+    'karol': 'Karolu',
+    'kamil': 'Kamilu',
+    'adam': 'Adamie',
+    'jan': 'Janie',
+    'marcin': 'Marcinie',
+    'damian': 'Damianie',
+    'szymon': 'Szymonie',
+    'adrian': 'Adrianie',
+    'sebastian': 'Sebastianie',
+    'jakub': 'Jakubie',
+    'filip': 'Filipie',
+    'krzysztof': 'Krzysztofie',
+    'dawid': 'Dawidzie',
+    'robert': 'Robercie',
+    'kasia': 'Kasiu',
+    'basia': 'Basiu',
+    'zuzia': 'Zuziu',
+    'ania': 'Aniu',
+    'ola': 'Olu',
+    'asia': 'Asiu',
+  };
+
+  const lower = name.toLowerCase();
+  if (irregulars[lower]) {
+    const res = irregulars[lower];
+    return res.charAt(0).toUpperCase() + res.slice(1);
+  }
+
+  if (lower.endsWith('a')) {
+    if (/(sia|cia|zia|dzia|nia)$/.test(lower)) {
+      return name.slice(0, -1) + 'u';
+    }
+    return name.slice(0, -1) + 'o';
+  }
+  if (lower.endsWith('ek')) return name.slice(0, -2) + 'ku';
+  if (lower.endsWith('ik') || lower.endsWith('yk')) return name + 'u';
+  if (lower.endsWith('sz') || lower.endsWith('cz') || lower.endsWith('rz')) return name + 'u';
+  if (lower.endsWith('ej') || lower.endsWith('aj')) return name + 'u';
+  if (lower.endsWith('aw') || lower.endsWith('an') || lower.endsWith('on') || lower.endsWith('in')) return name + 'ie';
+  if (lower.endsWith('b') || lower.endsWith('p') || lower.endsWith('m') || lower.endsWith('w')) return name + 'ie';
+  if (lower.endsWith('d')) return name.slice(0, -1) + 'dzie';
+  if (lower.endsWith('t')) return name.slice(0, -1) + 'cie';
+  if (lower.endsWith('r')) return name + 'ze';
+  if (lower.endsWith('l')) return name + 'u';
+  if (lower.endsWith('ł')) return name.slice(0, -1) + 'le';
+
+  return name;
+}
+
+export function formatPolishGreeting(rawName?: string | null): string {
+  const vocative = toPolishVocative(rawName);
+  if (!vocative) return 'Cześć!';
+  return `Cześć, ${vocative}!`;
+}
+
 export function buildHomeworkEmail(data: HomeworkEmailData): {
   subject: string;
   html: string;
@@ -59,7 +152,7 @@ export function buildHomeworkEmail(data: HomeworkEmailData): {
 } {
   const due = formatDate(data.dueDate);
   const items = `${data.itemCount} ${plural(data.itemCount, 'zadanie', 'zadania', 'zadań')}`;
-  const firstName = data.studentName.split(' ')[0] || data.studentName;
+  const greeting = formatPolishGreeting(data.studentName);
 
   // Nauczyciel zwykle nazywa zadanie „Praca domowa: …", więc doklejanie tego
   // samego przed tytułem dawało temat w rodzaju „Nowa praca domowa: Praca
@@ -71,7 +164,7 @@ export function buildHomeworkEmail(data: HomeworkEmailData): {
   // `null` oznacza linię, której w tej wiadomości nie ma; pusty ciąg to
   // celowa przerwa między akapitami i musi przetrwać filtrowanie.
   const textLines: Array<string | null> = [
-    `Cześć ${firstName},`,
+    greeting,
     '',
     `czeka na Ciebie nowa praca domowa: „${data.title}".`,
     '',
@@ -134,7 +227,7 @@ export function buildHomeworkEmail(data: HomeworkEmailData): {
           <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7c8798;">CRIBRO ENGLISH</p>
           <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Nowa praca domowa</h1>
           <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            Cześć ${escapeHtml(firstName)}, czeka na Ciebie zadanie
+            ${escapeHtml(greeting)} Czeka na Ciebie zadanie
             <strong style="color:#111820;">${escapeHtml(data.title)}</strong>.
           </p>
           ${instructions}
