@@ -480,6 +480,22 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
     }
   };
 
+  const fetchInboundMessagesApi = async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+      const res = await fetch('/api/mailing/inbound-messages', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.messages)) {
+        setInboundMessages(data.messages);
+      }
+    } catch (err) {
+      console.warn('Nie udało się pobrać wiadomości przychodzących przez API:', err);
+    }
+  };
+
   useEffect(() => {
     fetchStudents();
     fetchSettings();
@@ -494,8 +510,8 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
         setIsLoadingInbound(false);
       },
       (err) => {
-        console.warn('Błąd odczytu skrzynki odbiorczej:', err);
-        setIsLoadingInbound(false);
+        console.warn('Błąd odczytu skrzynki odbiorczej z Firestore (próba przez API):', err);
+        fetchInboundMessagesApi().finally(() => setIsLoadingInbound(false));
       }
     );
 
@@ -525,13 +541,27 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
   const handleToggleMessageRead = async (msg: InboundMessage) => {
     if (!msg.id) return;
+    const newRead = !msg.read;
     try {
-      await updateDoc(doc(db, 'inboundMessages', msg.id), {
-        read: !msg.read,
-      });
+      setInboundMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, read: newRead } : m))
+      );
       if (selectedInboundMsg?.id === msg.id) {
-        setSelectedInboundMsg((prev) => (prev ? { ...prev, read: !msg.read } : null));
+        setSelectedInboundMsg((prev) => (prev ? { ...prev, read: newRead } : null));
       }
+
+      const token = await auth.currentUser?.getIdToken();
+      if (token) {
+        await fetch(`/api/mailing/inbound-messages/${msg.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ read: newRead }),
+        });
+      }
+      updateDoc(doc(db, 'inboundMessages', msg.id), { read: newRead }).catch(() => {});
     } catch (err: any) {
       console.error('Błąd zmiany statusu odczytu wiadomości:', err);
     }
@@ -541,10 +571,19 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
     if (!msg.id) return;
     if (!confirm('Czy na pewno chcesz usunąć tę wiadomość z monitoringu skrzynki?')) return;
     try {
-      await deleteDoc(doc(db, 'inboundMessages', msg.id));
+      setInboundMessages((prev) => prev.filter((m) => m.id !== msg.id));
       if (selectedInboundMsg?.id === msg.id) {
         setSelectedInboundMsg(null);
       }
+
+      const token = await auth.currentUser?.getIdToken();
+      if (token) {
+        await fetch(`/api/mailing/inbound-messages/${msg.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+      deleteDoc(doc(db, 'inboundMessages', msg.id)).catch(() => {});
     } catch (err: any) {
       console.error('Błąd usuwania wiadomości:', err);
       alert('Nie udało się usunąć wiadomości: ' + (err?.message || err));
@@ -571,19 +610,32 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
       ];
       const randomText = sampleQueries[Math.floor(Math.random() * sampleQueries.length)];
 
-      await addDoc(collection(db, 'inboundMessages'), {
-        fromEmail: simEmail,
-        fromName: simName,
-        studentId: student?.id || null,
-        studentName: simName,
-        toEmail: settings.senderEmail || 'wyrozumski@maciej.pro',
-        subject: `Re: Nowa praca domowa / Pytanie od ${simName}`,
-        text: randomText,
-        html: `<p style="font-family:sans-serif;font-size:14px;line-height:1.5;color:#222;">${randomText}</p>`,
-        receivedAt: new Date().toISOString(),
-        read: false,
-        archived: false,
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Brak uprawnień administratora.');
+
+      const res = await fetch('/api/mailing/simulate-inbound', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fromEmail: simEmail,
+          fromName: simName,
+          subject: `Re: Nowa praca domowa / Pytanie od ${simName}`,
+          text: randomText,
+        }),
       });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Błąd serwera podczas symulacji odpowiedzi.');
+      }
+
+      if (data.message) {
+        const newMsg: InboundMessage = { id: data.id, ...data.message };
+        setInboundMessages((prev) => [newMsg, ...prev.filter((m) => m.id !== data.id)]);
+      }
     } catch (err: any) {
       console.error('Błąd symulacji odpowiedzi:', err);
       alert('Nie udało się zasymulować odpowiedzi: ' + (err?.message || err));

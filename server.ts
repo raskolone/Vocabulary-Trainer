@@ -843,7 +843,7 @@ export function createApp() {
   // Webhook for receiving inbound emails (Resend Inbound Webhook)
   app.post('/api/mailing/inbound-webhook', async (req, res) => {
     try {
-      const payload = req.body || {};
+      const payload = req.body?.data || req.body || {};
       const rawFrom = String(payload.from || payload.sender || '');
       const to = Array.isArray(payload.to) ? payload.to.join(', ') : String(payload.to || '');
       const subject = String(payload.subject || '(Bez tematu)');
@@ -892,6 +892,49 @@ export function createApp() {
       return res.json({ ok: true, id: docRef.id });
     } catch (err: any) {
       console.error('[Inbound Webhook Error]:', err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
+  // Admin list inbound messages
+  app.get('/api/mailing/inbound-messages', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const adminApp = getAdminApp();
+      const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+      const snap = await adminDb.collection('inboundMessages').orderBy('receivedAt', 'desc').limit(100).get();
+      const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return res.json({ ok: true, messages });
+    } catch (err: any) {
+      console.error('[Get Inbound Messages Error]:', err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
+  // Admin toggle message read status
+  app.patch('/api/mailing/inbound-messages/:id', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const { read } = req.body;
+      const adminApp = getAdminApp();
+      const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+      await adminDb.collection('inboundMessages').doc(id).update({ read: Boolean(read) });
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error('[Patch Inbound Message Error]:', err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
+  // Admin delete inbound message
+  app.delete('/api/mailing/inbound-messages/:id', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const adminApp = getAdminApp();
+      const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+      await adminDb.collection('inboundMessages').doc(id).delete();
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error('[Delete Inbound Message Error]:', err);
       return res.status(500).json({ error: formatErrorString(err) });
     }
   });

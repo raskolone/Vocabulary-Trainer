@@ -810,7 +810,7 @@ RESEND_API_KEY=${cleanKey}
   });
   app2.post("/api/mailing/inbound-webhook", async (req, res) => {
     try {
-      const payload = req.body || {};
+      const payload = req.body?.data || req.body || {};
       const rawFrom = String(payload.from || payload.sender || "");
       const to = Array.isArray(payload.to) ? payload.to.join(", ") : String(payload.to || "");
       const subject = String(payload.subject || "(Bez tematu)");
@@ -850,6 +850,43 @@ RESEND_API_KEY=${cleanKey}
       return res.json({ ok: true, id: docRef.id });
     } catch (err) {
       console.error("[Inbound Webhook Error]:", err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+  app2.get("/api/mailing/inbound-messages", requireFirebaseAdmin, async (req, res) => {
+    try {
+      const adminApp2 = getAdminApp();
+      const adminDb = getFirestore(adminApp2, FIRESTORE_DATABASE_ID);
+      const snap = await adminDb.collection("inboundMessages").orderBy("receivedAt", "desc").limit(100).get();
+      const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return res.json({ ok: true, messages });
+    } catch (err) {
+      console.error("[Get Inbound Messages Error]:", err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+  app2.patch("/api/mailing/inbound-messages/:id", requireFirebaseAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const { read } = req.body;
+      const adminApp2 = getAdminApp();
+      const adminDb = getFirestore(adminApp2, FIRESTORE_DATABASE_ID);
+      await adminDb.collection("inboundMessages").doc(id).update({ read: Boolean(read) });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[Patch Inbound Message Error]:", err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+  app2.delete("/api/mailing/inbound-messages/:id", requireFirebaseAdmin, async (req, res) => {
+    try {
+      const id = String(req.params.id);
+      const adminApp2 = getAdminApp();
+      const adminDb = getFirestore(adminApp2, FIRESTORE_DATABASE_ID);
+      await adminDb.collection("inboundMessages").doc(id).delete();
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[Delete Inbound Message Error]:", err);
       return res.status(500).json({ error: formatErrorString(err) });
     }
   });
