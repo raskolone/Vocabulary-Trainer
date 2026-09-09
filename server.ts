@@ -680,7 +680,7 @@ export function createApp() {
         hasEnvKey: !!envKey,
         hasDbKey: !!dbKey,
         maskedKey,
-        fromAddress: process.env.FROM_ADDRESS || 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>',
+        fromAddress: process.env.FROM_ADDRESS || 'Maciej Wyrozumski <wyrozumski@maciej.pro>',
       });
     } catch (err: any) {
       return res.status(500).json({ error: formatErrorString(err) });
@@ -740,7 +740,7 @@ export function createApp() {
   // Admin mailing test email sender
   app.post('/api/mailing/test-send', requireFirebaseAdmin, async (req, res) => {
     try {
-      const { to, subject, html, text, apiKey: clientApiKey, replyTo } = req.body;
+      const { to, from: clientFrom, subject, html, text, apiKey: clientApiKey, replyTo } = req.body;
       if (!to || typeof to !== 'string' || !to.includes('@')) {
         return res.status(400).json({ error: 'Wymagany jest poprawny adres e-mail odbiorcy.' });
       }
@@ -783,8 +783,25 @@ export function createApp() {
         });
       }
 
-      const fromAddress = process.env.FROM_ADDRESS || 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>';
-      const replyToAddress = (typeof replyTo === 'string' && replyTo.trim()) || process.env.REPLY_TO_ADDRESS || 'kontakt@maciej.pro';
+      let fromAddress = (typeof clientFrom === 'string' && clientFrom.trim()) || process.env.FROM_ADDRESS;
+      if (!fromAddress && adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const mailingDoc = await adminDb.collection('system').doc('mailing').get();
+          if (mailingDoc.exists) {
+            const data = mailingDoc.data();
+            if (data?.senderEmail) {
+              const name = data.senderName || 'Maciej Wyrozumski';
+              fromAddress = `${name} <${data.senderEmail}>`;
+            }
+          }
+        } catch {}
+      }
+      if (!fromAddress) {
+        fromAddress = 'Maciej Wyrozumski <wyrozumski@maciej.pro>';
+      }
+
+      const replyToAddress = (typeof replyTo === 'string' && replyTo.trim()) || process.env.REPLY_TO_ADDRESS || 'wyrozumski@maciej.pro';
 
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
@@ -809,7 +826,10 @@ export function createApp() {
       } catch {}
 
       if (!response.ok) {
-        const msg = data?.message || data?.error || raw.slice(0, 200);
+        let msg = data?.message || data?.error || raw.slice(0, 300);
+        if (typeof msg === 'string' && (msg.toLowerCase().includes('domain') || msg.toLowerCase().includes('not verified') || msg.toLowerCase().includes('validation') || response.status === 403)) {
+          msg += ' [Wskazówka: Aby wysyłać z adresu @maciej.pro lub @learnwithmaciej.com, dodaj domenę w https://resend.com/domains i zweryfikuj rekordy DNS w Hostingerze].';
+        }
         return res.status(response.status).json({ error: `Resend ${response.status}: ${msg}` });
       }
 
@@ -902,7 +922,7 @@ export function createApp() {
         fromName: resolvedName,
         studentId,
         studentName: resolvedName,
-        toEmail: 'powiadomienia@send.maciej.pro',
+        toEmail: 'wyrozumski@maciej.pro',
         subject: subject || 'Pytanie do ostatniej pracy domowej',
         text: text || 'Cześć! Mam pytanie odnośnie zadania z czasem Present Perfect. Kiedy dokładnie używamy "since" zamiast "for"? Pozdrawiam!',
         html: `<p>${text || 'Cześć! Mam pytanie odnośnie zadania z czasem Present Perfect. Kiedy dokładnie używamy "since" zamiast "for"? Pozdrawiam!'}</p>`,

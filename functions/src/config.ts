@@ -37,7 +37,7 @@ export const FUNCTION_REGION = 'us-central1';
  * `maciej.pro` stoi w Hostingerze i ma własne rekordy MX oraz SPF, których
  * wysyłka aplikacji nie dotyka.
  */
-export const FROM_ADDRESS = 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>';
+export const FROM_ADDRESS = 'Maciej Wyrozumski <wyrozumski@maciej.pro>';
 
 /**
  * Domeny, pod które nie ma sensu wysyłać.

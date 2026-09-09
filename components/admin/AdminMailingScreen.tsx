@@ -328,9 +328,9 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
   // Mailbox & sending settings
   const [settings, setSettings] = useState<MailingSettings>({
-    senderName: 'CRIBRO ENGLISH',
-    senderEmail: 'powiadomienia@send.maciej.pro',
-    replyToEmail: currentUser?.email || 'kontakt@maciej.pro',
+    senderName: 'Maciej Wyrozumski - CRIBRO ENGLISH',
+    senderEmail: 'wyrozumski@maciej.pro',
+    replyToEmail: 'wyrozumski@maciej.pro',
     emailSignature: 'Pozdrawiam serdecznie,\nMaciej Wyrozumski\nCRIBRO ENGLISH',
     enableHomeworkAssigned: true,
     enableHomeworkReviewed: true,
@@ -353,6 +353,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
   // Test sending state
   const [testRecipient, setTestRecipient] = useState<string>(currentUser?.email || '');
+  const [testSenderEmail, setTestSenderEmail] = useState<string>('wyrozumski@maciej.pro');
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -575,7 +576,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
         fromName: simName,
         studentId: student?.id || null,
         studentName: simName,
-        toEmail: settings.senderEmail || 'powiadomienia@send.maciej.pro',
+        toEmail: settings.senderEmail || 'wyrozumski@maciej.pro',
         subject: `Re: Nowa praca domowa / Pytanie od ${simName}`,
         text: randomText,
         html: `<p style="font-family:sans-serif;font-size:14px;line-height:1.5;color:#222;">${randomText}</p>`,
@@ -609,6 +610,9 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
       const text = selectedTemplate.renderText(selectedTemplate.sampleData);
 
       const apiKeyToSend = (resendApiKeyInput || settings.resendApiKey || '').trim() || undefined;
+      const senderEmailToUse = (testSenderEmail || settings.senderEmail || 'wyrozumski@maciej.pro').trim();
+      const senderNameToUse = (settings.senderName || 'Maciej Wyrozumski').trim();
+      const fromAddressToUse = `${senderNameToUse} <${senderEmailToUse}>`;
 
       const res = await fetch('/api/mailing/test-send', {
         method: 'POST',
@@ -618,11 +622,12 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
         },
         body: JSON.stringify({
           to: testRecipient.trim(),
+          from: fromAddressToUse,
           subject,
           html,
           text,
           apiKey: apiKeyToSend,
-          replyTo: settings.replyToEmail || currentUser?.email || 'kontakt@maciej.pro',
+          replyTo: settings.replyToEmail || senderEmailToUse,
         }),
       });
 
@@ -778,7 +783,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
           </div>
         </div>
 
-        {/* Resend Gateway Status pill */}
+        {/* Sender Gateway Status pill */}
         <div className="flex items-center gap-3 bg-ink/72 border border-white/10 px-4 py-2 rounded-2xl shrink-0">
           <div className="flex h-3 w-3 relative">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
@@ -786,10 +791,10 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
           </div>
           <div className="text-xs">
             <div className="font-bold text-white flex items-center gap-1.5">
-              <span>powiadomienia@send.maciej.pro</span>
+              <span>{settings.senderEmail || 'wyrozumski@maciej.pro'}</span>
               <ShieldCheck size={14} className="text-primary" />
             </div>
-            <div className="text-[11px] text-content-muted">DKIM & SPF: Aktywne w Netlify DNS</div>
+            <div className="text-[11px] text-content-muted">Główny adres nadawcy</div>
           </div>
         </div>
       </div>
@@ -971,7 +976,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
               </div>
 
               <p className="text-xs text-content-muted mb-3">
-                Wysyła prawdziwą wiadomość testową wybranego szablonu na Twój e-mail z bramki <code>send.maciej.pro</code>.
+                Wysyła prawdziwą wiadomość testową wybranego szablonu z Twojego własnego adresu lektora.
               </p>
 
               <div className="space-y-3">
@@ -1024,8 +1029,50 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
                 )}
 
                 <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold text-content-muted uppercase">
+                      Adres nadawcy (Z adresu)
+                    </label>
+                    <span className="text-[10px] text-primary font-medium">Brak Gmaila</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setTestSenderEmail('wyrozumski@maciej.pro')}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-medium border text-left truncate transition-colors ${
+                        testSenderEmail === 'wyrozumski@maciej.pro'
+                          ? 'bg-primary/20 border-primary text-primary font-bold'
+                          : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                      }`}
+                      title="wyrozumski@maciej.pro"
+                    >
+                      wyrozumski@maciej.pro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTestSenderEmail('maciej@learnwithmaciej.com')}
+                      className={`px-2 py-1.5 rounded-lg text-[11px] font-medium border text-left truncate transition-colors ${
+                        testSenderEmail === 'maciej@learnwithmaciej.com'
+                          ? 'bg-primary/20 border-primary text-primary font-bold'
+                          : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                      }`}
+                      title="maciej@learnwithmaciej.com"
+                    >
+                      maciej@learnwithmaciej.com
+                    </button>
+                  </div>
+                  <input
+                    type="email"
+                    value={testSenderEmail}
+                    onChange={(e) => setTestSenderEmail(e.target.value)}
+                    placeholder="wyrozumski@maciej.pro"
+                    className="w-full px-3.5 py-2 rounded-xl bg-black/40 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
                   <label className="text-[11px] font-bold text-content-muted block mb-1 uppercase">
-                    Adres docelowy
+                    Adres docelowy (Odbiorca testu)
                   </label>
                   <input
                     type="email"
@@ -1127,7 +1174,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
                 {previewMode === 'html' ? (
                   <div className="border border-white/15 rounded-xl overflow-hidden bg-slate-100 shadow-inner">
                     <div className="bg-slate-200 border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs text-slate-700 font-mono">
-                      <span>Nadawca: CRIBRO ENGLISH &lt;powiadomienia@send.maciej.pro&gt;</span>
+                      <span>Nadawca: {settings.senderName || 'Maciej Wyrozumski'} &lt;{testSenderEmail || settings.senderEmail || 'wyrozumski@maciej.pro'}&gt;</span>
                       <span className="text-slate-500">Symulacja klienta poczty</span>
                     </div>
                     <div
@@ -1497,19 +1544,62 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-content-muted uppercase tracking-wider block mb-1.5">
-                    Adres e-mail nadawcy (Bramka Resend)
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-content-muted uppercase tracking-wider">
+                      Adres e-mail nadawcy (Sender Email)
+                    </label>
+                    <span className="text-[10px] text-primary font-bold">Brak wysyłki z Gmaila</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mb-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, senderEmail: 'wyrozumski@maciej.pro', replyToEmail: 'wyrozumski@maciej.pro' })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        settings.senderEmail === 'wyrozumski@maciej.pro'
+                          ? 'bg-primary/20 border-primary text-primary font-bold'
+                          : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                      }`}
+                    >
+                      wyrozumski@maciej.pro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettings({ ...settings, senderEmail: 'maciej@learnwithmaciej.com', replyToEmail: 'maciej@learnwithmaciej.com' })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        settings.senderEmail === 'maciej@learnwithmaciej.com'
+                          ? 'bg-primary/20 border-primary text-primary font-bold'
+                          : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                      }`}
+                    >
+                      maciej@learnwithmaciej.com
+                    </button>
+                  </div>
+
                   <input
                     type="email"
                     value={settings.senderEmail}
                     onChange={(e) => setSettings({ ...settings, senderEmail: e.target.value })}
-                    placeholder="powiadomienia@send.maciej.pro"
+                    placeholder="wyrozumski@maciej.pro"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary"
                   />
                   <span className="text-[10px] text-content-muted mt-1 block">
-                    Zalecany adres: <code>powiadomienia@send.maciej.pro</code> (zweryfikowana domena z DKIM/SPF).
+                    Wiadomości będą wychodzić z tego adresu z Twoim imieniem i nazwiskiem jako nadawcą.
                   </span>
+                </div>
+
+                {/* Anti-spam & Domain Verification Tip */}
+                <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-1.5 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-primary">
+                    <ShieldCheck size={14} />
+                    <span>Dostarczalność do Odebranych (Antyspam)</span>
+                  </div>
+                  <p className="text-[11px] text-content-muted leading-relaxed">
+                    Aby e-maile z adresu <strong>{settings.senderEmail || 'wyrozumski@maciej.pro'}</strong> nie lądowały w spamie u odbiorców (np. w Gmailu), domena musi być dodana w panelu{' '}
+                    <a href="https://resend.com/domains" target="_blank" rel="noreferrer" className="text-primary underline font-semibold hover:text-white">
+                      resend.com/domains
+                    </a>. Resend wygeneruje rekordy DKIM (TXT), które wkleja się w strefie DNS domeny w Hostingerze.
+                  </p>
                 </div>
 
                 <div>
@@ -1520,11 +1610,11 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
                     type="email"
                     value={settings.replyToEmail}
                     onChange={(e) => setSettings({ ...settings, replyToEmail: e.target.value })}
-                    placeholder="kontakt@maciej.pro"
+                    placeholder="wyrozumski@maciej.pro"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary"
                   />
                   <span className="text-[10px] text-content-muted mt-1 block">
-                    Gdy kursant kliknie „Odpowiedz” w swoim programie pocztowym, wiadomość trafi na ten adres.
+                    Gdy kursant kliknie „Odpowiedz” w swoim programie pocztowym, wiadomość trafi bezpośrednio na ten adres.
                   </span>
                 </div>
 

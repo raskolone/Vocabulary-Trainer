@@ -661,7 +661,7 @@ function createApp() {
         hasEnvKey: !!envKey,
         hasDbKey: !!dbKey,
         maskedKey,
-        fromAddress: process.env.FROM_ADDRESS || "CRIBRO ENGLISH <powiadomienia@send.maciej.pro>"
+        fromAddress: process.env.FROM_ADDRESS || "Maciej Wyrozumski <wyrozumski@maciej.pro>"
       });
     } catch (err) {
       return res.status(500).json({ error: formatErrorString(err) });
@@ -714,7 +714,7 @@ RESEND_API_KEY=${cleanKey}
   });
   app2.post("/api/mailing/test-send", requireFirebaseAdmin, async (req, res) => {
     try {
-      const { to, subject, html, text, apiKey: clientApiKey, replyTo } = req.body;
+      const { to, from: clientFrom, subject, html, text, apiKey: clientApiKey, replyTo } = req.body;
       if (!to || typeof to !== "string" || !to.includes("@")) {
         return res.status(400).json({ error: "Wymagany jest poprawny adres e-mail odbiorcy." });
       }
@@ -755,8 +755,25 @@ RESEND_API_KEY=${cleanKey}
           error: 'Brak klucza API Resend na serwerze. Wprowad\u017A klucz RESEND_API_KEY (zaczynaj\u0105cy si\u0119 od "re_") w zak\u0142adce Ustawienia lub poni\u017Cej w oknie testowym.'
         });
       }
-      const fromAddress = process.env.FROM_ADDRESS || "CRIBRO ENGLISH <powiadomienia@send.maciej.pro>";
-      const replyToAddress = typeof replyTo === "string" && replyTo.trim() || process.env.REPLY_TO_ADDRESS || "kontakt@maciej.pro";
+      let fromAddress = typeof clientFrom === "string" && clientFrom.trim() || process.env.FROM_ADDRESS;
+      if (!fromAddress && adminApp) {
+        try {
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const mailingDoc = await adminDb.collection("system").doc("mailing").get();
+          if (mailingDoc.exists) {
+            const data2 = mailingDoc.data();
+            if (data2?.senderEmail) {
+              const name = data2.senderName || "Maciej Wyrozumski";
+              fromAddress = `${name} <${data2.senderEmail}>`;
+            }
+          }
+        } catch {
+        }
+      }
+      if (!fromAddress) {
+        fromAddress = "Maciej Wyrozumski <wyrozumski@maciej.pro>";
+      }
+      const replyToAddress = typeof replyTo === "string" && replyTo.trim() || process.env.REPLY_TO_ADDRESS || "wyrozumski@maciej.pro";
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -779,7 +796,10 @@ RESEND_API_KEY=${cleanKey}
       } catch {
       }
       if (!response.ok) {
-        const msg = data?.message || data?.error || raw.slice(0, 200);
+        let msg = data?.message || data?.error || raw.slice(0, 300);
+        if (typeof msg === "string" && (msg.toLowerCase().includes("domain") || msg.toLowerCase().includes("not verified") || msg.toLowerCase().includes("validation") || response.status === 403)) {
+          msg += " [Wskaz\xF3wka: Aby wysy\u0142a\u0107 z adresu @maciej.pro lub @learnwithmaciej.com, dodaj domen\u0119 w https://resend.com/domains i zweryfikuj rekordy DNS w Hostingerze].";
+        }
         return res.status(response.status).json({ error: `Resend ${response.status}: ${msg}` });
       }
       return res.json({ ok: true, id: data?.id });
@@ -853,7 +873,7 @@ RESEND_API_KEY=${cleanKey}
         fromName: resolvedName,
         studentId,
         studentName: resolvedName,
-        toEmail: "powiadomienia@send.maciej.pro",
+        toEmail: "wyrozumski@maciej.pro",
         subject: subject || "Pytanie do ostatniej pracy domowej",
         text: text || 'Cze\u015B\u0107! Mam pytanie odno\u015Bnie zadania z czasem Present Perfect. Kiedy dok\u0142adnie u\u017Cywamy "since" zamiast "for"? Pozdrawiam!',
         html: `<p>${text || 'Cze\u015B\u0107! Mam pytanie odno\u015Bnie zadania z czasem Present Perfect. Kiedy dok\u0142adnie u\u017Cywamy "since" zamiast "for"? Pozdrawiam!'}</p>`,
