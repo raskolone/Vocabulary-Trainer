@@ -72,6 +72,19 @@ export interface User {
   autoPlayFlashcards?: boolean;
   /** Ukrywa ikonę passy w panelu kursanta. Passa sama w sobie liczy się dalej. */
   streakHidden?: boolean;
+  /** Wyłączenie powiadomień e-mail o zadaniach i przypomnieniach (Resend). */
+  emailNotificationsDisabled?: boolean;
+  unsubscribedAt?: string;
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  category: 'homework' | 'reminder' | 'feedback' | 'lesson';
+  subject: string;
+  description: string;
+  status: 'active' | 'draft';
+  variables: string[];
 }
 
 /**
@@ -469,6 +482,38 @@ export interface SpecialTask {
   grade?: number;
   reviewedAt?: string;
   feedbackReadByStudent?: boolean;
+  teacherRead?: boolean;
+  teacherViewedAt?: string;
+  studentViewedAt?: string;
+}
+
+export interface InboundMessage {
+  id?: string;
+  fromEmail: string;
+  fromName?: string;
+  toEmail?: string;
+  studentId?: string;
+  studentName?: string;
+  subject: string;
+  text: string;
+  html?: string;
+  receivedAt: string;
+  read: boolean;
+  archived?: boolean;
+}
+
+export interface MailingSettings {
+  senderName: string;
+  senderEmail: string;
+  replyToEmail: string;
+  emailSignature: string;
+  enableHomeworkAssigned: boolean;
+  enableHomeworkReviewed: boolean;
+  enableDueDateReminder: boolean;
+  reminderHoursBefore: number;
+  enableNotionSyncNotice: boolean;
+  customTemplates?: Record<string, { subject?: string; customIntro?: string; enabled?: boolean }>;
+  updatedAt?: string;
 }
 
 export interface StudentTest {

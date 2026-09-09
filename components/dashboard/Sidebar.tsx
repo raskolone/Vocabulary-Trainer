@@ -39,7 +39,8 @@ import {
   Sparkles,
   HelpCircle,
   FlaskConical,
-  Eye
+  Eye,
+  Mail
 } from 'lucide-react';
 import BrandLogo from '../ui/BrandLogo';
 import { isModuleVisible } from '../../config/featureFlags';
@@ -134,7 +135,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
       try {
         const q = query(collection(db, 'specialTasks'), where('status', '==', 'submitted'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-          setSubmittedHomeworkCount(snapshot.size);
+          const unreadTasks = snapshot.docs.filter((d) => {
+            const data = d.data();
+            return data.teacherRead !== true;
+          });
+          setSubmittedHomeworkCount(unreadTasks.length);
         }, (err) => {
           console.error("specialTasks submitted snapshot error:", err);
         });
@@ -345,6 +350,28 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
               </NavLink>
             );
           })()}
+
+          {isTeacher && (
+            <NavLink
+              icon={<Database size={20} />}
+              isCollapsed={isDesktopCollapsed}
+              onClick={() => handleNavigate('students-database')}
+              isActive={currentView === 'students-database' || currentView === 'admin-students-database' || currentView === 'students'}
+            >
+              <span>{language === 'pl' ? 'Baza kursantów' : 'Student Database'}</span>
+            </NavLink>
+          )}
+
+          {isTeacher && (
+            <NavLink
+              icon={<Mail size={20} />}
+              isCollapsed={isDesktopCollapsed}
+              onClick={() => handleNavigate('mailing')}
+              isActive={currentView === 'mailing' || currentView === 'admin-mailing'}
+            >
+              <span>{language === 'pl' ? 'Poczta & Mailing' : 'Mailing & Emails'}</span>
+            </NavLink>
+          )}
 
           {isTeacher && (
             <div className="pt-3 mt-1 border-t border-base-300">

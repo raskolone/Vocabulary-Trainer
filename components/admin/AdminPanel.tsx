@@ -32,12 +32,14 @@ import TeacherOverview from './TeacherOverview';
 import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
 import NotionSyncButton from './NotionSyncButton';
+import AdminMailingScreen from './AdminMailingScreen';
+import StudentDatabaseScreen from './StudentDatabaseScreen';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   Trash2, Download, Printer, FileText, CheckCircle2, AlertCircle,
   User as UserIcon, Users, Search, X, ChevronRight, ChevronDown, ChevronUp, Sparkles, BarChart2, Clock, 
   BookOpen, BookMarked, UserCheck, Filter, Award, Activity, Calendar, 
-  RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay
+  RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay, Mail, Database
 } from 'lucide-react';
 import i18n from "i18next";
 import html2pdf from 'html2pdf.js';
@@ -60,7 +62,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
       return null;
     }
   });
-  const { createUser, deleteUser, changeUserRole: updateRoleApi, changeUserPassword } = useFirebaseAdminApi();
+  const { createUser, deleteUser, changeUserRole: updateRoleApi, changeUserPassword, changeUserEmail } = useFirebaseAdminApi();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
   const [profileSaveModal, setProfileSaveModal] = useState<{ isOpen: boolean; success: boolean; title: string; message: string } | null>(null);
@@ -209,6 +211,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
   };
 
   const handleTileClick = (tabId: string) => {
+    if (tabId === 'mailing') {
+      if (onViewChange) onViewChange('mailing');
+      else setActiveTab('mailing');
+      return;
+    }
+    if (tabId === 'students-database') {
+      if (onViewChange) onViewChange('students-database');
+      else setActiveTab('students-database');
+      return;
+    }
     if (tabId === 'lesson-planner' || tabId === 'presentation') {
       setActiveTab(tabId);
       if (onViewChange) onViewChange(`admin-${tabId}`);
@@ -227,15 +239,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
     if (!selectedUser) return;
     setIsSavingProfile(true);
     try {
+      const trimmedEmail = (formState.email || '').trim().toLowerCase();
+      const currentEmail = (selectedUser.email || '').trim().toLowerCase();
+      const emailChanged = Boolean(trimmedEmail && trimmedEmail !== currentEmail);
+
+      if (emailChanged) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedEmail)) {
+          throw new Error(i18n.t('Podano niepoprawny format adresu e-mail.'));
+        }
+      }
+
       const userRef = doc(db, 'users', selectedUser.id);
-      await updateDoc(userRef, {
+      const updates: any = {
         firstName: formState.firstName,
         lastName: formState.lastName,
         level: formState.level,
         description: formState.description,
-        aiPrompt: formState.aiPrompt
-      });
-      const updatedUser = { ...selectedUser, ...formState };
+        aiPrompt: formState.aiPrompt,
+      };
+      if (trimmedEmail) {
+        updates.email = trimmedEmail;
+      }
+
+      await updateDoc(userRef, updates);
+
+      if (emailChanged) {
+        changeUserEmail(selectedUser.id, trimmedEmail).catch((authErr) => {
+          console.warn('[Admin Auth Email Sync Warning]:', authErr);
+        });
+      }
+      const updatedUser = { ...selectedUser, ...formState, email: trimmedEmail || selectedUser.email };
       setSelectedUser(updatedUser);
       setUsers(users.map(u => u.id === selectedUser.id ? updatedUser : u));
       if (!silent) {
@@ -893,7 +927,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
     setIsCreatingStudent(true);
     setCreateStudentError('');
     try {
-      const email = normalizeUsername(newStudentUsername) + '@student.vocabboost.com';
+      const trimmedEmail = newStudentEmail.trim().toLowerCase();
+      if (trimmedEmail) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(trimmedEmail)) {
+          throw new Error(i18n.t('Podano niepoprawny format adresu e-mail.'));
+        }
+      }
+      const email = trimmedEmail || (normalizeUsername(newStudentUsername) + '@student.vocabboost.com');
       const password = isAutoGeneratePassword ? Math.random().toString(36).slice(-8) : passwordInput;
       
       const userRecord = await createUser(email, password, 'user');
@@ -912,6 +953,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
       await setDoc(doc(db, 'users', userRecord.uid), newUserDoc);
       
       setNewStudentPassword(password);
+      setCreatedStudentEmail(email);
       fetchUsers();
     } catch (e: any) {
       setCreateStudentError(e.message);
@@ -997,6 +1039,8 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
   const [showCreateStudentModal, setShowCreateStudentModal] = useState(false);
   const [newStudentUsername, setNewStudentUsername] = useState('');
+  const [newStudentEmail, setNewStudentEmail] = useState('');
+  const [createdStudentEmail, setCreatedStudentEmail] = useState('');
   const [newStudentPassword, setNewStudentPassword] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isAutoGeneratePassword, setIsAutoGeneratePassword] = useState(true);
@@ -1292,6 +1336,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
       setProfileForm({
         firstName: selectedUser.firstName || '',
         lastName: selectedUser.lastName || '',
+        email: selectedUser.email || '',
         level: selectedUser.level || '',
         description: selectedUser.description || '',
         aiPrompt: selectedUser.aiPrompt || ''
@@ -1302,6 +1347,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   const [profileForm, setProfileForm] = useState({
     firstName: '',
     lastName: '',
+    email: '',
     level: '',
     description: '',
     aiPrompt: ''
@@ -1318,6 +1364,8 @@ const [users, setUsers] = useState<UserWithId[]>([]);
     setCreateStudentError('');
     setNewStudentPassword('');
     setNewStudentUsername('');
+    setNewStudentEmail('');
+    setCreatedStudentEmail('');
   });
   useEscapeModal(showChangePasswordModal, () => {
     setShowChangePasswordModal(false);
@@ -1333,19 +1381,25 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   useEscapeModal(!!userToDelete, () => setUserToDelete(null), 5);
   useEscapeModal(!!(profileSaveModal && profileSaveModal.isOpen), () => setProfileSaveModal(null), 5);
   
-  const handleRoleChange = async (newRole: 'admin' | 'user' | 'teacher') => {
-    if (!selectedUser) return;
+  const handleRoleChangeForUser = async (targetUser: User, newRole: 'admin' | 'user' | 'teacher') => {
+    if (!targetUser.id) return;
     try {
-      const userRef = doc(db, 'users', selectedUser.id);
+      const userRef = doc(db, 'users', targetUser.id);
       await updateDoc(userRef, { role: newRole });
       
-      // Update local state
-      const updatedUser = { ...selectedUser, role: newRole };
-      setSelectedUser(updatedUser);
-      setUsers(users.map(u => u.id === selectedUser.id ? updatedUser : u));
+      const updatedUser = { ...targetUser, role: newRole } as UserWithId;
+      if (selectedUser?.id === targetUser.id) {
+        setSelectedUser(updatedUser);
+      }
+      setUsers(users.map(u => u.id === targetUser.id ? updatedUser : u));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${selectedUser.id}`);
+      handleFirestoreError(error, OperationType.UPDATE, `users/${targetUser.id}`);
     }
+  };
+
+  const handleRoleChange = async (newRole: 'admin' | 'user' | 'teacher') => {
+    if (!selectedUser) return;
+    await handleRoleChangeForUser(selectedUser, newRole);
   };
 
   return (
@@ -1364,7 +1418,43 @@ const [users, setUsers] = useState<UserWithId[]>([]);
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => {
+              if (onViewChange) {
+                onViewChange('students-database');
+              } else {
+                setActiveTab(activeTab === 'students-database' ? null : 'students-database');
+              }
+            }}
+            className={`px-3.5 min-h-11 rounded-xl text-xs sm:text-sm font-bold border transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'students-database'
+                ? 'bg-primary text-black border-primary shadow-sm'
+                : 'bg-base-200/80 text-white border-white/15 hover:bg-white/10 hover:border-primary/40 hover:text-primary'
+            }`}
+            title="Przejdź do bazy danych kursantów (Notion DB)"
+          >
+            <Database size={16} className={activeTab === 'students-database' ? 'text-black' : 'text-primary'} />
+            Baza kursantów
+          </button>
+          <button
+            onClick={() => {
+              if (onViewChange) {
+                onViewChange('mailing');
+              } else {
+                setActiveTab(activeTab === 'mailing' ? null : 'mailing');
+              }
+            }}
+            className={`px-3.5 min-h-11 rounded-xl text-xs sm:text-sm font-bold border transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'mailing'
+                ? 'bg-primary text-black border-primary shadow-sm'
+                : 'bg-base-200/80 text-white border-white/15 hover:bg-white/10 hover:border-primary/40 hover:text-primary'
+            }`}
+            title="Przejdź do panelu zarządzania pocztą i powiadomieniami"
+          >
+            <Mail size={16} className={activeTab === 'mailing' ? 'text-black' : 'text-primary'} />
+            Poczta & Mailing
+          </button>
           <button
             onClick={() => setShowAIModal(true)}
             className="px-3.5 min-h-11 bg-base-200/80 text-primary border border-primary/40 rounded-xl text-xs sm:text-sm font-bold hover:bg-primary/10 transition-colors flex items-center justify-center gap-2"
@@ -1423,7 +1513,17 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   </span>
                 </div>
                 <div className="text-xs text-content-muted mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-                  <span>📧 {selectedUser.email || 'Brak emaila'}</span>
+                  <button
+                    onClick={() => {
+                      setActiveTab('profile');
+                      if (onViewChange) onViewChange('admin-profile');
+                    }}
+                    className="hover:text-primary transition-colors inline-flex items-center gap-1 group text-left cursor-pointer"
+                    title="Kliknij, aby edytować profil lub adres e-mail kursanta"
+                  >
+                    <span>📧 {selectedUser.email || 'Brak emaila'}</span>
+                    <span className="text-[10px] opacity-70 group-hover:opacity-100 text-primary underline">edytuj</span>
+                  </button>
                   <span>🔑 Logowań: <strong className="text-white">{selectedUser.loginCount || 0}</strong></span>
                   <span>🕒 Ostatnia wizyta: <strong className="text-white">{selectedUser.lastLoginDate ? new Date(selectedUser.lastLoginDate).toLocaleDateString() : 'Brak'}</strong></span>
                 </div>
@@ -1583,9 +1683,16 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             })}
           </div>
 
-          {/* POZOSTAŁE KAFELKI (KOMPAKTOWY RZĄD 5 KAFELKÓW) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3">
+          {/* POZOSTAŁE KAFELKI (KOMPAKTOWY RZĄD 7 KAFELKÓW) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
             {[
+              {
+                id: 'students-database',
+                title: 'Baza kursantów',
+                badge: 'Notion DB',
+                desc: 'Tabela, role i CSV/PDF',
+                icon: Database
+              },
               {
                 id: 'profile',
                 title: 'Profil kursanta',
@@ -1620,6 +1727,13 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                 badge: 'Słówka + AI',
                 desc: 'Zestawy i Zadania AI',
                 icon: BookMarked
+              },
+              {
+                id: 'mailing',
+                title: 'Poczta & Mailing',
+                badge: 'Resend & Skrzynka',
+                desc: 'Szablony, skrzynka i monitoring',
+                icon: Mail
               }
             ].map((tile) => {
               const IconComp = tile.icon;
@@ -1632,7 +1746,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   className={`p-3 sm:p-3.5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-xl ${
                     isActive
                       ? 'border-primary/80 shadow-[0_0_18px_rgba(114,240,180,0.2)] ring-1 ring-primary/40 bg-ink-2 z-10'
-                      : selectedUser
+                      : selectedUser || tile.id === 'mailing' || tile.id === 'students-database'
                       ? 'hover:border-primary/50'
                       : 'opacity-80 hover:border-warn/40'
                   }`}
@@ -1664,7 +1778,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
                   <div className="mt-2.5 pt-1.5 border-t border-white/5 flex items-center justify-between text-[11px] font-semibold">
                     <span className={isActive ? 'text-primary font-bold' : 'text-content-muted'}>
-                      {isActive ? 'Aktywny' : selectedUser ? 'Otwórz' : 'Wybierz'}
+                      {isActive ? 'Aktywny' : tile.id === 'mailing' || tile.id === 'students-database' ? 'Otwórz moduł' : selectedUser ? 'Otwórz' : 'Wybierz'}
                     </span>
                     <ChevronRight size={12} className={`transition-transform group-hover:translate-x-0.5 ${isActive ? 'text-primary' : 'text-content-muted'}`} />
                   </div>
@@ -1676,11 +1790,12 @@ const [users, setUsers] = useState<UserWithId[]>([]);
       </div>
 
       {/* Active Tab Content Header Banner */}
-      {((selectedUser && activeTab) || activeTab === 'lesson-planner' || activeTab === 'presentation') && (
+      {((selectedUser && activeTab) || activeTab === 'lesson-planner' || activeTab === 'presentation' || activeTab === 'mailing' || activeTab === 'students-database') && (
         <div className="flex items-center justify-between p-4 rounded-2xl bg-base-200/50 border border-white/10">
           <div className="flex items-center gap-3">
             <span className="w-3 h-3 rounded-full bg-primary animate-pulse" />
             <h2 className="text-xl font-extrabold text-white">
+              {activeTab === 'students-database' && 'Baza kursantów (Notion DB, role i eksport CSV/PDF)'}
               {activeTab === 'lesson-planner' && 'Planer lekcji AI (Wersja robocza)'}
               {activeTab === 'presentation' && 'Interaktywna Prezentacja i Wspólny Notatnik Live'}
               {activeTab === 'context' && 'Kontekst kursanta przed lekcją'}
@@ -1690,6 +1805,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               {activeTab === 'tests' && 'Generowanie i przegląd testów AI'}
               {activeTab === 'vocabulary' && 'Zestawy słówek i Zadania Specjalne AI'}
               {activeTab === 'homework' && 'Praca domowa kursanta'}
+              {activeTab === 'mailing' && 'Zarządzanie pocztą i powiadomieniami e-mail (Resend & Monitoring odpowiedzi)'}
             </h2>
           </div>
           {selectedUser ? (
@@ -1698,7 +1814,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             </span>
           ) : (
             <span className="text-xs font-mono text-content-muted hidden sm:inline">
-              Tryb ogólny / Wybierz kursanta
+              {activeTab === 'students-database' ? 'Baza kursantów' : activeTab === 'mailing' ? 'Moduł pocztowy' : 'Tryb ogólny / Wybierz kursanta'}
             </span>
           )}
         </div>
@@ -1706,6 +1822,34 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
       {/* Active Tab Container */}
       <div ref={tabContentRef}>
+          {activeTab === 'students-database' && (
+            <div className="pt-2">
+              <StudentDatabaseScreen
+                users={users}
+                onSelectUser={(u, targetTab) => handleSelectUser(u as UserWithId, targetTab)}
+                onUpdateUserRole={handleRoleChangeForUser}
+                onUpdateUserEmail={async (userId, newEmail) => {
+                  const userRef = doc(db, 'users', userId);
+                  await updateDoc(userRef, { email: newEmail });
+                  changeUserEmail(userId, newEmail).catch((authErr) => {
+                    console.warn('[Admin Auth Email Sync Warning]:', authErr);
+                  });
+                  setUsers(prev => prev.map(u => u.id === userId ? { ...u, email: newEmail } : u));
+                }}
+                onAddNewStudent={() => setShowCreateStudentModal(true)}
+                onOpenMailing={() => {
+                  if (onViewChange) onViewChange('mailing');
+                  else setActiveTab('mailing');
+                }}
+                onBack={() => setActiveTab(null)}
+              />
+            </div>
+          )}
+          {activeTab === 'mailing' && (
+            <div className="pt-2">
+              <AdminMailingScreen onBack={() => setActiveTab(null)} />
+            </div>
+          )}
           {activeTab === 'presentation' && (
             <LessonPresentationView
               selectedUser={selectedUser}
@@ -2242,6 +2386,31 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                     className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 transition-colors"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-content-muted mb-1 flex items-center justify-between">
+                  <span>{i18n.t("Adres e-mail kursanta")}</span>
+                  {profileForm.email && !profileForm.email.includes('@student.vocabboost.com') && profileForm.email.includes('@') ? (
+                    <span className="text-xs text-primary flex items-center gap-1 font-semibold">
+                      ✓ {i18n.t("Dostarczalny (Resend)")}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-warn flex items-center gap-1 font-semibold">
+                      ⚠ {i18n.t("Zastępczy / brak wysyłki")}
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder={i18n.t("np. kursant@gmail.com")}
+                  className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 transition-colors font-mono text-sm"
+                />
+                <p className="text-xs text-content-muted mt-1">
+                  {i18n.t("Adres zsynchronizowany z Notion lub wprowadzony ręcznie. Zmiana adresu zaktualizuje profil kursanta w bazie, konto logowania Firebase Auth oraz umożliwi wysyłkę powiadomień przez Resend.")}
+                </p>
               </div>
               
               <div>
@@ -3619,6 +3788,20 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                     placeholder={i18n.t("e.g. John Doe")}
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Adres e-mail (opcjonalny)")}</label>
+                  <input
+                    type="email"
+                    value={newStudentEmail}
+                    onChange={(e) => setNewStudentEmail(e.target.value)}
+                    className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-3 focus:border-primary focus:outline-none text-sm font-mono"
+                    placeholder={i18n.t("np. uczen@gmail.com")}
+                  />
+                  <p className="text-xs text-content-muted mt-1">
+                    {i18n.t("Podaj adres e-mail do wysyłki powiadomień Resend. Jeśli pozostawisz puste, konto otrzyma login @student.vocabboost.com.")}
+                  </p>
+                </div>
                 
                 <div>
                   <label className="block text-sm font-bold text-content-muted mb-2">{i18n.t("Password Option")}</label>
@@ -3665,7 +3848,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                 <div className="p-4 bg-primary/10 border border-primary/20 rounded-lg text-center space-y-2 relative">
                   <div className="text-primary font-bold mb-2">{i18n.t("Student Created Successfully!")}</div>
                   <div className="text-sm text-content-muted">{i18n.t("Email (Login):")}</div>
-                  <div className="font-mono text-lg">{normalizeUsername(newStudentUsername)}</div>
+                  <div className="font-mono text-lg font-bold">{createdStudentEmail || normalizeUsername(newStudentUsername)}</div>
                   <div className="text-sm text-content-muted mt-2">{i18n.t("Password:")}</div>
                   <div className="font-mono text-lg font-bold tracking-widest bg-base-100 p-2 rounded inline-flex items-center gap-2 border border-base-300">
                     {newStudentPassword}
@@ -3677,9 +3860,8 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                       }}
                       className="text-xs text-primary hover:underline px-2 py-1 rounded bg-primary/10 ml-2"
                     >
-                      
-                                                                        {i18n.t("Copy")}
-                                                                      </button>
+                      {i18n.t("Copy")}
+                    </button>
                   </div>
                   <p className="text-xs text-warn mt-2">{i18n.t("Please copy these credentials and share them securely with the student. This password will not be shown again.")}</p>
                 </div>
@@ -3689,11 +3871,11 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             <div className="flex justify-end gap-3">
               {!newStudentPassword ? (
                 <>
-                  <Button onClick={() => { setShowCreateStudentModal(false); setCreateStudentError(''); }} variant="secondary">{i18n.t("Cancel")}</Button>
+                  <Button onClick={() => { setShowCreateStudentModal(false); setCreateStudentError(''); setNewStudentEmail(''); setCreatedStudentEmail(''); }} variant="secondary">{i18n.t("Cancel")}</Button>
                   <Button onClick={handleCreateStudent} isLoading={isCreatingStudent} disabled={!newStudentUsername}>{i18n.t("Create Account")}</Button>
                 </>
               ) : (
-                <Button onClick={() => { setShowCreateStudentModal(false); setNewStudentPassword(''); setNewStudentUsername(''); }}>{i18n.t("Close")}</Button>
+                <Button onClick={() => { setShowCreateStudentModal(false); setNewStudentPassword(''); setNewStudentUsername(''); setNewStudentEmail(''); setCreatedStudentEmail(''); }}>{i18n.t("Close")}</Button>
               )}
             </div>
           </Card>

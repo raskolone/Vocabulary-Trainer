@@ -17,6 +17,7 @@ import PresenterScreen from './components/admin/presentation/PresenterScreen';
 import { AdminAIActivityMonitor } from './components/admin/AdminAIActivityMonitor';
 import { handleGlobalEscape } from './utils/modalStack';
 import AppAlertModal from './components/ui/AppAlertModal';
+import UnsubscribeScreen from './components/auth/UnsubscribeScreen';
 
 const App: React.FC = () => {
   useEffect(() => {
@@ -56,6 +57,12 @@ const AppContent: React.FC = () => {
 
   if (typeof window !== 'undefined' && window.location.pathname === '/starter') {
     return <StarterVocabularyApp />;
+  }
+
+  // Wypisanie się z powiadomień e-mail (Resend). Działa bez konieczności
+  // logowania — kursant klika link z poczty na dowolnym urządzeniu.
+  if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/unsubscribe') || window.location.pathname.startsWith('/wypisz'))) {
+    return <UnsubscribeScreen />;
   }
 
   // Test poziomujący z linku. Stoi przed sprawdzeniem logowania, bo kandydat

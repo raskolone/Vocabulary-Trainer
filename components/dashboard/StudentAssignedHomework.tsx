@@ -17,7 +17,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { SpecialTask } from '../../types';
 import { studentTasksQuery } from '../../utils/homework';
 import { onSnapshot } from 'firebase/firestore';
-import { getTaskDateMillis } from './HomeworkScreen';
+import { getTaskDateMillis, formatTaskDateTime } from './HomeworkScreen';
 
 interface StudentAssignedHomeworkProps {
   onNavigate?: (view: string, extra?: any) => void;
@@ -272,8 +272,17 @@ export const StudentAssignedHomework: React.FC<StudentAssignedHomeworkProps> = (
                 </div>
 
                 {/* Bottom Meta & Action */}
-                <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-3 text-content-muted">
+                <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-content-muted">
+                    {task.submittedAt ? (
+                      <span className="flex items-center gap-1 text-primary font-mono text-[11px]">
+                        <Clock size={12} /> Odesłano: {formatTaskDateTime(task.submittedAt)}
+                      </span>
+                    ) : task.createdAt ? (
+                      <span className="flex items-center gap-1 font-mono text-[11px]">
+                        <Clock size={12} /> Zadano: {formatTaskDateTime(task.createdAt)}
+                      </span>
+                    ) : null}
                     <span className="font-mono">
                       {sentenceCount} {sentenceCount === 1 ? (language === 'pl' ? 'zdanie' : 'sentence') : (language === 'pl' ? 'zdań' : 'sentences')}
                     </span>

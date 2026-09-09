@@ -40,7 +40,11 @@ import {
   UserCheck,
   Eye,
   GraduationCap,
-  Download
+  Download,
+  CheckCheck,
+  Archive,
+  RotateCcw,
+  Calendar
 } from 'lucide-react';
 
 interface HomeworkScreenProps {
@@ -66,6 +70,15 @@ export const formatTaskDate = (val: any): string => {
   const millis = getTaskDateMillis(val);
   if (!millis) return '';
   return new Date(millis).toLocaleDateString('pl-PL');
+};
+
+export const formatTaskDateTime = (val: any): string => {
+  const millis = getTaskDateMillis(val);
+  if (!millis) return '';
+  const d = new Date(millis);
+  const dateStr = d.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timeStr = d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  return `${dateStr}, ${timeStr}`;
 };
 
 export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
@@ -956,6 +969,7 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
         teacherFeedback: teacherFeedbackText,
         reviewedAt: nowIso,
         feedbackReadByStudent: false,
+        teacherRead: true,
       });
 
       // Powiadomienie dla kursanta o sprawdzeniu pracy i komentarzu lektora
@@ -985,19 +999,190 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
     }
   };
 
-  // Filtered tasks for Teacher
-  const filteredTasks = tasks.filter(t => {
-    if (filterStudentId !== 'all') {
-      const targetStudent = students.find(s => s.id === filterStudentId);
-      if (targetStudent) {
-        if (!isTaskForStudent(t, targetStudent)) return false;
-      } else if (t.studentId !== filterStudentId) {
-        return false;
+  // Oznaczanie pracy domowej jako zrobionej / odczytanej
+  const [markingTaskId, setMarkingTaskId] = useState<string | null>(null);
+
+  const handleMarkAsDone = async (task: SpecialTask) => {
+    if (!task.id) return;
+    setMarkingTaskId(task.id);
+    try {
+      const nowIso = new Date().toISOString();
+      await updateDoc(doc(db, 'specialTasks', task.id), {
+        status: 'graded',
+        teacherRead: true,
+        reviewedAt: nowIso,
+      });
+
+      setTasks(prev => prev.map(t => t.id === task.id ? {
+        ...t,
+        status: 'graded',
+        teacherRead: true,
+        reviewedAt: nowIso
+      } : t));
+
+      if (previewTask?.id === task.id) {
+        setPreviewTask(prev => prev ? {
+          ...prev,
+          status: 'graded',
+          teacherRead: true,
+          reviewedAt: nowIso
+        } : null);
+      }
+    } catch (err: any) {
+      console.error('Błąd oznaczania pracy jako sprawdzonej:', err);
+      alert('Nie udało się oznaczyć pracy: ' + (err?.message || err));
+    } finally {
+      setMarkingTaskId(null);
+    }
+  };
+
+  // Przywracanie pracy z archiwum do oczekujących
+  const handleUnmarkDone = async (task: SpecialTask) => {
+    if (!task.id) return;
+    setMarkingTaskId(task.id);
+    try {
+      await updateDoc(doc(db, 'specialTasks', task.id), {
+        status: 'submitted',
+        teacherRead: false,
+      });
+
+      setTasks(prev => prev.map(t => t.id === task.id ? {
+        ...t,
+        status: 'submitted',
+        teacherRead: false
+      } : t));
+
+      if (previewTask?.id === task.id) {
+        setPreviewTask(prev => prev ? {
+          ...prev,
+          status: 'submitted',
+          teacherRead: false
+        } : null);
+      }
+    } catch (err: any) {
+      console.error('Błąd przywracania pracy do odesłanych:', err);
+      alert('Nie udało się przywrócić pracy: ' + (err?.message || err));
+    } finally {
+      setMarkingTaskId(null);
+    }
+  };
+
+  const [viewedTaskIds, setViewedTaskIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('teacher_seen_homework_ids');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const markTaskAsViewedByTeacher = (task: SpecialTask) => {
+    if (!task.id) return;
+    setViewedTaskIds((prev) => {
+      const next = new Set(prev);
+      next.add(task.id!);
+      try {
+        localStorage.setItem('teacher_seen_homework_ids', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+
+    if (!task.teacherViewedAt) {
+      const nowIso = new Date().toISOString();
+      updateDoc(doc(db, 'specialTasks', task.id), {
+        teacherViewedAt: nowIso,
+      }).catch(console.warn);
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, teacherViewedAt: nowIso } : t))
+      );
+    }
+  };
+
+  const isTaskNewForTeacher = (task: SpecialTask): boolean => {
+    if (!task.id || task.status !== 'submitted') return false;
+    if (task.teacherRead || task.teacherViewedAt) return false;
+    return !viewedTaskIds.has(task.id);
+  };
+
+  const [markingTestId, setMarkingTestId] = useState<string | null>(null);
+
+  const handleMarkTestAsRead = async (test: StudentTest) => {
+    if (!test.id || !test.studentId) return;
+    setMarkingTestId(test.id);
+    try {
+      await updateDoc(doc(db, `users/${test.studentId}/tests`, test.id), {
+        teacherRead: true,
+      });
+
+      setStudentTests(prev => prev.map(t => t.id === test.id ? { ...t, teacherRead: true } : t));
+    } catch (err: any) {
+      console.error('Błąd oznaczania testu jako odczytanego:', err);
+    } finally {
+      setMarkingTestId(null);
+    }
+  };
+
+  const handleOpenPreviewTest = async (test: StudentTest) => {
+    setPreviewTest(test);
+    if (test.teacherRead === false && test.studentId && test.id) {
+      try {
+        await updateDoc(doc(db, `users/${test.studentId}/tests`, test.id), {
+          teacherRead: true,
+        });
+        setStudentTests((prev) =>
+          prev.map((t) => (t.id === test.id ? { ...t, teacherRead: true } : t))
+        );
+      } catch (err) {
+        console.warn('Nie udało się oznaczyć testu jako odczytanego przy podglądzie:', err);
       }
     }
-    if (filterStatus !== 'all' && t.status !== filterStatus) return false;
-    return true;
-  });
+  };
+
+  // Filtered tasks for Teacher - base filter by student
+  const teacherStudentTasks = React.useMemo(() => {
+    return tasks.filter(t => {
+      if (filterStudentId !== 'all') {
+        const targetStudent = students.find(s => s.id === filterStudentId);
+        if (targetStudent) {
+          if (!isTaskForStudent(t, targetStudent)) return false;
+        } else if (t.studentId !== filterStudentId) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [tasks, students, filterStudentId]);
+
+  // Aktywne zadania (czekające na kursanta lub odesłane czekające na sprawdzenie)
+  const activeTasks = React.useMemo(() => {
+    return teacherStudentTasks.filter(t => {
+      if (filterStatus === 'submitted') {
+        return t.status === 'submitted' && t.teacherRead !== true;
+      }
+      if (filterStatus === 'pending') {
+        return t.status === 'pending';
+      }
+      if (filterStatus === 'graded') {
+        return false;
+      }
+      // 'all'
+      return t.status === 'pending' || (t.status === 'submitted' && t.teacherRead !== true);
+    });
+  }, [teacherStudentTasks, filterStatus]);
+
+  // Archiwum zadań sprawdzonych / odznaczonych
+  const archivedTasks = React.useMemo(() => {
+    return teacherStudentTasks.filter(t => {
+      return t.status === 'graded' || t.status === 'completed' || t.teacherRead === true;
+    }).sort((a, b) => {
+      const timeA = getTaskDateMillis(a.reviewedAt || a.submittedAt || a.createdAt);
+      const timeB = getTaskDateMillis(b.reviewedAt || b.submittedAt || b.createdAt);
+      return timeB - timeA;
+    });
+  }, [teacherStudentTasks]);
+
+  const filteredTasks = activeTasks;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20">
@@ -1822,15 +2007,23 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
               Ładowanie prac domowych...
             </div>
           ) : (isTeacher ? filteredTasks : tasks).length === 0 ? (
-            <Card className="text-center py-12">
-              <BookOpen className="mx-auto text-content-muted mb-3 opacity-40" size={48} />
-              <p className="text-base font-bold text-content">Brak prac domowych</p>
-              <p className="text-xs text-content-muted mt-1">
-                {isTeacher
-                  ? 'Nie przypisano jeszcze żadnej pracy domowej. Kliknij "Przypisz pracę domową", aby stworzyć pierwsze zadanie.'
-                  : 'Nie masz obecnie żadnych oczekujących prac domowych do rozwiązania.'}
-              </p>
-            </Card>
+            isTeacher && filterStatus === 'graded' ? null : (
+              <Card className="text-center py-12">
+                <BookOpen className="mx-auto text-content-muted mb-3 opacity-40" size={48} />
+                <p className="text-base font-bold text-content">
+                  {isTeacher && filterStatus === 'submitted'
+                    ? 'Brak prac oczekujących na sprawdzenie'
+                    : 'Brak prac domowych'}
+                </p>
+                <p className="text-xs text-content-muted mt-1">
+                  {isTeacher
+                    ? filterStatus === 'submitted'
+                      ? 'Wszystkie odesłane prace domowe zostały sprawdzone lub oznaczone jako zrobione. Sprawdzone prace znajdziesz w poniższym archiwum.'
+                      : 'Nie znaleziono żadnych prac domowych dla wybranych kryteriów.'
+                    : 'Nie masz obecnie żadnych oczekujących prac domowych do rozwiązania.'}
+                </p>
+              </Card>
+            )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(isTeacher ? filteredTasks : tasks).map((task) => {
@@ -1849,14 +2042,21 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                         : 'border-white/10'
                     }`}
                   >
-                    <div className="flex justify-between items-start mb-3">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-base-300 text-primary">
-                        {task.type === 'fill_in_the_blank' ? 'Znajdź błędy' : 'Tłumaczenie zdań'}
-                      </span>
+                    <div className="flex justify-between items-start mb-3 gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-base-300 text-primary">
+                          {task.type === 'fill_in_the_blank' ? 'Znajdź błędy' : 'Tłumaczenie zdań'}
+                        </span>
+                        {isTaskNewForTeacher(task) && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-400 text-black shadow-md flex items-center gap-1 animate-pulse">
+                            <Sparkles size={11} /> Nowa
+                          </span>
+                        )}
+                      </div>
 
                       {/* Status Badge */}
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 ${
                           isSubmitted
                             ? 'bg-primary/20 text-primary'
                             : isGraded
@@ -1892,9 +2092,25 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                       {task.instructions || `${task.sentences?.length || 0} zdań w zestawie.`}
                     </p>
 
-                    <div className="flex items-center justify-between text-[11px] text-content-muted pt-3 border-t border-white/5 mt-2">
-                      <span>{task.sentences?.length || 0} zdań</span>
-                      {task.dueDate && <span>Termin: {task.dueDate}</span>}
+                    <div className="space-y-1.5 pt-3 border-t border-white/5 mt-2 text-[11px] text-content-muted">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {isSubmitted && task.submittedAt ? (
+                          <span className="flex items-center gap-1 text-primary font-semibold">
+                            <Clock size={12} className="text-primary" /> Nadesłano: <strong>{formatTaskDateTime(task.submittedAt)}</strong>
+                          </span>
+                        ) : task.createdAt ? (
+                          <span className="flex items-center gap-1">
+                            <Calendar size={12} /> Zadano: {formatTaskDateTime(task.createdAt)}
+                          </span>
+                        ) : null}
+                        <span>{task.sentences?.length || 0} zdań</span>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-content-muted/80">
+                        {isSubmitted && task.createdAt && (
+                          <span>Zadano: {formatTaskDateTime(task.createdAt)}</span>
+                        )}
+                        {task.dueDate && <span>Termin: {task.dueDate}</span>}
+                      </div>
                     </div>
 
                     {/* Teacher Feedback Banner if graded */}
@@ -1912,8 +2128,11 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => setPreviewTask(task)}
-                            className="text-xs flex items-center gap-1.5"
+                            onClick={() => {
+                              markTaskAsViewedByTeacher(task);
+                              setPreviewTask(task);
+                            }}
+                            className="text-xs flex items-center gap-1.5 cursor-pointer"
                           >
                             <Eye size={14} />
                             Podgląd
@@ -1921,26 +2140,50 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => handleStartEditTask(task)}
-                            className="text-xs flex items-center gap-1.5 hover:border-primary/40 hover:text-primary transition-all"
+                            onClick={() => {
+                              markTaskAsViewedByTeacher(task);
+                              handleStartEditTask(task);
+                            }}
+                            className="text-xs flex items-center gap-1.5 hover:border-primary/40 hover:text-primary transition-all cursor-pointer"
                             title="Edytuj zdania, wytyczne lub termin tej pracy"
                           >
                             <Edit3 size={14} />
                             Edytuj
                           </Button>
                           {isSubmitted && (
-                            <Button
-                              size="sm"
-                              variant="primary"
-                              onClick={() => {
-                                setReviewTask(task);
-                                setTeacherFeedbackText(task.teacherFeedback || '');
-                              }}
-                              className="text-xs flex items-center gap-1.5"
-                            >
-                              <FileText size={14} />
-                              Sprawdź / Oceń
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  markTaskAsViewedByTeacher(task);
+                                  handleMarkAsDone(task);
+                                }}
+                                disabled={markingTaskId === task.id}
+                                className="text-xs flex items-center gap-1.5 text-primary border-primary/30 hover:bg-primary/15 transition-all cursor-pointer"
+                                title="Oznacz tę pracę jako zrobioną/odczytaną (zmniejszy liczbę odesłanych prac i przeniesie do archiwum)"
+                              >
+                                {markingTaskId === task.id ? (
+                                  <RefreshCw size={13} className="animate-spin" />
+                                ) : (
+                                  <CheckCheck size={14} className="text-primary" />
+                                )}
+                                <span>Oznacz jako zrobione</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={() => {
+                                  markTaskAsViewedByTeacher(task);
+                                  setReviewTask(task);
+                                  setTeacherFeedbackText(task.teacherFeedback || '');
+                                }}
+                                className="text-xs flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <FileText size={14} />
+                                Sprawdź / Oceń
+                              </Button>
+                            </>
                           )}
                           {isGraded && (
                             <Button
@@ -1987,6 +2230,138 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                   </Card>
                 );
               })}
+            </div>
+          )}
+
+          {/* ---------------- ROZDZIELAJĄCY DIVIDER - ARCHIWUM ---------------- */}
+          {isTeacher && (filterStatus === 'submitted' || filterStatus === 'all' || filterStatus === 'graded') && (
+            <div className="space-y-4 pt-2">
+              <div className="relative my-8 py-2">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                  <div className="w-full border-t border-white/10" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="bg-base-200 px-5 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider text-content-muted border border-white/10 flex items-center gap-2 shadow-xl shadow-black/40">
+                    <Archive size={15} className="text-primary" />
+                    <span>Sprawdzone przez nauczyciela</span>
+                    <span className="px-2 py-0.5 bg-white/10 text-white rounded-full text-[11px] font-bold">
+                      {archivedTasks.length}
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {archivedTasks.length === 0 ? (
+                <Card className="text-center py-8 bg-base-200/30 border border-white/5">
+                  <Archive className="mx-auto text-content-muted mb-2 opacity-30" size={32} />
+                  <p className="text-xs font-semibold text-content-muted">Archiwum jest puste</p>
+                  <p className="text-[11px] text-content-muted/70 mt-0.5">
+                    Sprawdzone, ocenione lub odznaczone prace domowe pojawią się w tym miejscu.
+                  </p>
+                </Card>
+              ) : (
+                <div className="space-y-2.5">
+                  {archivedTasks.map((task) => {
+                    const isGradedWithFeedback = Boolean(task.teacherFeedback || task.grade !== undefined);
+                    const dateFormatted = formatTaskDateTime(task.reviewedAt || task.submittedAt || task.createdAt);
+                    const isMarking = markingTaskId === task.id;
+
+                    return (
+                      <div
+                        key={task.id}
+                        className="p-3.5 rounded-xl bg-base-200/50 hover:bg-base-200/70 border border-white/5 hover:border-white/10 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-base-300 text-content-muted">
+                              {task.type === 'fill_in_the_blank' ? 'Znajdź błędy' : 'Tłumaczenie zdań'}
+                            </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 flex items-center gap-1">
+                              <CheckCircle2 size={11} />
+                              {isGradedWithFeedback ? 'Sprawdzona i oceniona' : 'Sprawdzona / zrobiona'}
+                            </span>
+                            {task.grade !== undefined && (
+                              <span className="text-[11px] font-mono font-bold text-primary">
+                                Wynik: {task.grade}%
+                              </span>
+                            )}
+                          </div>
+
+                          <h4 className="text-sm font-bold text-white truncate">{task.title}</h4>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-content-muted mt-1">
+                            <span className="flex items-center gap-1 text-content-muted font-medium">
+                              <UserIcon size={12} className="text-primary" />
+                              {task.studentName || task.studentId}
+                            </span>
+                            {dateFormatted && (
+                              <span className="flex items-center gap-1 font-mono text-[11px]">
+                                <CheckCheck size={12} className="text-primary" /> Sprawdzono: {dateFormatted}
+                              </span>
+                            )}
+                            {task.submittedAt && (
+                              <span className="flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                                <Clock size={11} /> Nadesłano: {formatTaskDateTime(task.submittedAt)}
+                              </span>
+                            )}
+                            {task.teacherFeedback && (
+                              <span className="text-[11px] text-content-muted/80 truncate max-w-md italic">
+                                „{task.teacherFeedback}”
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setPreviewTask(task)}
+                            className="text-xs py-1 px-2.5 flex items-center gap-1 cursor-pointer"
+                            title="Podgląd zadania i odpowiedzi kursanta"
+                          >
+                            <Eye size={13} />
+                            Podgląd
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setReviewTask(task);
+                              setTeacherFeedbackText(task.teacherFeedback || '');
+                            }}
+                            className="text-xs py-1 px-2.5 flex items-center gap-1 text-primary border-primary/30 hover:bg-primary/10 cursor-pointer"
+                            title="Edytuj ocenę lub komentarz"
+                          >
+                            <Award size={13} />
+                            Ocena
+                          </Button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleUnmarkDone(task)}
+                            disabled={isMarking}
+                            className="p-1.5 rounded-lg text-content-muted hover:text-warn hover:bg-warn/10 border border-transparent hover:border-warn/20 transition-all cursor-pointer"
+                            title="Cofnij do odesłanych (przywróć do prac oczekujących na sprawdzenie)"
+                          >
+                            {isMarking ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTask(task)}
+                            className="p-1.5 rounded-lg text-content-muted hover:text-danger hover:bg-danger/10 border border-transparent hover:border-danger/20 transition-all cursor-pointer"
+                            title="Usuń pracę domową"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -2081,11 +2456,28 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                         </div>
 
                         <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-white/5">
+                          {isCompleted && test.teacherRead === false && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleMarkTestAsRead(test)}
+                              disabled={markingTestId === test.id}
+                              className="text-xs flex items-center gap-1.5 text-primary border-primary/30 hover:bg-primary/10 cursor-pointer"
+                              title="Oznacz ten test jako odczytany (zmniejszy liczbę odesłanych prac)"
+                            >
+                              {markingTestId === test.id ? (
+                                <RefreshCw size={12} className="animate-spin" />
+                              ) : (
+                                <CheckCheck size={13} />
+                              )}
+                              Oznacz jako odczytany
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="secondary"
                             onClick={() => exportTestToPDF(test, (k: string) => k)}
-                            className="text-xs flex items-center gap-1.5"
+                            className="text-xs flex items-center gap-1.5 cursor-pointer"
                             title="Pobierz arkusz lub raport PDF"
                           >
                             <Download size={14} /> PDF
@@ -2093,8 +2485,8 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                           <Button
                             size="sm"
                             variant={isCompleted ? 'primary' : 'secondary'}
-                            onClick={() => setPreviewTest(test)}
-                            className="text-xs flex items-center gap-1.5"
+                            onClick={() => handleOpenPreviewTest(test)}
+                            className="text-xs flex items-center gap-1.5 cursor-pointer"
                           >
                             <Eye size={14} />
                             {isCompleted ? 'Zobacz odpowiedzi i feedback' : 'Podgląd pytań'}
@@ -2272,8 +2664,23 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                   </Badge>
                 </div>
                 <h2 className="text-xl font-bold text-white">{previewTask.title}</h2>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-content-muted mt-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-muted mt-1.5">
                   <span>Kursant: <strong className="text-white">{previewTask.studentName || previewTask.studentId}</strong></span>
+                  {previewTask.createdAt && (
+                    <span className="flex items-center gap-1">
+                      • Zadano: <strong className="text-content">{formatTaskDateTime(previewTask.createdAt)}</strong>
+                    </span>
+                  )}
+                  {previewTask.submittedAt && (
+                    <span className="flex items-center gap-1 text-primary font-medium">
+                      • Nadesłano: <strong className="text-primary">{formatTaskDateTime(previewTask.submittedAt)}</strong>
+                    </span>
+                  )}
+                  {previewTask.reviewedAt && (
+                    <span className="flex items-center gap-1">
+                      • Sprawdzono: <strong className="text-content">{formatTaskDateTime(previewTask.reviewedAt)}</strong>
+                    </span>
+                  )}
                   {previewTask.dueDate && <span>• Termin: <strong className="text-content">{previewTask.dueDate}</strong></span>}
                   <span>• Liczba zdań: <strong className="text-content">{previewTask.sentences?.length || 0}</strong></span>
                 </div>
@@ -2393,19 +2800,35 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                   Zamknij
                 </Button>
                 {isTeacher && previewTask.status === 'submitted' && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => {
-                      const t = previewTask;
-                      setPreviewTask(null);
-                      setReviewTask(t);
-                      setTeacherFeedbackText(t.teacherFeedback || '');
-                    }}
-                    className="text-xs flex items-center gap-1.5"
-                  >
-                    <FileText size={14} /> Sprawdź / Oceń
-                  </Button>
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleMarkAsDone(previewTask)}
+                      disabled={markingTaskId === previewTask.id}
+                      className="text-xs flex items-center gap-1.5 text-primary border-primary/30 hover:bg-primary/10 cursor-pointer"
+                    >
+                      {markingTaskId === previewTask.id ? (
+                        <RefreshCw size={13} className="animate-spin" />
+                      ) : (
+                        <CheckCheck size={14} />
+                      )}
+                      Oznacz jako zrobione
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        const t = previewTask;
+                        setPreviewTask(null);
+                        setReviewTask(t);
+                        setTeacherFeedbackText(t.teacherFeedback || '');
+                      }}
+                      className="text-xs flex items-center gap-1.5"
+                    >
+                      <FileText size={14} /> Sprawdź / Oceń
+                    </Button>
+                  </>
                 )}
               </div>
             </div>

@@ -17,6 +17,8 @@ import { normalizeLevel } from '../../utils/learningCurve';
 import PuzzleExercise from './PuzzleExercise';
 import AssignedExercises from './AssignedExercises';
 import StudentLessonPanel from './StudentLessonPanel';
+import StudentHomeworkPanelSection from './StudentHomeworkPanelSection';
+import StudentTestsPanelSection from './StudentTestsPanelSection';
 import PracticeSessionsSection from './PracticeSessionsSection';
 import StudentProgressBar from './StudentProgressBar';
 import AiProgressNote from './AiProgressNote';
@@ -46,6 +48,8 @@ interface TodayScreenProps {
   onOpenExtraPractice?: () => void;
   /** Wejście w zadanie od lektora. */
   onOpenHomework?: (taskId?: string) => void;
+  /** Wejście w testy kursanta. */
+  onOpenTests?: (testId?: string) => void;
   /** Podgląd panelu konkretnego kursanta (lektor). Bez zapisu powtórek. */
   studentId?: string;
   onStudySet?: (setId: string) => void;
@@ -476,19 +480,29 @@ const TodayScreen: React.FC<TodayScreenProps> = ({
 
       {reviewCard}
 
-      {onOpenHomework && (
-        <AssignedExercises
-          onOpenHomework={onOpenHomework}
-          onOpenExtraPractice={onOpenExtraPractice || (() => {})}
-          studentId={targetId}
-        />
-      )}
-
       <StudentLessonPanel
         studentId={targetId}
         onStudySet={onStudySet}
         onPracticeAI={onPracticeAI}
       />
+
+      {/* Sekcja prac domowych — spójna z resztą zwijanych paneli */}
+      <div className="pt-1">
+        <div className="h-px bg-white/[0.08] mb-4" />
+        <StudentHomeworkPanelSection
+          studentId={targetId}
+          onOpenHomework={onOpenHomework || (() => {})}
+        />
+      </div>
+
+      {/* Sekcja testów kursanta — spójna z resztą zwijanych paneli */}
+      <div className="pt-1">
+        <div className="h-px bg-white/[0.08] mb-4" />
+        <StudentTestsPanelSection
+          studentId={targetId}
+          onOpenTests={onOpenTests || (() => {})}
+        />
+      </div>
 
       {/* Kreska oddziela to, co przyszło z lekcji, od tego, co kursant zrobił
           sam. Bez niej sesje ćwiczeń czytały się jak kolejny rodzaj lekcji. */}

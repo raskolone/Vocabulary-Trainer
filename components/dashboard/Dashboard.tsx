@@ -21,9 +21,10 @@ import { ChevronDown, Sparkles, Menu } from 'lucide-react';
 import AssignedTasks from './AssignedTasks';
 import i18n from "i18next";
 
-type View = 'dashboard' | 'extra-practice' | 'student-today' | 'preview-vocab' | 'preview-homework' | 'preview-history' | 'preview-tests' | 'practice' | 'settings' | 'flashcard-sets' | 'flashcard-edit' | 'flashcard-study' | 'flashcard-stats' | 'admin' | 'admin-stats' | 'admin-history' | 'admin-profile' | 'admin-tests' | 'admin-debugging' | 'presentation' | 'ai-generator' | 'lesson-history' | 'tests' | 'topic-database' | 'student-stats' | 'homework';
+type View = 'dashboard' | 'extra-practice' | 'student-today' | 'preview-vocab' | 'preview-homework' | 'preview-history' | 'preview-tests' | 'practice' | 'settings' | 'flashcard-sets' | 'flashcard-edit' | 'flashcard-study' | 'flashcard-stats' | 'admin' | 'admin-stats' | 'admin-history' | 'admin-profile' | 'admin-tests' | 'admin-debugging' | 'presentation' | 'ai-generator' | 'lesson-history' | 'tests' | 'topic-database' | 'student-stats' | 'homework' | 'mailing' | 'admin-mailing' | 'students-database' | 'admin-students-database' | 'students';
 
 import AdminPanel from '../admin/AdminPanel';
+import AdminMailingScreen from '../admin/AdminMailingScreen';
 import StudentStatsScreen from './StudentStatsScreen';
 import LessonHistoryScreen from './LessonHistoryScreen';
 import TodayScreen from './TodayScreen';
@@ -310,8 +311,14 @@ const Dashboard: React.FC = () => {
     if (view === 'admin-debugging') {
       return <AdminDebuggingScreen onBack={() => handleNavigate('dashboard')} />;
     }
+    if (view === 'mailing' || (view as any) === 'admin-mailing') {
+      return <AdminMailingScreen onBack={() => handleNavigate('dashboard')} />;
+    }
+    if (view === 'students-database' || view === 'students' || (view as any) === 'admin-students-database') {
+      return <AdminPanel initialTab="students-database" onViewChange={handleNavigate} />;
+    }
     if (view === 'admin' || (isTeacher && view === 'dashboard')) {
-      return <AdminPanel />;
+      return <AdminPanel onViewChange={handleNavigate} />;
     }
 
     // „Widok kursanta" — pięć kafelków lektora, każdy dokładnie ten sam
@@ -325,6 +332,7 @@ const Dashboard: React.FC = () => {
               studentId={id}
               onOpenExtraPractice={() => handleNavigate('extra-practice')}
               onOpenHomework={(taskId) => handleNavigate('homework', taskId ? { taskId } : undefined)}
+              onOpenTests={() => handleNavigate('tests')}
               onStudySet={(setId) => {
                 (window as any)._initialStudyMode = 'flashcards';
                 handleNavigate('flashcard-study', { setId });
@@ -379,6 +387,7 @@ const Dashboard: React.FC = () => {
         onOpenExtraPractice: () => handleNavigate('extra-practice'),
         onOpenHomework: (taskId?: string) =>
           handleNavigate('homework', taskId ? { taskId } : undefined),
+        onOpenTests: () => handleNavigate('tests'),
         onStudySet: (setId: string) => {
           (window as any)._initialStudyMode = 'flashcards';
           handleNavigate('flashcard-study', { setId });

@@ -4,7 +4,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Award,
+  Calendar,
   Check,
+  CheckCheck,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -13,6 +15,7 @@ import {
   GraduationCap,
   Loader2,
   Send,
+  Sparkles,
   X as XIcon,
 } from 'lucide-react';
 import { db } from '../../firebase';
@@ -20,6 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { HomeworkType, SpecialTask, StudentTest } from '../../types';
 import { homeworkBlocks, homeworkItemType, studentTasksQuery } from '../../utils/homework';
+import { formatTaskDateTime } from './HomeworkScreen';
 import { evaluateTranslations } from '../../services/geminiService';
 import { HOMEWORK_TYPE_LABELS } from '../../services/homeworkGenerator';
 import { recordExerciseResults } from '../../services/learningProfile';
@@ -179,12 +183,41 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   }, [user?.id, user?.hasNewHomework]);
 
   useEffect(() => {
+    if (user?.hasGradedHomework && user?.id) {
+      const updates: any = { hasGradedHomework: false };
+      if (user.lastGradedHomeworkId) {
+        const currentDismissed = user.dismissedNotifications || [];
+        const newDismissed = Array.from(new Set([
+          ...currentDismissed,
+          `graded_hw_${user.lastGradedHomeworkId}`,
+          `graded_hw_all_${user.id}`,
+        ]));
+        updates.dismissedNotifications = newDismissed;
+        try {
+          localStorage.setItem(`dismissed_graded_hw_${user.id}_${user.lastGradedHomeworkId}`, 'true');
+        } catch (e) {}
+      }
+      updateDoc(doc(db, 'users', user.id), updates).catch(() => {
+        updateDoc(doc(db, 'users', user.id), { hasGradedHomework: false }).catch(console.error);
+      });
+    }
+  }, [user?.id, user?.hasGradedHomework, user?.lastGradedHomeworkId, user?.dismissedNotifications]);
+
+  useEffect(() => {
     if (!initialTaskId || activeTask || isPreview) return;
     const found = tasks.find((t) => t.id === initialTaskId);
     if (found && (found.status === 'pending' || !found.status)) {
       startTask(found);
     } else if (found && (found.status === 'graded' || found.status === 'submitted')) {
       setOpenResultId(found.id);
+      if (found.status === 'graded' && user?.id) {
+        try {
+          localStorage.setItem(`dismissed_graded_hw_${user.id}_${found.id}`, 'true');
+        } catch (e) {}
+        updateDoc(doc(db, 'specialTasks', found.id), {
+          feedbackReadByStudent: true,
+        }).catch(() => {});
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTaskId, tasks, isPreview]);
@@ -301,12 +334,59 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
     () => tasks.filter((t) => t.status === 'pending' || !t.status),
     [tasks]
   );
+  const submittedTasks = useMemo(
+    () => tasks.filter((t) => t.status === 'submitted' && t.status !== 'graded' && !t.reviewedAt),
+    [tasks]
+  );
+  const gradedTasks = useMemo(
+    () => tasks.filter((t) => t.status === 'graded' || Boolean(t.reviewedAt) || Boolean(t.teacherFeedback)),
+    [tasks]
+  );
   const finished = useMemo(
     () => tasks.filter((t) => t.status && t.status !== 'pending'),
     [tasks]
   );
 
+  const [studentSeenTaskIds, setStudentSeenTaskIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(`student_seen_homework_${targetId}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const markTaskAsViewedByStudent = (task: SpecialTask) => {
+    if (!task.id) return;
+    setStudentSeenTaskIds((prev) => {
+      const next = new Set(prev);
+      next.add(task.id!);
+      try {
+        localStorage.setItem(`student_seen_homework_${targetId}`, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+
+    if (!task.studentViewedAt) {
+      const nowIso = new Date().toISOString();
+      updateDoc(doc(db, 'specialTasks', task.id), {
+        studentViewedAt: nowIso,
+      }).catch(console.warn);
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, studentViewedAt: nowIso } : t))
+      );
+    }
+  };
+
+  const isTaskNewForStudent = (task: SpecialTask): boolean => {
+    if (!task.id || (task.status && task.status !== 'pending')) return false;
+    if (task.studentViewedAt) return false;
+    return !studentSeenTaskIds.has(task.id);
+  };
+
   const startTask = (task: SpecialTask) => {
+    markTaskAsViewedByStudent(task);
     setActiveTask(task);
     setIndex(0);
     // Odpowiedzi wczyta hook szkicu, gdy zmieni się klucz zadania — czyszczenie
@@ -709,9 +789,16 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                       className={`neon-still w-full min-h-[4rem] flex items-center gap-3 px-4 py-3 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/[0.08] to-base-200/50 text-left transition-transform ${isPreview ? 'opacity-70 cursor-default' : 'active:scale-[0.99]'}`}
                     >
                       <div className="min-w-0 flex-1">
-                        <span className="block font-bold text-white text-[15px] leading-snug truncate">
-                          {task.title}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                          <span className="block font-bold text-white text-[15px] leading-snug truncate">
+                            {task.title}
+                          </span>
+                          {isTaskNewForStudent(task) && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary text-black shadow-sm flex items-center gap-1 animate-pulse">
+                              <Sparkles size={11} /> Nowa
+                            </span>
+                          )}
+                        </div>
                         <span className="flex flex-wrap items-center gap-x-2 text-[12px] text-content-muted mt-0.5">
                           <span>
                             {blocksOf(task).length > 1
@@ -719,10 +806,14 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                               : typeLabel(blocksOf(task)[0]?.type || 'translation')}
                           </span>
                           <span>· {L.items(task.sentences?.length || 0)}</span>
+                          {task.createdAt && (
+                            <span className="inline-flex items-center gap-1">
+                              · <Calendar size={11} /> Zadano: {formatTaskDateTime(task.createdAt)}
+                            </span>
+                          )}
                           {task.dueDate && (
                             <span className="inline-flex items-center gap-1 text-warn">
-                              <Clock size={11} />
-                              {L.due(task.dueDate)}
+                              · <Clock size={11} /> {L.due(task.dueDate)}
                             </span>
                           )}
                         </span>
@@ -769,31 +860,147 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
             </section>
           )}
 
-          {finished.length > 0 && (
+          {/* Sekcja: Odesłane (oczekujące na sprawdzenie) */}
+          {submittedTasks.length > 0 && (
             <section className="space-y-2">
-              <h2 className="px-1 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-content-muted">
-                {L.done}
+              <h2 className="px-1 text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-content-muted flex items-center gap-1.5">
+                <Clock size={13} className="text-primary" />
+                <span>{language === 'pl' ? 'Odesłane (oczekujące na sprawdzenie)' : 'Submitted (Awaiting review)'}</span>
+                <span className="ml-auto font-mono text-xs">{submittedTasks.length}</span>
               </h2>
               <ul className="rounded-2xl border border-white/10 bg-base-200/40 divide-y divide-white/[0.06] overflow-hidden">
-                {finished.map((task) => {
+                {submittedTasks.map((task) => {
                   const isOpen = openResultId === task.id;
-                  const graded = task.status === 'graded';
                   return (
                     <li key={task.id}>
                       <button
                         onClick={() => setOpenResultId(isOpen ? null : task.id || null)}
-                        className="w-full min-h-[3.5rem] flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04]"
+                        className="w-full min-h-[3.5rem] flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] cursor-pointer"
                       >
                         <div className="min-w-0 flex-1">
                           <span className="block text-[15px] font-semibold text-content leading-snug truncate">
                             {task.title}
                           </span>
-                          <span className="text-[12px] text-content-muted">
-                            {graded ? L.statusGraded : L.statusSubmitted}
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-content-muted mt-0.5">
+                            <span className="font-semibold text-warn">
+                              {L.statusSubmitted}
+                            </span>
+                            {task.submittedAt && (
+                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                                · <Clock size={11} /> Odesłano: {formatTaskDateTime(task.submittedAt)}
+                              </span>
+                            )}
                           </span>
                         </div>
-                        {graded && task.grade !== undefined && (
-                          <span className="flex items-center gap-1 font-mono text-[13px] font-bold text-primary shrink-0">
+                        <span className="text-xs text-content-muted shrink-0 font-mono">
+                          {isOpen ? 'Zwiń' : 'Podgląd'}
+                        </span>
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-4 pb-4 space-y-2">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-muted pb-2 border-b border-white/5 font-mono">
+                            {task.createdAt && <span>Zadano: <strong>{formatTaskDateTime(task.createdAt)}</strong></span>}
+                            {task.submittedAt && <span>• Odesłano: <strong>{formatTaskDateTime(task.submittedAt)}</strong></span>}
+                            {task.dueDate && <span>• Termin: {task.dueDate}</span>}
+                          </div>
+                          {(task.evaluationResults || []).map((row: any, i: number) => (
+                            <div
+                              key={i}
+                              className="rounded-xl bg-base-100/50 border border-white/[0.07] p-3 space-y-1"
+                            >
+                              <p className="prose-justified text-[13px] text-white font-semibold leading-snug">
+                                {row.polishSentence}
+                              </p>
+                              <p className="text-[13px] text-content">
+                                <span className="text-content-muted">{L.yourAnswer}: </span>
+                                {row.studentAnswer || '—'}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
+          {/* Rozdzielający divider przed sekcją Sprawdzone przez nauczyciela */}
+          <div className="pt-2">
+            <div className="h-px bg-white/[0.08] my-4" />
+          </div>
+
+          {/* Sekcja: Sprawdzone przez nauczyciela */}
+          <section className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-[12px] font-mono font-bold uppercase tracking-[0.12em] text-primary flex items-center gap-1.5">
+                <CheckCheck size={16} />
+                <span>{language === 'pl' ? 'Sprawdzone przez nauczyciela' : 'Reviewed by teacher'}</span>
+              </h2>
+              <span className="text-xs font-mono font-bold text-primary/80">
+                {gradedTasks.length} {language === 'pl' ? (gradedTasks.length === 1 ? 'praca' : 'prac') : 'tasks'}
+              </span>
+            </div>
+
+            {gradedTasks.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-base-200/40 p-5 text-center text-xs text-content-muted leading-relaxed">
+                <Award className="w-7 h-7 text-primary/40 mx-auto mb-2" />
+                <p className="font-semibold text-white/90 text-sm">
+                  {language === 'pl' ? 'Brak sprawdzonych prac' : 'No reviewed homework yet'}
+                </p>
+                <p className="mt-1 text-content-muted">
+                  {language === 'pl'
+                    ? 'Gdy lektor sprawdzi Twoją odesłaną pracę domową i wystawi ocenę lub komentarz, pojawi się ona w tym miejscu.'
+                    : 'When your teacher reviews your submitted homework, grades and feedback will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <ul className="rounded-2xl border border-primary/25 bg-base-200/40 divide-y divide-white/[0.06] overflow-hidden">
+                {gradedTasks.map((task) => {
+                  const isOpen = openResultId === task.id;
+                  return (
+                    <li key={task.id}>
+                      <button
+                        onClick={() => {
+                          const nextOpen = isOpen ? null : task.id || null;
+                          setOpenResultId(nextOpen);
+                          if (nextOpen && task.id) {
+                            if (user?.id) {
+                              try {
+                                localStorage.setItem(`dismissed_graded_hw_${user.id}_${task.id}`, 'true');
+                              } catch (e) {}
+                            }
+                            updateDoc(doc(db, 'specialTasks', task.id), {
+                              feedbackReadByStudent: true,
+                            }).catch(() => {});
+                          }
+                        }}
+                        className="w-full min-h-[3.5rem] flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] cursor-pointer"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-[15px] font-semibold text-content leading-snug truncate">
+                            {task.title}
+                          </span>
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-content-muted mt-0.5">
+                            <span className="font-semibold text-primary flex items-center gap-1">
+                              <CheckCheck size={12} /> {L.statusGraded}
+                            </span>
+                            {task.reviewedAt && (
+                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                                · Sprawdzono: {formatTaskDateTime(task.reviewedAt)}
+                              </span>
+                            )}
+                            {task.submittedAt && (
+                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-content-muted">
+                                · Odesłano: {formatTaskDateTime(task.submittedAt)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {task.grade !== undefined && (
+                          <span className="flex items-center gap-1 font-mono text-[13px] font-bold text-primary shrink-0 px-2 py-0.5 rounded-full bg-primary/15 border border-primary/30">
                             <Award size={13} />
                             {task.grade}%
                           </span>
@@ -801,14 +1008,22 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                       </button>
 
                       {isOpen && (
-                        <div className="px-4 pb-4 space-y-2">
+                        <div className="px-4 pb-4 space-y-2.5">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-content-muted pb-2 border-b border-white/5 font-mono">
+                            {task.createdAt && <span>Zadano: <strong>{formatTaskDateTime(task.createdAt)}</strong></span>}
+                            {task.submittedAt && <span>• Odesłano: <strong>{formatTaskDateTime(task.submittedAt)}</strong></span>}
+                            {task.reviewedAt && <span>• Oceniono: <strong>{formatTaskDateTime(task.reviewedAt)}</strong></span>}
+                            {task.dueDate && <span>• Termin: {task.dueDate}</span>}
+                          </div>
                           {task.teacherFeedback && (
-                            <p className="prose-justified rounded-xl bg-primary/[0.07] border border-primary/20 p-3 text-[13px] text-content leading-relaxed">
-                              <span className="block text-[11px] font-mono uppercase tracking-wider text-primary mb-1">
+                            <div className="rounded-xl bg-primary/[0.08] border border-primary/25 p-3.5 space-y-1">
+                              <span className="block text-[11px] font-mono font-bold uppercase tracking-wider text-primary">
                                 {L.teacherFeedback}
                               </span>
-                              {task.teacherFeedback}
-                            </p>
+                              <p className="text-[13px] text-white leading-relaxed whitespace-pre-wrap font-sans">
+                                {task.teacherFeedback}
+                              </p>
+                            </div>
                           )}
                           {(task.evaluationResults || []).map((row: any, i: number) => (
                             <div
@@ -835,8 +1050,8 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
                   );
                 })}
               </ul>
-            </section>
-          )}
+            )}
+          </section>
         </>
       )}
 

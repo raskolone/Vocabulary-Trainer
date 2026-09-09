@@ -78,5 +78,18 @@ export function useFirebaseAdminApi() {
     return handleResponse(res);
   };
 
-  return { listUsers, createUser, deleteUser, changeUserRole, changeUserPassword };
+  const changeUserEmail = async (uid: string, email: string) => {
+    const token = await getIdToken();
+    const res = await fetch(`/api/admin-users/users/${uid}/email`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(res);
+  };
+
+  return { listUsers, createUser, deleteUser, changeUserRole, changeUserPassword, changeUserEmail };
 }

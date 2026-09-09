@@ -149,6 +149,8 @@ import express from "express";
 import path from "path";
 import { initializeApp, cert, getApps, getApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
+import { createHmac } from "crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { GoogleGenAI, Type } from "@google/genai";
 import defaultFirebaseConfig from "./firebase-applet-config.json";
@@ -449,12 +451,28 @@ export function createApp() {
       // Actually, if we use Admin SDK, we don't strictly *need* JWKS, adminAuth.verifyIdToken does exactly that securely.
       const decodedToken = await adminAuth.verifyIdToken(idToken);
       
-      // Admin emails
-      const ADMIN_EMAILS = ['maciej.wyrozumski@gmail.com'];
+      // Admin emails & claims
+      const ADMIN_EMAILS = ['maciej.wyrozumski@gmail.com', 'marta.lukaszczyk@gmail.com'];
+      const email = (decodedToken.email || '').toLowerCase();
+      const isAdminByEmail = ADMIN_EMAILS.includes(email);
+      const isAdminByClaim = decodedToken.role === 'admin' || decodedToken.admin === true || decodedToken.role === 'teacher';
       
-      if (!decodedToken.email || !ADMIN_EMAILS.includes(decodedToken.email)) {
-        res.status(403).json({ error: 'Forbidden: Admin access required' });
-        return;
+      if (!isAdminByEmail && !isAdminByClaim) {
+        try {
+          const adminApp = getAdminApp();
+          const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+          const userDoc = await adminDb.collection('users').doc(decodedToken.uid).get();
+          const role = userDoc.data()?.role;
+          if (role !== 'admin' && role !== 'teacher') {
+            res.status(403).json({ error: 'Forbidden: Admin access required' });
+            return;
+          }
+        } catch {
+          if (!isAdminByEmail) {
+            res.status(403).json({ error: 'Forbidden: Admin access required' });
+            return;
+          }
+        }
       }
       
       (req as any).adminUid = decodedToken.uid;
@@ -535,6 +553,255 @@ export function createApp() {
     }
   });
 
+  app.post('/api/admin-users/users/:uid/email', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const uid = req.params.uid as string;
+      const { email } = req.body;
+      if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Nieprawidłowy adres e-mail.' });
+      }
+
+      const trimmedEmail = email.trim().toLowerCase();
+
+      // 1. Zaktualizuj e-mail w Firebase Auth
+      try {
+        await adminAuth.updateUser(uid, { email: trimmedEmail });
+      } catch (authErr: any) {
+        console.warn(`[Admin User Email] Auth update warning for ${uid}:`, authErr?.message);
+        if (authErr?.code === 'auth/email-already-exists') {
+          return res.status(400).json({ error: 'Ten adres e-mail jest już przypisany do innego konta w systemie.' });
+        }
+        if (authErr?.code === 'auth/invalid-email') {
+          return res.status(400).json({ error: 'Podano nieprawidłowy format adresu e-mail.' });
+        }
+      }
+
+      // 2. Zaktualizuj e-mail w profilu Firestore
+      try {
+        const adminApp = getAdminApp();
+        const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+        await adminDb.collection('users').doc(uid).set({
+          email: trimmedEmail,
+        }, { merge: true });
+      } catch (dbErr: any) {
+        console.warn(`[Admin User Email] Firestore admin update warning for ${uid}:`, dbErr?.message);
+      }
+
+      res.json({ success: true, email: trimmedEmail });
+    } catch (error: any) {
+      console.error('[Admin User Email Error]:', error);
+      res.status(500).json({ error: formatErrorString(error) });
+    }
+  });
+
+  const FIRESTORE_DATABASE_ID = 'ai-studio-520a4841-33d0-41ef-829a-838ebc44072d';
+  const UNSUBSCRIBE_SECRET = process.env.UNSUBSCRIBE_SECRET || 'cribro-recall-opt-out-secret-2026';
+
+  const generateUnsubscribeToken = (uid: string): string => {
+    return createHmac('sha256', UNSUBSCRIBE_SECRET).update(uid).digest('hex').slice(0, 16);
+  };
+
+  // Public 1-click unsubscribe endpoint (no login required, secured by HMAC token)
+  app.post('/api/unsubscribe', async (req, res) => {
+    try {
+      const { uid, token, action } = req.body;
+      if (!uid || typeof uid !== 'string') {
+        return res.status(400).json({ error: 'Brak identyfikatora użytkownika.' });
+      }
+
+      const expectedToken = generateUnsubscribeToken(uid);
+      if (!token || token !== expectedToken) {
+        return res.status(403).json({ error: 'Nieprawidłowy lub wygasły token wypisania.' });
+      }
+
+      const adminApp = getAdminApp();
+      const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+      const userRef = adminDb.collection('users').doc(uid);
+      const userSnap = await userRef.get();
+
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: 'Konto kursanta nie zostało odnalezione.' });
+      }
+
+      const userData = userSnap.data() || {};
+      const isReSubscribing = action === 'resubscribe';
+
+      if (isReSubscribing) {
+        await userRef.update({
+          emailNotificationsDisabled: false,
+          unsubscribedAt: null,
+        });
+        return res.json({
+          ok: true,
+          status: 'subscribed',
+          email: userData.email,
+          name: userData.firstName || userData.username || 'Kursancie',
+        });
+      }
+
+      await userRef.update({
+        emailNotificationsDisabled: true,
+        unsubscribedAt: new Date().toISOString(),
+      });
+
+      return res.json({
+        ok: true,
+        status: 'unsubscribed',
+        email: userData.email,
+        name: userData.firstName || userData.username || 'Kursancie',
+      });
+    } catch (err: any) {
+      console.error('[Unsubscribe API Error]:', err);
+      return res.status(500).json({ error: 'Błąd zapisu preferencji powiadomień: ' + formatErrorString(err) });
+    }
+  });
+
+  // Admin mailing test email sender
+  app.post('/api/mailing/test-send', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const { to, subject, html, text } = req.body;
+      if (!to || typeof to !== 'string' || !to.includes('@')) {
+        return res.status(400).json({ error: 'Wymagany jest poprawny adres e-mail odbiorcy.' });
+      }
+
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'Brak zmiennej środowiskowej RESEND_API_KEY na serwerze.' });
+      }
+
+      const fromAddress = process.env.FROM_ADDRESS || 'CRIBRO ENGLISH <powiadomienia@send.maciej.pro>';
+
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [to.trim()],
+          subject: `[TEST] ${subject || 'Testowe powiadomienie CRIBRO'}`,
+          html: html || '<p>To jest testowa wiadomość wysłana z panelu CRIBRO ENGLISH.</p>',
+          text: text || 'To jest testowa wiadomość wysłana z panelu CRIBRO ENGLISH.',
+        }),
+      });
+
+      const raw = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(raw);
+      } catch {}
+
+      if (!response.ok) {
+        const msg = data?.message || data?.error || raw.slice(0, 200);
+        return res.status(response.status).json({ error: `Resend ${response.status}: ${msg}` });
+      }
+
+      return res.json({ ok: true, id: data?.id });
+    } catch (err: any) {
+      console.error('[Mailing Test Send Error]:', err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
+  // Webhook for receiving inbound emails (Resend Inbound Webhook)
+  app.post('/api/mailing/inbound-webhook', async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const rawFrom = String(payload.from || payload.sender || '');
+      const to = Array.isArray(payload.to) ? payload.to.join(', ') : String(payload.to || '');
+      const subject = String(payload.subject || '(Bez tematu)');
+      const text = String(payload.text || payload.body || '');
+      const html = String(payload.html || '');
+
+      const emailMatch = rawFrom.match(/<([^>]+)>/) || [null, rawFrom.trim()];
+      const fromEmail = (emailMatch[1] || rawFrom).trim().toLowerCase();
+      const fromName = rawFrom.includes('<') ? rawFrom.split('<')[0].trim().replace(/"/g, '') : fromEmail;
+
+      const adminApp = getAdminApp();
+      const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+
+      let studentId: string | null = null;
+      let studentName: string | null = null;
+
+      if (fromEmail) {
+        const snap = await adminDb.collection('users').where('email', '==', fromEmail).limit(1).get();
+        if (!snap.empty) {
+          const uDoc = snap.docs[0];
+          const data = uDoc.data();
+          studentId = uDoc.id;
+          studentName = (data.firstName || data.lastName)
+            ? `${data.firstName || ''} ${data.lastName || ''}`.trim()
+            : data.username || fromName;
+        }
+      }
+
+      const newMsg = {
+        fromEmail,
+        fromName: studentName || fromName || fromEmail,
+        studentId,
+        studentName,
+        toEmail: to,
+        subject,
+        text,
+        html,
+        receivedAt: new Date().toISOString(),
+        read: false,
+        archived: false,
+      };
+
+      const docRef = await adminDb.collection('inboundMessages').add(newMsg);
+      console.log(`[Inbound Email Received]: ID ${docRef.id} from ${fromEmail}`);
+
+      return res.json({ ok: true, id: docRef.id });
+    } catch (err: any) {
+      console.error('[Inbound Webhook Error]:', err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
+
+  // Admin simulate inbound email for quick testing
+  app.post('/api/mailing/simulate-inbound', requireFirebaseAdmin, async (req, res) => {
+    try {
+      const { fromEmail, fromName, subject, text } = req.body;
+      const adminApp = getAdminApp();
+      const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
+
+      const targetEmail = (fromEmail || 'kursant@example.com').trim().toLowerCase();
+      let studentId: string | null = null;
+      let resolvedName = fromName || 'Przykładowy Kursant';
+
+      const snap = await adminDb.collection('users').where('email', '==', targetEmail).limit(1).get();
+      if (!snap.empty) {
+        const uDoc = snap.docs[0];
+        const data = uDoc.data();
+        studentId = uDoc.id;
+        resolvedName = (data.firstName || data.lastName)
+          ? `${data.firstName || ''} ${data.lastName || ''}`.trim()
+          : data.username || resolvedName;
+      }
+
+      const newMsg = {
+        fromEmail: targetEmail,
+        fromName: resolvedName,
+        studentId,
+        studentName: resolvedName,
+        toEmail: 'powiadomienia@send.maciej.pro',
+        subject: subject || 'Pytanie do ostatniej pracy domowej',
+        text: text || 'Cześć! Mam pytanie odnośnie zadania z czasem Present Perfect. Kiedy dokładnie używamy "since" zamiast "for"? Pozdrawiam!',
+        html: `<p>${text || 'Cześć! Mam pytanie odnośnie zadania z czasem Present Perfect. Kiedy dokładnie używamy "since" zamiast "for"? Pozdrawiam!'}</p>`,
+        receivedAt: new Date().toISOString(),
+        read: false,
+        archived: false,
+      };
+
+      const docRef = await adminDb.collection('inboundMessages').add(newMsg);
+      return res.json({ ok: true, id: docRef.id, message: newMsg });
+    } catch (err: any) {
+      console.error('[Simulate Inbound Error]:', err);
+      return res.status(500).json({ error: formatErrorString(err) });
+    }
+  });
 
   // Proxy for Gemini API
   

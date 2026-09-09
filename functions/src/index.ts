@@ -10,7 +10,7 @@ import {
   FUNCTION_REGION,
   PLACEHOLDER_EMAIL_DOMAINS,
 } from './config';
-import { buildHomeworkEmail } from './emailTemplate';
+import { buildHomeworkEmail, buildUnsubscribeUrl } from './emailTemplate';
 import { sendEmail } from './resend';
 import { importSelection, previewSync } from './notion/sync';
 
@@ -79,6 +79,16 @@ export const notifyStudentOnHomework = onDocumentCreated(
     }
 
     const user = userSnap.data() || {};
+
+    if (user.emailNotificationsDisabled === true) {
+      logger.info('Kursant wyłączył powiadomienia e-mail — pomijam wysyłkę', {
+        taskId,
+        studentUid,
+        username: user.username ?? null,
+      });
+      return;
+    }
+
     const email = typeof user.email === 'string' ? user.email.trim() : '';
 
     if (!email) {
@@ -106,6 +116,8 @@ export const notifyStudentOnHomework = onDocumentCreated(
       user.username ||
       'Kursancie';
 
+    const unsubscribeUrl = buildUnsubscribeUrl(studentUid);
+
     const { subject, html, text } = buildHomeworkEmail({
       studentName,
       title: typeof task.title === 'string' && task.title ? task.title : 'Praca domowa',
@@ -113,6 +125,7 @@ export const notifyStudentOnHomework = onDocumentCreated(
       dueDate: typeof task.dueDate === 'string' ? task.dueDate : undefined,
       itemCount: Array.isArray(task.sentences) ? task.sentences.length : 0,
       assignedBy: typeof task.assignedBy === 'string' ? task.assignedBy : undefined,
+      unsubscribeUrl,
     });
 
     const result = await sendEmail(RESEND_API_KEY.value(), email, subject, html, text);

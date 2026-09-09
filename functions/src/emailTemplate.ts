@@ -1,4 +1,16 @@
+import { createHmac } from 'crypto';
 import { APP_URL } from './config';
+
+const UNSUBSCRIBE_SECRET = process.env.UNSUBSCRIBE_SECRET || 'cribro-recall-opt-out-secret-2026';
+
+export const generateUnsubscribeToken = (uid: string): string => {
+  return createHmac('sha256', UNSUBSCRIBE_SECRET).update(uid).digest('hex').slice(0, 16);
+};
+
+export const buildUnsubscribeUrl = (uid: string): string => {
+  const token = generateUnsubscribeToken(uid);
+  return `${APP_URL}/unsubscribe?uid=${encodeURIComponent(uid)}&token=${token}`;
+};
 
 /**
  * Treść powiadomienia o nowej pracy domowej.
@@ -15,6 +27,7 @@ export interface HomeworkEmailData {
   dueDate?: string;
   itemCount: number;
   assignedBy?: string;
+  unsubscribeUrl?: string;
 }
 
 const escapeHtml = (value: string): string =>
@@ -67,6 +80,7 @@ export function buildHomeworkEmail(data: HomeworkEmailData): {
     data.assignedBy ? `Od: ${data.assignedBy}` : null,
     data.instructions ? `\nWskazówki: ${data.instructions}` : null,
     APP_URL ? `\nOtwórz aplikację: ${APP_URL}` : null,
+    data.unsubscribeUrl ? `\nWypisz się z powiadomień: ${data.unsubscribeUrl}` : null,
     '',
     '—',
     'CRIBRO ENGLISH',
@@ -102,6 +116,15 @@ export function buildHomeworkEmail(data: HomeworkEmailData): {
        </p>`
     : '';
 
+  const unsubscribeHtml = data.unsubscribeUrl
+    ? `<p style="margin:10px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">
+         Nie chcesz otrzymywać tych wiadomości?
+         <a href="${escapeHtml(data.unsubscribeUrl)}" style="color:#64748b;text-decoration:underline;">
+           Wypisz się z powiadomień e-mail
+         </a>
+       </p>`
+    : '';
+
   const html = `<!doctype html>
 <html lang="pl">
   <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
@@ -131,6 +154,7 @@ export function buildHomeworkEmail(data: HomeworkEmailData): {
           <p style="margin:0;color:#7c8798;font-size:12px;line-height:1.6;">
             Wiadomość wysłana automatycznie po dodaniu zadania w panelu lektora.
           </p>
+          ${unsubscribeHtml}
         </td>
       </tr>
     </table>

@@ -11,7 +11,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { FREQUENCIES } from '../../constants';
 import { RevisionFrequency, TTSAccent, VoiceGender, VoiceSpeed, SoundEngine, canUserViewAiMonitor } from '../../types';
-import { LogOut, Volume2, Play, CheckCircle2, RefreshCw, VolumeX, Sparkles, Sliders, Check, Flame } from 'lucide-react';
+import { LogOut, Volume2, Play, CheckCircle2, RefreshCw, VolumeX, Sparkles, Sliders, Check, Flame, Mail } from 'lucide-react';
 import { playSpeech } from '../../services/ttsService';
 import i18n from "i18next";
 import { useEscapeModal } from '../../hooks/useEscapeModal';
@@ -23,6 +23,7 @@ const SettingsScreen: React.FC = () => {
     const { linkGoogleAccount, user, logout } = useAuth();
     const canViewAiModels = canUserViewAiMonitor(user);
     const [isSavingStreakPref, setIsSavingStreakPref] = useState(false);
+    const [isSavingEmailPref, setIsSavingEmailPref] = useState(false);
     const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
     const [linkError, setLinkError] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -93,6 +94,23 @@ const SettingsScreen: React.FC = () => {
             console.error('Nie udało się zapisać ustawienia passy:', error);
         } finally {
             setIsSavingStreakPref(false);
+        }
+    };
+
+    const handleToggleEmailNotifications = async (disabled: boolean) => {
+        if (!user?.id) return;
+        setIsSavingEmailPref(true);
+        try {
+            await updateDoc(doc(db, 'users', user.id), {
+                emailNotificationsDisabled: disabled,
+                ...(disabled ? { unsubscribedAt: new Date().toISOString() } : { unsubscribedAt: null })
+            });
+            setSaveSuccessMessage(true);
+            setTimeout(() => setSaveSuccessMessage(false), 2500);
+        } catch (error) {
+            console.error('Nie udało się zapisać preferencji powiadomień e-mail:', error);
+        } finally {
+            setIsSavingEmailPref(false);
         }
     };
 
@@ -463,6 +481,32 @@ const SettingsScreen: React.FC = () => {
                             checked={!user?.streakHidden}
                             disabled={isSavingStreakPref}
                             onChange={(e) => handleToggleStreakVisibility(!e.target.checked)}
+                            className="w-5 h-5 rounded border-white/20 bg-black/40 text-primary focus:ring-primary accent-primary cursor-pointer shrink-0"
+                        />
+                    </label>
+                </Card>
+
+                <Card>
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <Mail className="w-5 h-5 text-primary" />
+                        {language === 'pl' ? 'Powiadomienia e-mail' : 'Email Notifications'}
+                    </h2>
+                    <label className="flex items-center justify-between p-3 rounded-xl bg-black/30 border border-white/5 hover:border-white/15 transition-all cursor-pointer">
+                        <div className="pr-4">
+                            <span className="text-sm font-semibold text-white block">
+                                {language === 'pl' ? 'Powiadomienia o pracach domowych i zadaniach' : 'Homework & task notifications'}
+                            </span>
+                            <span className="text-xs text-content-muted">
+                                {language === 'pl'
+                                    ? 'Otrzymuj e-mail, gdy nauczyciel zada nową pracę domową lub pojawi się ważne przypomnienie. Nikogo nie chcemy spamować — wyłączenie natychmiast zatrzymuje wysyłkę.'
+                                    : 'Receive emails when your teacher assigns new homework. Disabling this stops all automatic notification emails.'}
+                            </span>
+                        </div>
+                        <input
+                            type="checkbox"
+                            checked={!user?.emailNotificationsDisabled}
+                            disabled={isSavingEmailPref}
+                            onChange={(e) => handleToggleEmailNotifications(!e.target.checked)}
                             className="w-5 h-5 rounded border-white/20 bg-black/40 text-primary focus:ring-primary accent-primary cursor-pointer shrink-0"
                         />
                     </label>
