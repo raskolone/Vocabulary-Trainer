@@ -1,18 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
-  Sparkles, BookOpen, Layers, Clock, FileText, CheckCircle2, 
+  Sparkles, BookOpen, Clock, FileText, CheckCircle2, 
   ChevronDown, ChevronUp, Link as LinkIcon, ExternalLink, 
   User as UserIcon, MessageSquare, AlertTriangle, Target, Plus, Eye,
   KeyRound, ListChecks, Activity, Wand2, ArrowRight
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { LessonRecord, GeneratedLessonScenario } from '../../types';
-import { getGeneratedScenarios, parseScenarioStages } from '../../services/scenarioService';
 import { extractLessonBlocks, isRecordNeedsCleanup, migrateRecordToBlocks, parseNumberedItems } from '../../utils/lessonBlocks';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import TTSButtons from '../flashcards/TTSButtons';
-import { ScenarioPreviewModal } from './ScenarioPreviewModal';
 
 interface CascadingLessonDetailsProps {
   record: LessonRecord;
@@ -28,16 +26,12 @@ interface CascadingLessonDetailsProps {
 export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
   record,
   studentName,
-  onLinkScenario,
   onGenerateHomework,
   onEdit,
   onDelete,
   onClose,
   onUpdateRecord
 }) => {
-  const [availableScenarios, setAvailableScenarios] = useState<GeneratedLessonScenario[]>([]);
-  const [isLinkingOpen, setIsLinkingOpen] = useState(false);
-  const [selectedScenarioForPreview, setSelectedScenarioForPreview] = useState<GeneratedLessonScenario | null>(null);
   const [isAnswerKeyOpen, setIsAnswerKeyOpen] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [cleanSuccess, setCleanSuccess] = useState(false);
@@ -46,54 +40,26 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
   const blocks = extractLessonBlocks(record);
   const needsCleanup = isRecordNeedsCleanup(record);
 
-  // Section collapse states (Notion-style accordion toggles)
+  // Section collapse states (Domyślnie wszystkie bloki Notion są rozwinięte, aby lektor widział pełny obraz)
   const [expandedSections, setExpandedSections] = useState<{
-    basis: boolean;
     block1: boolean;
     block2: boolean;
     block3: boolean;
     block4: boolean;
     learningCurve: boolean;
   }>({
-    basis: false,
     block1: true,
     block2: true,
     block3: true,
-    block4: Boolean(blocks.nextLesson),
-    learningCurve: Boolean(blocks.learningCurve)
+    block4: true,
+    learningCurve: true
   });
-
-  useEffect(() => {
-    getGeneratedScenarios().then(scenarios => {
-      setAvailableScenarios(scenarios);
-    });
-  }, []);
-
-  // Find linked scenario or parse from record
-  const linkedScenario = availableScenarios.find(s => s.id === record.scenarioId) || 
-    (record.scenarioTopic ? {
-      id: record.scenarioId || 'linked',
-      title: record.scenarioTopic,
-      topic: record.scenarioTopic,
-      content: record.scenarioContent || '',
-      stages: record.scenarioContent ? parseScenarioStages(record.scenarioContent).stages : [],
-      createdAt: record.createdAt,
-      studentId: record.studentId,
-      studentName: studentName || null
-    } as GeneratedLessonScenario : null);
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
-  };
-
-  const handleSelectScenarioToLink = async (scenario: GeneratedLessonScenario) => {
-    if (onLinkScenario) {
-      await onLinkScenario(scenario);
-      setIsLinkingOpen(false);
-    }
   };
 
   const handleCleanRecord = async () => {
@@ -148,7 +114,7 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
           <div className="flex items-center gap-2 text-amber-300">
             <Wand2 size={16} className="shrink-0 text-amber-400" />
             <span>
-              Ten wpis z Notion zawierał zlane zadanie domowe w uwagach. Został uporządkowany w locie do układu bloków Notion.
+              Ten wpis z Notion zawierał zlane zadanie domowe lub tekst wieloblokowy. Został uporządkowany w locie do układu 4 bloków Notion.
             </span>
           </div>
           <Button
@@ -162,142 +128,6 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
           </Button>
         </div>
       )}
-
-      {/* 0. Scenariusz bazowy (Konspekt etapów lekcji) */}
-      <div className="rounded-2xl border border-white/10 bg-base-200/50 overflow-hidden shadow-sm transition-all">
-        <div 
-          onClick={() => toggleSection('basis')}
-          className="p-3.5 bg-base-300/60 flex items-center justify-between gap-3 cursor-pointer hover:bg-base-300 transition-colors select-none"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-white/5 text-content-muted border border-white/10 flex items-center justify-center shrink-0">
-              <Layers size={16} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="font-extrabold text-xs text-white">Scenariusz bazowy (Konspekt)</h4>
-                {linkedScenario ? (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-primary border border-primary/30 flex items-center gap-1">
-                    <LinkIcon size={10} /> Powiązano
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-white/5 text-content-muted">
-                    Brak powiązania
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-content-muted truncate">
-                {linkedScenario ? (linkedScenario.topic || linkedScenario.title) : 'Kliknij, aby sprawdzić lub przypisać konspekt lekcji'}
-              </p>
-            </div>
-          </div>
-          <div className="text-content-muted">
-            {expandedSections.basis ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
-        </div>
-
-        {expandedSections.basis && (
-          <div className="p-4 space-y-3 border-t border-white/5 bg-base-200/30">
-            {linkedScenario ? (
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl bg-base-300/80 border border-primary/20 gap-3">
-                  <div className="space-y-1">
-                    <div className="text-xs text-primary font-bold flex items-center gap-1.5">
-                      <Sparkles size={13} /> Scenariusz bazowy dla tej lekcji:
-                    </div>
-                    <div className="text-sm font-bold text-white">
-                      {linkedScenario.topic || linkedScenario.title}
-                    </div>
-                    {linkedScenario.targetLevel && (
-                      <div className="text-[11px] text-content-muted">
-                        Poziom: {linkedScenario.targetLevel} • Czas: {linkedScenario.lessonDuration || '60 min'}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setSelectedScenarioForPreview(linkedScenario)}
-                      className="text-xs text-primary font-bold hover:bg-primary/10 flex items-center gap-1"
-                    >
-                      <Eye size={14} /> Pełny podgląd etapów
-                    </Button>
-                  </div>
-                </div>
-
-                {linkedScenario.stages && linkedScenario.stages.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {linkedScenario.stages.map((stage, sIdx) => (
-                      <div 
-                        key={stage.id || sIdx}
-                        className="p-3 rounded-xl bg-base-300/40 border border-white/5 text-xs space-y-1"
-                      >
-                        <div className="font-bold text-white flex items-center justify-between gap-2">
-                          <span className="truncate">{stage.title}</span>
-                          {stage.duration && (
-                            <span className="text-[10px] text-content-muted font-mono shrink-0">
-                              {stage.duration}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-content-muted line-clamp-2 leading-relaxed">
-                          {stage.body.replace(/[#*`_]/g, '')}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="p-3.5 rounded-xl bg-base-300/30 border border-white/5 text-center space-y-2.5">
-                <p className="text-xs text-content-muted">
-                  Ten wpis lekcji nie ma przypisanego scenariusza bazowego. Powiązanie pozwoli śledzić konspekt i cele lekcji.
-                </p>
-                {onLinkScenario && (
-                  <div>
-                    {!isLinkingOpen ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setIsLinkingOpen(true)}
-                        className="text-xs font-bold flex items-center gap-1.5 mx-auto"
-                      >
-                        <Plus size={14} /> Powiąż ze scenariuszem
-                      </Button>
-                    ) : (
-                      <div className="space-y-2 text-left bg-base-300/80 p-3 rounded-xl border border-white/10 mt-2">
-                        <div className="flex items-center justify-between text-xs font-bold text-white pb-1 border-b border-white/10">
-                          <span>Wybierz scenariusz do powiązania:</span>
-                          <button onClick={() => setIsLinkingOpen(false)} className="text-content-muted hover:text-white">
-                            ✕
-                          </button>
-                        </div>
-                        <div className="max-h-48 overflow-y-auto space-y-1.5">
-                          {availableScenarios.map(sc => (
-                            <div
-                              key={sc.id}
-                              onClick={() => handleSelectScenarioToLink(sc)}
-                              className="p-2 rounded-lg bg-base-200 hover:bg-primary/20 hover:border-primary/40 border border-white/5 cursor-pointer text-xs transition-all flex items-center justify-between"
-                            >
-                              <div className="font-bold text-white truncate mr-2">
-                                {sc.topic || sc.title}
-                              </div>
-                              <span className="text-[10px] text-content-muted shrink-0">
-                                {sc.targetLevel || 'B2'}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* 1. BLOK 1: LEKCJA W SKRÓCIE (Blue Accordion / Badge) */}
       <div className="rounded-2xl border border-sky-500/20 bg-sky-950/15 overflow-hidden shadow-sm transition-all">
@@ -574,13 +404,6 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
           </div>
         )}
       </div>
-
-      {/* Full Preview Modal for linked scenario */}
-      <ScenarioPreviewModal
-        scenario={selectedScenarioForPreview}
-        isOpen={Boolean(selectedScenarioForPreview)}
-        onClose={() => setSelectedScenarioForPreview(null)}
-      />
     </div>
   );
 };

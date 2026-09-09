@@ -3230,61 +3230,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                         </div>
                       </div>
 
-                      {/* Powiązanie z Podstawą Lekcji (Scenariuszem bazowym) */}
-                      <div className="p-3.5 rounded-xl bg-base-200/90 border border-primary/20 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <label className="text-xs font-bold text-primary flex items-center gap-1.5">
-                            <Layers size={14} /> Podstawa lekcji (Powiązany scenariusz bazowy)
-                          </label>
-                          {lessonFormScenarioTopic && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLessonFormScenarioId('');
-                                setLessonFormScenarioTopic('');
-                                setLessonFormScenarioContent('');
-                              }}
-                              className="text-[11px] text-content-muted hover:text-danger cursor-pointer transition-colors"
-                            >
-                              Odłącz scenariusz
-                            </button>
-                          )}
-                        </div>
-                        <select
-                          value={lessonFormScenarioId}
-                          onChange={(e) => {
-                            const sId = e.target.value;
-                            setLessonFormScenarioId(sId);
-                            const sc = availableScenariosForForm.find(s => s.id === sId);
-                            if (sc) {
-                              setLessonFormScenarioTopic(sc.topic || sc.title);
-                              setLessonFormScenarioContent(sc.content);
-                              if (!lessonFormTopic.trim()) {
-                                setLessonFormTopic(sc.topic || sc.title);
-                              }
-                              if (!lessonFormWords.trim() && sc.vocabularyText) {
-                                setLessonFormWords(sc.vocabularyText);
-                              }
-                            } else {
-                              setLessonFormScenarioTopic('');
-                              setLessonFormScenarioContent('');
-                            }
-                          }}
-                          className="w-full bg-base-300 border border-white/10 rounded-lg p-2 text-white text-xs"
-                        >
-                          <option value="">-- Wybierz wygenerowany scenariusz (opcjonalnie) --</option>
-                          {availableScenariosForForm.map(sc => (
-                            <option key={sc.id} value={sc.id}>
-                              {sc.topic || sc.title} {sc.studentName ? `(${sc.studentName})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {lessonFormScenarioTopic && (
-                          <div className="text-[11px] text-primary/80 font-medium">
-                            🔗 Powiązano z konspektem: <span className="text-white font-bold">{lessonFormScenarioTopic}</span>
-                          </div>
-                        )}
-                      </div>
+                      {/* Opcja powiązania ze scenariuszem lekcji schowana na później zgodnie z dyspozycją */}
                       <div>
                         <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Revision Notes")}</label>
                         <textarea 

@@ -72,9 +72,123 @@ export function splitHomeworkAndAnswerKey(rawHomework: string): {
 }
 
 /**
+ * Wykrywa czy dany tekst zawiera strukturę wielu bloków Notion
+ * (np. "1. Lekcja w skrócie", "BLOK 1", "2. Key Language", "BLOK 2", "3. Homework", "BLOK 3", "4. Next Lesson", "BLOK 4")
+ * i rozbija go na poszczególne bloki.
+ */
+export function parseNotionMultiBlockText(text: string): Partial<LessonBlocks> | null {
+  if (!text || typeof text !== 'string') return null;
+
+  // Sprawdzamy czy tekst zawiera przynajmniej 2 główne znaczniki bloków lekcji Notion
+  // Uwaga: Zadanie domowe Notion ma własne pod-bloki: "Blok 1 — zdania do przetłumaczenia" oraz "Blok 2 — odpowiedzi",
+  // dlatego Blok 1 i Blok 2 muszą odnosić się ściśle do Lekcji w skrócie i Key Language.
+  const hasBlock1 = /(?:(?:blok\s*1\s*[-:—–]?\s*)?lekcja\s*w\s*skr[óo]cie|blok\s*1\s*[-:—–]?\s*streszczenie)/i.test(text);
+  const hasBlock2 = /(?:(?:blok\s*2\s*[-:—–]?\s*)?key\s*language|blok\s*2\s*[-:—–]?\s*(?:słownictwo|korekty))/i.test(text);
+  const hasBlock3 = /(?:(?:blok\s*3\s*[-:—–]?\s*)?homework|blok\s*3\s*[-:—–]?\s*cribro|zadanie\s*domowe|cribro\s*habit)/i.test(text);
+  const hasBlock4 = /(?:(?:blok\s*4\s*[-:—–]?\s*)?next\s*lesson|kolejna\s*lekcja|nast[eę]pna\s*lekcja)/i.test(text);
+
+  const blockCount = [hasBlock1, hasBlock2, hasBlock3, hasBlock4].filter(Boolean).length;
+  if (blockCount < 2) {
+    return null;
+  }
+
+  const lines = text.split('\n');
+  const sections: {
+    summary: string[];
+    keyLanguage: string[];
+    homework: string[];
+    nextLesson: string[];
+    learningCurve: string[];
+  } = {
+    summary: [],
+    keyLanguage: [],
+    homework: [],
+    nextLesson: [],
+    learningCurve: [],
+  };
+
+  let currentSection: keyof typeof sections | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    // Główny Blok 1 (nie mylić z Blok 1 - zdania do przetłumaczenia)
+    if (/^(?:#{1,4}\s*)?(?:(?:\d+[.)]\s*)?(?:blok\s*1\s*[-:—–]?\s*)?lekcja\s*w\s*skr[óo]cie|blok\s*1\s*[-:—–]?\s*streszczenie)/i.test(line)) {
+      currentSection = 'summary';
+      continue;
+    }
+    // Główny Blok 2 (nie mylić z Blok 2 - odpowiedzi)
+    if (/^(?:#{1,4}\s*)?(?:(?:\d+[.)]\s*)?(?:blok\s*2\s*[-:—–]?\s*)?key\s*language|blok\s*2\s*[-:—–]?\s*(?:słownictwo|korekty))/i.test(line)) {
+      currentSection = 'keyLanguage';
+      continue;
+    }
+    // Główny Blok 3
+    if (/^(?:#{1,4}\s*)?(?:(?:\d+[.)]\s*)?(?:blok\s*3\s*[-:—–]?\s*)?homework|blok\s*3\s*[-:—–]?\s*cribro|zadanie\s*domowe|cribro\s*habit)/i.test(line)) {
+      currentSection = 'homework';
+      continue;
+    }
+    // Główny Blok 4
+    if (/^(?:#{1,4}\s*)?(?:(?:\d+[.)]\s*)?(?:blok\s*4\s*[-:—–]?\s*)?next\s*lesson|kolejna\s*lekcja|nast[eę]pna\s*lekcja)/i.test(line)) {
+      currentSection = 'nextLesson';
+      continue;
+    }
+    // Learning curve
+    if (/^(?:#{1,4}\s*)?(?:learning\s*curve|student\s*speaking|o\s*czym\s*m[óo]wi[łl]\s*kursant|wypowiedzi\s*kursanta)/i.test(line)) {
+      currentSection = 'learningCurve';
+      continue;
+    }
+
+    if (currentSection) {
+      sections[currentSection].push(rawLine);
+    }
+  }
+
+  const vocabLines: string[] = [];
+  const fixLines: string[] = [];
+  let subTarget: 'vocab' | 'fix' = 'vocab';
+
+  for (const rawLine of sections.keyLanguage) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    if (/^(?:#{1,4}\s*)?(?:nowe|nowe\s*słownictwo|słownictwo|powtórka|powtorka|vocabulary)\b.*:?$/i.test(trimmed)) {
+      subTarget = 'vocab';
+      continue;
+    }
+    if (/^(?:#{1,4}\s*)?(?:corrections|korekty|wymowa|pronunciation|błędy|things\s*to\s*improve)\b.*:?$/i.test(trimmed)) {
+      subTarget = 'fix';
+      continue;
+    }
+
+    if (subTarget === 'fix') {
+      fixLines.push(rawLine);
+    } else {
+      if (/^(?:not:|say:|korekta:|błąd:|\*?\s*['"].*['"]\s*->)/i.test(trimmed)) {
+        fixLines.push(rawLine);
+      } else {
+        vocabLines.push(rawLine);
+      }
+    }
+  }
+
+  const hwRaw = sections.homework.join('\n').trim();
+  const hwSplit = splitHomeworkAndAnswerKey(hwRaw);
+
+  return {
+    summary: cleanMarkdownArtifacts(sections.summary.join('\n').trim()),
+    vocabulary: vocabLines.map(l => l.replace(/^\s*[-*•]\s+/, '').replace(/\s+—\s+/, ' - ')).join('\n').trim(),
+    corrections: cleanMarkdownArtifacts(fixLines.join('\n').trim()),
+    homework: hwSplit.homework,
+    answerKey: hwSplit.answerKey,
+    nextLesson: cleanMarkdownArtifacts(sections.nextLesson.join('\n').trim()),
+    learningCurve: cleanMarkdownArtifacts(sections.learningCurve.join('\n').trim()),
+  };
+}
+
+/**
  * Ekstrahuje i normalizuje wszystkie bloki lekcji Notion-style z rekordu lekcji.
  * Działa bezbłędnie zarówno dla nowych rekordów z dedykowanymi polami,
- * jak i dla starych wpisów z Notion ze zlanym polem `thingsToImprove`.
+ * jak i dla starych wpisów z Notion ze zlanym polem `thingsToImprove` lub wieloblokowym tekstem.
  */
 export function extractLessonBlocks(record: Partial<LessonRecord>): LessonBlocks {
   if (!record) {
@@ -102,20 +216,25 @@ export function extractLessonBlocks(record: Partial<LessonRecord>): LessonBlocks
     };
   }
 
-  let summary = record.lessonSummary?.trim() || '';
-  let vocabulary = record.vocabularyText?.trim() || '';
-  let learningCurve = record.studentSpeaking?.trim() || '';
-  let nextLesson = record.nextLessonPlan?.trim() || record.suggestedFollowUp?.trim() || '';
+  // Sprawdzamy czy w thingsToImprove lub lessonSummary nie ma pełnego wieloblokowego zapisu z Notion
+  const fromThings = parseNotionMultiBlockText(record.thingsToImprove || '');
+  const fromSummary = parseNotionMultiBlockText(record.lessonSummary || '');
+  const multiBlocks = fromThings || fromSummary;
+
+  let summary = record.lessonSummary?.trim() || multiBlocks?.summary || '';
+  let vocabulary = record.vocabularyText?.trim() || multiBlocks?.vocabulary || '';
+  let learningCurve = record.studentSpeaking?.trim() || multiBlocks?.learningCurve || '';
+  let nextLesson = record.nextLessonPlan?.trim() || record.suggestedFollowUp?.trim() || multiBlocks?.nextLesson || '';
 
   // 2. Obsługa pracy domowej & korekt
-  let homework = record.homeworkText?.trim() || '';
-  let answerKey = record.homeworkAnswerKey?.trim();
-  let corrections = record.corrections?.trim() || '';
+  let homework = record.homeworkText?.trim() || multiBlocks?.homework || '';
+  let answerKey = record.homeworkAnswerKey?.trim() || multiBlocks?.answerKey;
+  let corrections = record.corrections?.trim() || multiBlocks?.corrections || '';
 
-  // Sprawdzamy, czy w thingsToImprove znajduje się zlane zadanie domowe
+  // Sprawdzamy, czy w thingsToImprove znajduje się zlane zadanie domowe (jeśli nie wyciągnięto z multiBlocks)
   const thingsToImproveRaw = record.thingsToImprove?.trim() || '';
 
-  if (thingsToImproveRaw) {
+  if (thingsToImproveRaw && !multiBlocks) {
     const hwMarkerRegex = /(?:zadanie\s+z\s+lekcji|zadanie\s+domowe|homework|blok\s*3\s*[-—–]\s*homework)/i;
     const hwMatchIndex = thingsToImproveRaw.search(hwMarkerRegex);
 
@@ -182,16 +301,18 @@ export function extractLessonBlocks(record: Partial<LessonRecord>): LessonBlocks
 
 /**
  * Sprawdza, czy dany rekord lekcji jest w starym, zanieczyszczonym formacie
- * (np. zadanie domowe sklejone w `thingsToImprove`).
+ * (np. zadanie domowe sklejone w `thingsToImprove` lub wieloblokowy tekst w jednym polu).
  */
 export function isRecordNeedsCleanup(record: LessonRecord): boolean {
   if (record.structuredBlocks) return false;
-  if (record.homeworkText) return false;
+  if (record.homeworkText && record.vocabularyText && record.lessonSummary) return false;
 
-  const raw = record.thingsToImprove || '';
+  const raw = (record.thingsToImprove || '') + ' ' + (record.lessonSummary || '');
   return (
     /(?:zadanie\s+z\s+lekcji|zadanie\s+domowe|~~~markdown|answer\s*key)/i.test(raw) ||
-    /blok\s*[1-4]/i.test(raw)
+    /blok\s*[1-4]/i.test(raw) ||
+    Boolean(parseNotionMultiBlockText(record.thingsToImprove || '')) ||
+    Boolean(parseNotionMultiBlockText(record.lessonSummary || ''))
   );
 }
 

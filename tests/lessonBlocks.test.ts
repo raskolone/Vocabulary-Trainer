@@ -141,4 +141,39 @@ Blok 2 — odpowiedzi:
     const items = parseNumberedItems(text);
     assert.deepEqual(items, ['Zdanie pierwsze.', 'Zdanie drugie.', 'Zdanie trzecie.']);
   });
+
+  it('extractLessonBlocks poprawnie rozbija cały tekst Notion zrzucony do jednego pola', () => {
+    const allInOneRecord: Partial<LessonRecord> = {
+      topic: 'AI Ethics & Workplace Automation',
+      date: '2026-09-08',
+      thingsToImprove: `1. Lekcja w skrócie
+Konwersacje na temat etyki sztucznej inteligencji i automatyzacji pracy.
+
+2. Key Language & Corrections
+Nowe:
+- accountability - odpowiedzialność
+- bias - stronniczość
+Corrections:
+- Say: "two months ago", not "before two months".
+
+3. Homework — Cribro Habit
+1. Przetłumacz: AI zrewolucjonizuje rynek pracy.
+Answer Key:
+1. AI will revolutionize the job market.
+
+4. Next Lesson
+Dalsza dyskusja o regulacjach prawnych UE (AI Act).`,
+    };
+
+    const blocks = extractLessonBlocks(allInOneRecord);
+
+    assert.ok(blocks.summary.includes('etyki sztucznej inteligencji'));
+    assert.ok(blocks.vocabulary.includes('accountability'));
+    assert.ok(blocks.vocabulary.includes('bias'));
+    assert.ok(blocks.corrections.includes('two months ago'));
+    assert.ok(blocks.homework.includes('AI zrewolucjonizuje rynek pracy'));
+    assert.ok(blocks.answerKey?.includes('AI will revolutionize'));
+    assert.ok(blocks.nextLesson.includes('AI Act'));
+  });
 });
+

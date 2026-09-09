@@ -28,6 +28,7 @@ import { LessonRecord } from '../../types';
 import { getLessonRecordsForStudent } from '../../services/lessonRecord';
 import { getApprovedItemsForLesson } from '../../services/studentContext';
 import { splitVocabularyLines, cleanVocabularyTopic } from '../../utils/vocabulary';
+import { extractLessonBlocks } from '../../utils/lessonBlocks';
 import TTSButtons from '../flashcards/TTSButtons';
 import { useEscapeModal } from '../../hooks/useEscapeModal';
 
@@ -270,6 +271,7 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
 
   const latestLesson = lessons[0];
   const pastLessons = lessons.slice(1);
+  const latestBlocks = extractLessonBlocks(latestLesson);
   const latestItems = getLessonItems(latestLesson);
   const latestCleanTopic = cleanVocabularyTopic(latestLesson.topic) || latestLesson.topic;
 
@@ -385,14 +387,14 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
             </div>
 
             {/* Summary (PODSUMOWANIE - Tekst wyjustowany) */}
-            {latestLesson.lessonSummary && (
+            {(latestBlocks.summary || latestLesson.lessonSummary) && (
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-content-muted uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={13} className="text-primary" />
                   {L.summary}
                 </h4>
                 <div className="text-sm text-content leading-relaxed text-justify [text-align:justify] hyphens-auto prose prose-invert max-w-none [&>p]:text-justify [&>p]:leading-relaxed bg-black/20 p-4 rounded-xl border border-white/5">
-                  <Markdown>{latestLesson.lessonSummary}</Markdown>
+                  <Markdown>{latestBlocks.summary || latestLesson.lessonSummary}</Markdown>
                 </div>
               </div>
             )}
@@ -433,15 +435,28 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
               </div>
             )}
 
-            {/* Things to improve (RZECZY DO POPRAWY) */}
-            {latestLesson.thingsToImprove && (
+            {/* Things to improve (RZECZY DO POPRAWY / KOREKTY) */}
+            {(latestBlocks.corrections || latestLesson.thingsToImprove) && (
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-danger uppercase tracking-wider flex items-center gap-1.5">
                   <AlertCircle size={13} />
                   {L.thingsToImprove}
                 </h4>
                 <div className="text-sm text-content leading-relaxed prose prose-invert max-w-none bg-danger/10 p-4 rounded-xl border border-danger/20">
-                  <Markdown>{latestLesson.thingsToImprove}</Markdown>
+                  <Markdown>{latestBlocks.corrections || latestLesson.thingsToImprove}</Markdown>
+                </div>
+              </div>
+            )}
+
+            {/* Homework (ZADANIE Z LEKCJI) */}
+            {latestBlocks.homework && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={13} />
+                  Zadanie z lekcji (Homework)
+                </h4>
+                <div className="text-sm text-content leading-relaxed prose prose-invert max-w-none bg-amber-500/10 p-4 rounded-xl border border-amber-500/20">
+                  <Markdown>{latestBlocks.homework}</Markdown>
                 </div>
               </div>
             )}
@@ -570,18 +585,37 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
                         </div>
                       )}
 
-                      {/* Things to improve (Rzeczy do poprawy) */}
-                      {lesson.thingsToImprove && (
-                        <div className="space-y-2">
-                          <h5 className="text-xs font-bold text-danger uppercase tracking-wider flex items-center gap-1.5">
-                            <AlertCircle size={13} />
-                            {L.thingsToImprove}
-                          </h5>
-                          <div className="text-sm text-content leading-relaxed prose prose-invert max-w-none bg-danger/10 p-4 rounded-xl border border-danger/20">
-                            <Markdown>{lesson.thingsToImprove}</Markdown>
-                          </div>
-                        </div>
-                      )}
+                      {/* Things to improve (Rzeczy do poprawy) & Zadania z lekcji */}
+                      {(() => {
+                        const lessonBlocks = extractLessonBlocks(lesson);
+                        const corrs = lessonBlocks.corrections || lesson.thingsToImprove;
+                        return (
+                          <>
+                            {corrs && (
+                              <div className="space-y-2">
+                                <h5 className="text-xs font-bold text-danger uppercase tracking-wider flex items-center gap-1.5">
+                                  <AlertCircle size={13} />
+                                  {L.thingsToImprove}
+                                </h5>
+                                <div className="text-sm text-content leading-relaxed prose prose-invert max-w-none bg-danger/10 p-4 rounded-xl border border-danger/20">
+                                  <Markdown>{corrs}</Markdown>
+                                </div>
+                              </div>
+                            )}
+                            {lessonBlocks.homework && (
+                              <div className="space-y-2">
+                                <h5 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Sparkles size={13} />
+                                  Zadanie z lekcji (Homework)
+                                </h5>
+                                <div className="text-sm text-content leading-relaxed prose prose-invert max-w-none bg-amber-500/10 p-4 rounded-xl border border-amber-500/20">
+                                  <Markdown>{lessonBlocks.homework}</Markdown>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
 
                       {/* Teacher-only: Student Speaking */}
                       {isTeacher && lesson.studentSpeaking && (
