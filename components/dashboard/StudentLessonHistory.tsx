@@ -28,7 +28,7 @@ import { LessonRecord } from '../../types';
 import { getLessonRecordsForStudent } from '../../services/lessonRecord';
 import { getApprovedItemsForLesson } from '../../services/studentContext';
 import { splitVocabularyLines, cleanVocabularyTopic } from '../../utils/vocabulary';
-import { extractLessonBlocks } from '../../utils/lessonBlocks';
+import { extractLessonBlocks, isStudentVisibleLesson } from '../../utils/lessonBlocks';
 import TTSButtons from '../flashcards/TTSButtons';
 import { useEscapeModal } from '../../hooks/useEscapeModal';
 
@@ -88,11 +88,12 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
       try {
         const records = await getLessonRecordsForStudent(user.id);
         if (!active) return;
-        setLessons(records);
+        const visibleRecords = records.filter(isStudentVisibleLesson);
+        setLessons(visibleRecords);
 
         // Fetch approved items for the latest lesson (and others as needed)
-        if (records.length > 0) {
-          const latest = records[0];
+        if (visibleRecords.length > 0) {
+          const latest = visibleRecords[0];
           if (latest.vocabularySetId) {
             const approved = await getApprovedItemsForLesson(user.id, latest.vocabularySetId);
             if (active && approved) {

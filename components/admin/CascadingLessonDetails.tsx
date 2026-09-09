@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { LessonRecord, GeneratedLessonScenario } from '../../types';
-import { extractLessonBlocks, isRecordNeedsCleanup, migrateRecordToBlocks, parseNumberedItems } from '../../utils/lessonBlocks';
+import { extractLessonBlocks, isRecordNeedsCleanup, migrateRecordToBlocks, parseNumberedItems, isLessonPendingConfirmation } from '../../utils/lessonBlocks';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import TTSButtons from '../flashcards/TTSButtons';
@@ -21,6 +21,8 @@ interface CascadingLessonDetailsProps {
   onDelete?: () => void;
   onClose?: () => void;
   onUpdateRecord?: (updated: Partial<LessonRecord>) => Promise<void>;
+  onConfirmLesson?: () => void;
+  onRejectLesson?: () => void;
 }
 
 export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
@@ -30,7 +32,9 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
   onEdit,
   onDelete,
   onClose,
-  onUpdateRecord
+  onUpdateRecord,
+  onConfirmLesson,
+  onRejectLesson,
 }) => {
   const [isAnswerKeyOpen, setIsAnswerKeyOpen] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -39,6 +43,7 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
   // Normalizujemy bloki lekcji (działa zarówno dla nowych jak i historycznych wpisów z bazy)
   const blocks = extractLessonBlocks(record);
   const needsCleanup = isRecordNeedsCleanup(record);
+  const isPending = isLessonPendingConfirmation(record);
 
   // Section collapse states (Domyślnie wszystkie bloki Notion są rozwinięte, aby lektor widział pełny obraz)
   const [expandedSections, setExpandedSections] = useState<{
@@ -108,6 +113,45 @@ export const CascadingLessonDetails: React.FC<CascadingLessonDetailsProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Alert dla lekcji wymagających potwierdzenia */}
+      {isPending && (
+        <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+          <div className="flex items-start sm:items-center gap-3 text-amber-300">
+            <AlertTriangle size={22} className="shrink-0 text-amber-400 mt-0.5 sm:mt-0" />
+            <div>
+              <div className="font-bold text-sm text-amber-200">
+                Wymaga potwierdzenia przed publikacją dla kursanta
+              </div>
+              <p className="text-amber-200/80 mt-0.5 leading-relaxed">
+                {record.pendingReason || (record.isDateMissing ? 'Brak daty spotkania w Notion' : 'Wybrakowane dane z Notion')}. Ta lekcja jest ukryta przed kursantem dopóki jej nie potwierdzisz.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {onConfirmLesson && (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={onConfirmLesson}
+                className="text-xs font-bold bg-primary text-accent-ink hover:brightness-110 shadow-sm"
+              >
+                ✓ Zatwierdź dla kursanta
+              </Button>
+            )}
+            {onRejectLesson && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onRejectLesson}
+                className="text-xs font-bold text-danger hover:bg-danger/15 hover:text-danger"
+              >
+                ✕ Odrzuć wpis
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Alert dla starych wpisów z opcją 1-click uporządkowania bazy */}
       {needsCleanup && onUpdateRecord && (
         <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">

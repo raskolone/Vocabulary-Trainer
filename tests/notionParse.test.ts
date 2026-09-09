@@ -111,3 +111,26 @@ test('numerowany nagłówek bez krat też jest rozpoznawany', () => {
   assert.match(parsed.lessonSummary, /Krótkie omówienie/);
   assert.ok(parsed.vocabularyText.includes('deadline - termin'));
 });
+
+test('wyciąga datę z treści spotkania i wyodrębnia Learning Curve', () => {
+  const sampleWithDateAndCurve = `## Podsumowanie lekcji
+
+### 1. Lekcja w skrócie
+Data i godzina spotkania: 26.08.2026, 18:00
+Omówienie spraw bieżących.
+
+### 2. Key Language & Corrections
+Nowe:
+- safeguard — zabezpieczać
+
+## Learning Curve
+Kursant płynnie formułował myśli w czasie przeszłym.`;
+
+  const parsed = parseLessonSummary(sampleWithDateAndCurve);
+
+  assert.equal(parsed.extractedDate, '2026-08-26');
+  assert.ok(parsed.lessonSummary.includes('Omówienie spraw bieżących'));
+  assert.ok(parsed.vocabularyText.includes('safeguard - zabezpieczać'));
+  assert.ok(parsed.learningCurve.includes('Kursant płynnie formułował myśli'));
+});
+

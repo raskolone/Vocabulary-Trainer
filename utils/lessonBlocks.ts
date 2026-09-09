@@ -336,3 +336,58 @@ export function migrateRecordToBlocks(record: LessonRecord): Partial<LessonRecor
     updatedAt: new Date().toISOString(),
   };
 }
+
+/**
+ * Sprawdza, czy data jest poprawna (nie pusta i parsowalna jako data YYYY-MM-DD).
+ */
+function isValidISODate(dateStr?: string): boolean {
+  if (!dateStr || typeof dateStr !== 'string') return false;
+  if (/brak daty|empty|nieznana/i.test(dateStr)) return false;
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return false;
+  const d = new Date(dateStr);
+  return !Number.isNaN(d.getTime());
+}
+
+/**
+ * Sprawdza, czy lekcja wymaga manualnego zatwierdzenia przez lektora przed publikacją dla kursanta.
+ * Wyłapuje:
+ * 1. Jawne flagi 'pending_confirmation', isPendingConfirmation === true, isDateMissing === true
+ * 2. Lekcje odrzucone ('rejected')
+ * 3. Błędne/wybrakowane zapisy z bazy (np. tytuł "brak daty", brakująca lub niepoprawna data spotkania,
+ *    bądź puste podsumowanie i słownictwo z importu Notion).
+ */
+export function isLessonPendingConfirmation(record?: Partial<LessonRecord> | null): boolean {
+  if (!record) return false;
+  if (record.status === 'pending_confirmation') return true;
+  if (record.status === 'rejected') return true;
+  if (record.isPendingConfirmation) return true;
+  if (record.isDateMissing) return true;
+  if (record.pendingReason && record.pendingReason.trim().length > 0) return true;
+
+  // Detekcja wpisów z Notion z wybrakowaną datą spotkania (np. "Podsumowanie lekcji — brak daty — ...")
+  if (record.topic && /brak daty/i.test(record.topic)) return true;
+  if (record.lessonSummary && /brak daty/i.test(record.lessonSummary)) return true;
+
+  // Sprawdzamy czy data nie jest brakująca lub uszkodzona
+  if (!isValidISODate(record.date)) return true;
+
+  // Wpisy z Notion, które nie mają żadnego słownictwa ani podsumowania
+  if (record.source === 'notion' && !record.vocabularyText?.trim() && !record.lessonSummary?.trim()) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Zwraca true tylko wtedy, gdy lekcja jest w pełni zweryfikowana i przeznaczona do wglądu kursanta.
+ * Kursant nigdy nie widzi lekcji oczekujących na potwierdzenie, odrzuconych ani wybrakowanych.
+ */
+export function isStudentVisibleLesson(record?: Partial<LessonRecord> | null): boolean {
+  if (!record) return false;
+  if (record.status === 'rejected') return false;
+  if (isLessonPendingConfirmation(record)) return false;
+  return true;
+}
+

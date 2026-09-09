@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { collection, doc, getDocs, orderBy, query, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { LessonRecord, User } from '../../types';
+import { LessonRecord, RejectedNotionItem, User } from '../../types';
 import {
   ImportReport,
   MatchReason,
@@ -31,7 +31,7 @@ import {
   importNotionSelection,
   previewNotionSync,
 } from '../../services/notionSync';
-import { syncFlashcardSetForLesson } from '../../services/lessonRecord';
+import { getRejectedNotionLessons, syncFlashcardSetForLesson } from '../../services/lessonRecord';
 import {
   buildVocabularySetTitle,
   countVocabularyItems,
@@ -49,6 +49,8 @@ interface Props {
 export interface StagedLesson {
   id: string;
   date: string;
+  isDateMissing?: boolean;
+  pendingReason?: string;
   topic: string;
   approved: boolean;
   summary: string;
@@ -95,6 +97,7 @@ const StudentNotionSyncModal: React.FC<Props> = ({
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [recentLessons, setRecentLessons] = useState<LessonRecord[]>([]);
   const [localLessonCount, setLocalLessonCount] = useState<number>(0);
+  const [rejectedNotionLessons, setRejectedNotionLessons] = useState<RejectedNotionItem[]>([]);
 
   // Stan dla etapu weryfikacji i stagingu AI (kontrola lektora przed utrwaleniem)
   const [stagedLessons, setStagedLessons] = useState<StagedLesson[]>([]);
@@ -119,6 +122,7 @@ const StudentNotionSyncModal: React.FC<Props> = ({
     setImportReport(null);
     setRecentLessons([]);
     setLocalLessonCount(0);
+    setRejectedNotionLessons([]);
     setStagedLessons([]);
     setActiveStagedIndex(0);
   };
@@ -173,6 +177,14 @@ const StudentNotionSyncModal: React.FC<Props> = ({
       const qRecords = query(recordsRef, orderBy('date', 'desc'));
       const recordsSnap = await getDocs(qRecords);
       setLocalLessonCount(recordsSnap.size);
+
+      // Pobierz listę odrzuconych tematów
+      try {
+        const rej = await getRejectedNotionLessons(selectedUser.id);
+        setRejectedNotionLessons(rej);
+      } catch (e) {
+        console.warn('Nie udało się pobrać odrzuconych tematów:', e);
+      }
 
       // 2. Pobierz podgląd Notion z Cloud Functions
       const result = await previewNotionSync();
@@ -233,10 +245,17 @@ const StudentNotionSyncModal: React.FC<Props> = ({
       // Bierzemy najnowsze lekcje (np. do 15 lekcji zsynchronizowanych lub wszystkich)
       const stageItems: StagedLesson[] = allRecords.slice(0, 15).map((rec) => {
         const blocks = extractLessonBlocks(rec);
+        const isDateMissing = Boolean(rec.isDateMissing || !rec.date || /brak daty/i.test(rec.date));
+        let cleanTopic = rec.topic || 'Lekcja bez tematu';
+        if (/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i.test(cleanTopic)) {
+          cleanTopic = cleanTopic.replace(/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i, '');
+        }
         return {
           id: rec.id,
           date: rec.date || new Date().toISOString().split('T')[0],
-          topic: rec.topic || 'Lekcja bez tematu',
+          isDateMissing,
+          pendingReason: rec.pendingReason || (isDateMissing ? 'Brak daty spotkania w Notion' : ''),
+          topic: cleanTopic,
           approved: true,
           summary: blocks.summary || '',
           vocabulary: blocks.vocabulary || '',
@@ -288,9 +307,16 @@ const StudentNotionSyncModal: React.FC<Props> = ({
           learningCurve: staged.learningCurve,
         };
 
+        const isDateMissing = Boolean(staged.isDateMissing && (!staged.date || /brak daty/i.test(staged.date)));
+        const status = isDateMissing ? 'pending_confirmation' : 'confirmed';
+
         batch.update(recordRef, {
           date: staged.date,
           topic: staged.topic,
+          isDateMissing,
+          status,
+          isPendingConfirmation: isDateMissing,
+          pendingReason: isDateMissing ? 'Brak daty spotkania w Notion' : '',
           lessonSummary: staged.summary,
           vocabularyText: staged.vocabulary,
           corrections: staged.corrections,
@@ -540,6 +566,19 @@ const StudentNotionSyncModal: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Informacja o odrzuconych tematach z Notion */}
+              {rejectedNotionLessons.length > 0 && (
+                <div className="p-3 rounded-xl bg-base-100/60 border border-white/10 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-content-muted">
+                    <span>🛡️</span>
+                    <span>
+                      Odrzucone tematy z Notion: <strong className="text-white">{rejectedNotionLessons.length}</strong> (np. {rejectedNotionLessons.slice(0, 2).map(r => `„${r.topic}”`).join(', ')})
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-content-muted font-mono">Pominięte w synchronizacji</span>
+                </div>
+              )}
+
               {/* Weryfikacja zgodności z Wytycznymi AI */}
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2.5 text-xs">
                 <h5 className="font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide text-[11px]">
@@ -576,14 +615,10 @@ const StudentNotionSyncModal: React.FC<Props> = ({
                   type="button"
                   onClick={handleRunImport}
                   disabled={!selectedNotionId}
-                  className="px-5 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 transition-all flex items-center gap-2 shadow-btn disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_20px_rgba(114,240,180,0.3)] transition-all cursor-pointer"
                 >
-                  <RefreshCw size={14} />
-                  <span>
-                    {newLessonsCount > 0
-                      ? `Pobierz i przejdź do weryfikacji bloków (+${newLessonsCount})`
-                      : 'Pobierz lekcje z Notion do weryfikacji'}
-                  </span>
+                  <Sparkles size={14} />
+                  Pobierz i przejdź do weryfikacji bloków
                 </button>
               </div>
             </div>
@@ -602,25 +637,28 @@ const StudentNotionSyncModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* 5. KROK STAGINGU I WERYFIKACJI BLOKÓW PRZEZ LEKTORA (Nowy kluczowy element) */}
+          {/* 5. KROK STAGINGU I WERYFIKACJI AI (KONTROLA LEKTORA) */}
           {step === 'staging' && activeStaged && (
-            <div className="space-y-4">
-              {/* Pasek wyboru lekcji (Pills) */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/10 select-none">
-                {stagedLessons.map((l, idx) => (
+            <div className="space-y-5">
+              {/* Pasek zakładek poszczególnych lekcji pobranych z Notion */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                {stagedLessons.map((item, idx) => (
                   <button
-                    key={l.id}
+                    key={item.id}
                     type="button"
                     onClick={() => setActiveStagedIndex(idx)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center gap-2 border ${
+                    className={`px-3 py-2 rounded-xl text-xs font-bold shrink-0 flex items-center gap-2 transition-all cursor-pointer border ${
                       idx === activeStagedIndex
-                        ? 'bg-primary/20 text-primary border-primary/40 shadow-glow'
-                        : 'bg-base-200 text-content-muted border-white/5 hover:text-white'
+                        ? 'bg-primary/20 border-primary text-primary shadow-sm'
+                        : 'bg-base-200/60 border-white/5 text-content-muted hover:text-white hover:bg-base-200'
                     }`}
                   >
-                    <span>{l.date}</span>
-                    <span className="truncate max-w-[120px] font-normal">{l.topic}</span>
-                    {l.approved ? (
+                    <span className="font-mono text-[10px]">#{idx + 1}</span>
+                    <span className="max-w-[120px] truncate">{item.topic}</span>
+                    {item.isDateMissing && (
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Brak daty w Notion" />
+                    )}
+                    {item.approved ? (
                       <CheckCircle2 size={12} className="text-primary shrink-0" />
                     ) : (
                       <X size={12} className="text-danger shrink-0" />
@@ -635,14 +673,23 @@ const StudentNotionSyncModal: React.FC<Props> = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
                   <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <div>
-                      <label className="text-[10px] font-mono font-bold uppercase text-content-muted block mb-1">
-                        📅 Data lekcji (YYYY-MM-DD)
+                      <label className={`text-[10px] font-mono font-bold uppercase block mb-1 flex items-center gap-1.5 ${
+                        activeStaged.isDateMissing ? 'text-amber-300' : 'text-content-muted'
+                      }`}>
+                        📅 Data lekcji
+                        {activeStaged.isDateMissing && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            ⚠️ brak w Notion
+                          </span>
+                        )}
                       </label>
                       <input
-                        type="text"
+                        type="date"
                         value={activeStaged.date}
-                        onChange={(e) => updateActiveStaged({ date: e.target.value })}
-                        className="w-full bg-base-300 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-primary"
+                        onChange={(e) => updateActiveStaged({ date: e.target.value, isDateMissing: false })}
+                        className={`w-full bg-base-300 border rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none ${
+                          activeStaged.isDateMissing ? 'border-amber-500/60 bg-amber-950/25' : 'border-white/10 focus:border-primary'
+                        }`}
                       />
                     </div>
                     <div className="sm:col-span-2">

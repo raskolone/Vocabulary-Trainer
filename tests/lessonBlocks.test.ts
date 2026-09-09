@@ -7,6 +7,8 @@ import {
   migrateRecordToBlocks,
   parseNumberedItems,
   splitHomeworkAndAnswerKey,
+  isLessonPendingConfirmation,
+  isStudentVisibleLesson,
 } from '../utils/lessonBlocks';
 import { LessonRecord } from '../types';
 
@@ -175,5 +177,64 @@ Dalsza dyskusja o regulacjach prawnych UE (AI Act).`,
     assert.ok(blocks.answerKey?.includes('AI will revolutionize'));
     assert.ok(blocks.nextLesson.includes('AI Act'));
   });
+
+  it('isLessonPendingConfirmation flaguje wybrakowane wpisy i wpisy z brakującą datą', () => {
+    // 1. Jawna flaga
+    assert.equal(isLessonPendingConfirmation({ status: 'pending_confirmation', date: '2026-09-07' }), true);
+    assert.equal(isLessonPendingConfirmation({ isPendingConfirmation: true, date: '2026-09-07' }), true);
+    assert.equal(isLessonPendingConfirmation({ isDateMissing: true, date: '2026-09-07' }), true);
+    assert.equal(isLessonPendingConfirmation({ status: 'rejected', date: '2026-09-07' }), true);
+
+    // 2. Tytuł ze zrzutu ekranu Notion z brakiem daty
+    const sampleScreenshotRecord: Partial<LessonRecord> = {
+      topic: 'Podsumowanie lekcji — brak daty — Cybersecurity & Privacy in the AI Era',
+      date: '2026-09-07',
+      lessonSummary: 'Omówienie wycieków danych.',
+    };
+    assert.equal(isLessonPendingConfirmation(sampleScreenshotRecord), true);
+
+    // 3. Niepoprawna lub pusta data
+    assert.equal(isLessonPendingConfirmation({ topic: 'Legal English', date: '' }), true);
+    assert.equal(isLessonPendingConfirmation({ topic: 'Legal English', date: 'brak daty' }), true);
+
+    // 4. Pusty import Notion
+    assert.equal(isLessonPendingConfirmation({ topic: 'Empty lesson', date: '2026-09-07', source: 'notion', vocabularyText: '', lessonSummary: '' }), true);
+
+    // 5. Prawidłowy rekord potwierdzony
+    const validRecord: Partial<LessonRecord> = {
+      topic: 'Cybersecurity & Privacy in the AI Era',
+      date: '2026-09-07',
+      status: 'confirmed',
+      lessonSummary: 'Lekcja o cyberbezpieczeństwie',
+      vocabularyText: 'breach - naruszenie',
+    };
+    assert.equal(isLessonPendingConfirmation(validRecord), false);
+  });
+
+  it('isStudentVisibleLesson blokuje niezatwierdzone lekcje przed kurstantem', () => {
+    const pendingRecord: Partial<LessonRecord> = {
+      topic: 'Podsumowanie lekcji — brak daty — Cybersecurity & Privacy in the AI Era',
+      date: '2026-09-07',
+      isPendingConfirmation: true,
+    };
+    assert.equal(isStudentVisibleLesson(pendingRecord), false);
+
+    const rejectedRecord: Partial<LessonRecord> = {
+      topic: 'Odrzucona lekcja',
+      date: '2026-09-07',
+      status: 'rejected',
+    };
+    assert.equal(isStudentVisibleLesson(rejectedRecord), false);
+
+    const confirmedRecord: Partial<LessonRecord> = {
+      topic: 'Cybersecurity & Privacy in the AI Era',
+      date: '2026-09-07',
+      status: 'confirmed',
+      lessonSummary: 'Podsumowanie',
+      vocabularyText: 'słownictwo',
+    };
+    assert.equal(isStudentVisibleLesson(confirmedRecord), true);
+  });
 });
+
 

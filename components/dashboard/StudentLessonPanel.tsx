@@ -4,6 +4,7 @@ import { LessonRecord } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLessonRecordsForStudent } from '../../services/lessonRecord';
 import { cleanVocabularyTopic } from '../../utils/vocabulary';
+import { isStudentVisibleLesson } from '../../utils/lessonBlocks';
 import LessonDetails from './LessonDetails';
 import LessonHistoryMonths from './LessonHistoryMonths';
 import PanelSection from './PanelSection';
@@ -59,7 +60,8 @@ const StudentLessonPanel: React.FC<StudentLessonPanelProps> = ({
       }
       try {
         const records = await getLessonRecordsForStudent(studentId);
-        if (active) setLessons(records);
+        const visibleRecords = records.filter(isStudentVisibleLesson);
+        if (active) setLessons(visibleRecords);
       } catch (error) {
         console.error('Nie udało się wczytać lekcji kursanta:', error);
         if (active) setLessons([]);

@@ -331,8 +331,29 @@ export interface LessonRecord {
   nextLessonPlan?: string;
   /** Elastyczny obiekt bloków ułatwiający renderowanie i eksport */
   structuredBlocks?: LessonBlocks;
+  /** Status weryfikacji lekcji: 'confirmed' (widoczna dla ucznia) | 'pending_confirmation' (wymaga zatwierdzenia przez lektora) | 'rejected' (odrzucona) */
+  status?: 'confirmed' | 'pending_confirmation' | 'rejected';
+  /** Flaga oznaczająca lekcję oczekującą na manualny przegląd lektora */
+  isPendingConfirmation?: boolean;
+  /** Powód wymagania potwierdzenia (np. 'Brak daty spotkania w Notion', 'Wybrakowane podsumowanie') */
+  pendingReason?: string;
+  /** Czy data została wykryta, czy jest brakująca w Notion */
+  isDateMissing?: boolean;
+  /** Źródło pochodzenia rekordu */
+  source?: 'notion' | 'manual' | 'ai';
+  /** Identyfikator strony Notion */
+  notionPageId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RejectedNotionItem {
+  id: string; // notionPageId
+  studentId: string;
+  topic: string;
+  date?: string;
+  rejectedAt: string;
+  reason?: string;
 }
 
 export type RecallLearningType =

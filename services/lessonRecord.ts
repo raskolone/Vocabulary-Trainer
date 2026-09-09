@@ -1,6 +1,6 @@
 import { db } from '../firebase';
 import { doc, setDoc, collection, getDocs, query, orderBy, where, serverTimestamp, updateDoc, writeBatch, deleteDoc } from 'firebase/firestore';
-import { LessonRecord, VocabularySet } from '../types';
+import { LessonRecord, RejectedNotionItem, VocabularySet } from '../types';
 import { buildVocabularySetTitle, countVocabularyItems, getApprovedVocabularyText, splitVocabularyLines } from '../utils/vocabulary';
 
 export function parseVocabularyTextToCards(vocabularyText: string) {
@@ -285,4 +285,118 @@ export async function deleteLessonRecord(studentId: string, lessonRecord: Lesson
   const flashcardSetRef = doc(db, `sets/${flashcardSetId}`);
   await deleteDoc(flashcardSetRef);
 }
+
+/**
+ * Odrzuca błędny/niechciany wpis z Notion:
+ * 1. Usuwa go z aktywnych lekcji kursanta (wraz z ewentualnymi fiszkami/zestawami)
+ * 2. Zapisuje informację o odrzuceniu w subkolekcji `rejectedNotionLessons`,
+ *    dzięki czemu kolejne synchronizacje Notion nie zaimportują go ponownie.
+ */
+export async function rejectNotionLesson(
+  studentId: string,
+  lessonRecord: LessonRecord,
+  reason: string = 'Odrzucono przez nauczyciela (manualny przegląd)'
+): Promise<void> {
+  // 1. Usuwamy rekord z bazy
+  await deleteLessonRecord(studentId, lessonRecord);
+
+  // 2. Zapisujemy wpis na czarnej liście odrzuconych Notion dla tego kursanta
+  const rejectedId = lessonRecord.notionPageId || lessonRecord.id;
+  const rejectedRef = doc(db, `users/${studentId}/rejectedNotionLessons/${rejectedId}`);
+
+  const rejectedItem: RejectedNotionItem = {
+    id: rejectedId,
+    studentId,
+    topic: lessonRecord.topic,
+    date: lessonRecord.date,
+    rejectedAt: new Date().toISOString(),
+    reason,
+  };
+
+  await setDoc(rejectedRef, rejectedItem);
+}
+
+/**
+ * Przywraca odrzucony wpis z Notion — usuwa z czarnej listy,
+ * umożliwiając ponowne zaimportowanie przy kolejnej synchronizacji.
+ */
+export async function restoreRejectedNotionLesson(
+  studentId: string,
+  rejectedId: string
+): Promise<void> {
+  const rejectedRef = doc(db, `users/${studentId}/rejectedNotionLessons/${rejectedId}`);
+  await deleteDoc(rejectedRef);
+}
+
+/**
+ * Pobiera listę odrzuconych wpisów Notion dla kursanta.
+ */
+export async function getRejectedNotionLessons(studentId: string): Promise<RejectedNotionItem[]> {
+  try {
+    const ref = collection(db, `users/${studentId}/rejectedNotionLessons`);
+    let snap;
+    try {
+      snap = await getDocs(query(ref, orderBy('rejectedAt', 'desc')));
+    } catch {
+      snap = await getDocs(ref);
+    }
+    const list: RejectedNotionItem[] = [];
+    snap.forEach((d) => {
+      list.push({ id: d.id, ...d.data() } as RejectedNotionItem);
+    });
+    return list;
+  } catch (e) {
+    console.warn(`Nie udało się pobrać odrzuconych lekcji dla ${studentId}:`, e);
+    return [];
+  }
+}
+
+/**
+ * Manualne zatwierdzenie lekcji przez nauczyciela:
+ * Przestawia status na 'confirmed', zdejmuje flagę 'isPendingConfirmation',
+ * aktualizuje podane pola (np. poprawną datę, poprawione bloki)
+ * oraz generuje/aktualizuje zestaw fiszek.
+ */
+export async function confirmPendingLesson(
+  studentId: string,
+  lessonId: string,
+  updates: Partial<LessonRecord>
+): Promise<void> {
+  const recordRef = doc(db, `users/${studentId}/lessonRecords/${lessonId}`);
+
+  const payload: Partial<LessonRecord> & Record<string, any> = {
+    ...updates,
+    status: 'confirmed',
+    isPendingConfirmation: false,
+    isDateMissing: false,
+    pendingReason: '',
+    updatedAt: new Date().toISOString(),
+  };
+
+  await updateDoc(recordRef, payload);
+
+  // Jeśli lekcja ma słownictwo, generujemy zestaw fiszek
+  if (updates.vocabularyText && updates.vocabularyText.trim().length > 0) {
+    const targetDate = updates.date || new Date().toISOString().split('T')[0];
+    const targetTopic = updates.topic || 'Lekcja';
+
+    await syncFlashcardSetForLesson(
+      lessonId,
+      studentId,
+      targetDate,
+      targetTopic,
+      updates.vocabularyText
+    );
+  }
+
+  try {
+    await updateDoc(doc(db, 'users', studentId), {
+      hasNewLesson: true,
+      hasNewVocabulary: true,
+    });
+  } catch (e) {
+    console.warn('Could not update user notification badge:', e);
+  }
+}
+
 

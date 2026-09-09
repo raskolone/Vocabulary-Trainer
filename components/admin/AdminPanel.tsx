@@ -1,9 +1,19 @@
-import { createLessonRecordWithVocabularySet, syncFlashcardSetForLesson, getLessonRecordsForStudent, deleteLessonRecord } from '../../services/lessonRecord';
+import { 
+  createLessonRecordWithVocabularySet, 
+  syncFlashcardSetForLesson, 
+  getLessonRecordsForStudent, 
+  deleteLessonRecord,
+  rejectNotionLesson,
+  restoreRejectedNotionLesson,
+  getRejectedNotionLessons,
+  confirmPendingLesson
+} from '../../services/lessonRecord';
 import PreLessonContext from './PreLessonContext';
 import VocabularyApproval from './VocabularyApproval';
 import RecallItemsReview, { ReviewedCandidate } from './RecallItemsReview';
 import { saveRecallReview } from '../../services/recallItems';
 import { countVocabularyItems, buildVocabularySetTitle, splitVocabularyLines } from '../../utils/vocabulary';
+import { isLessonPendingConfirmation } from '../../utils/lessonBlocks';
 import { CascadingLessonDetails } from './CascadingLessonDetails';
 import { getGeneratedScenarios } from '../../services/scenarioService';
 import React, { useState, useEffect, useRef } from 'react';
@@ -11,7 +21,7 @@ import gsap from 'gsap';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, getDocs, getDoc, doc, deleteDoc, query, orderBy, setDoc, writeBatch, updateDoc, addDoc, where } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
-import { User, PracticeLog, FlashcardSet, LessonRecord, GeneratedLessonScenario } from '../../types';
+import { User, PracticeLog, FlashcardSet, LessonRecord, GeneratedLessonScenario, RejectedNotionItem } from '../../types';
 import { useFlashcards } from '../../context/FlashcardContext';
 import { useAuth } from '../../context/AuthContext';
 import { generateLessonSummary, generateBulkLessonSummary } from '../../services/geminiService';
@@ -111,6 +121,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
         return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       });
       setLessonRecords(lessonsList);
+
+      // Fetch Rejected Notion Lessons
+      try {
+        const rej = await getRejectedNotionLessons(userId);
+        setRejectedLessons(rej);
+      } catch (e) {
+        console.warn('Could not fetch rejected lessons:', e);
+      }
 
       // Fetch Practice Logs
       const logsQ = query(collection(db, `users/${userId}/practiceLogs`));
@@ -720,6 +738,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
           scenarioId: lessonFormScenarioId || '',
           scenarioTopic: lessonFormScenarioTopic || '',
           scenarioContent: lessonFormScenarioContent || '',
+          status: 'confirmed' as const,
+          isPendingConfirmation: false,
+          isDateMissing: false,
+          pendingReason: '',
           updatedAt: new Date().toISOString()
         };
         
@@ -845,6 +867,92 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
       alert("Błąd podczas usuwania lekcji: " + e.message);
     }
   };
+
+  const handleRejectNotionLesson = async (record: LessonRecord) => {
+    if (!selectedUser) return;
+    const confirmMsg = `Czy na pewno chcesz odrzucić lekcję „${record.topic}”?\n\nZostanie ona trwale usunięta z widoku i dodana do listy odrzuconych wpisów Notion, aby kolejne synchronizacje już jej nie importowały.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsRejectingLessonId(record.id);
+    try {
+      await rejectNotionLesson(selectedUser.id, record);
+      setLessonRecords(prev => prev.filter(r => r.id !== record.id));
+      setRejectedLessons(prev => [
+        {
+          id: record.notionPageId || record.id,
+          studentId: selectedUser.id,
+          topic: record.topic,
+          date: record.date,
+          rejectedAt: new Date().toISOString(),
+          reason: 'Odrzucono przez nauczyciela (manualny przegląd)',
+        },
+        ...prev
+      ]);
+      if (viewingRecord?.id === record.id) {
+        setShowLessonRecordModal(false);
+        setViewingRecord(null);
+      }
+      showToast(`Odrzucono lekcję „${record.topic}”. Dodano do listy ignorowanych z Notion.`);
+    } catch (err: any) {
+      alert("Błąd podczas odrzucania lekcji: " + (err?.message || String(err)));
+    } finally {
+      setIsRejectingLessonId(null);
+    }
+  };
+
+  const handleRestoreRejectedLesson = async (rejectedId: string, topic: string) => {
+    if (!selectedUser) return;
+    try {
+      await restoreRejectedNotionLesson(selectedUser.id, rejectedId);
+      setRejectedLessons(prev => prev.filter(r => r.id !== rejectedId));
+      showToast(`Przywrócono „${topic}”. Kolejna synchronizacja Notion może ponownie pobrać ten temat.`);
+    } catch (err: any) {
+      alert("Błąd podczas przywracania lekcji: " + (err?.message || String(err)));
+    }
+  };
+
+  const handleConfirmLessonDirectly = async (record: LessonRecord, customDate?: string) => {
+    if (!selectedUser) return;
+    setIsConfirmingLessonId(record.id);
+    try {
+      let targetDate = customDate || record.date;
+      if (!targetDate || /brak daty/i.test(targetDate)) {
+        targetDate = new Date().toISOString().split('T')[0];
+      }
+      const cleanTopic = record.topic.replace(/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i, '').trim();
+
+      await confirmPendingLesson(selectedUser.id, record.id, {
+        date: targetDate,
+        topic: cleanTopic,
+        status: 'confirmed',
+        isPendingConfirmation: false,
+        isDateMissing: false,
+        pendingReason: '',
+      });
+
+      const updatedRecord: LessonRecord = {
+        ...record,
+        date: targetDate,
+        topic: cleanTopic,
+        status: 'confirmed',
+        isPendingConfirmation: false,
+        isDateMissing: false,
+        pendingReason: '',
+        updatedAt: new Date().toISOString(),
+      };
+
+      setLessonRecords(prev => prev.map(r => r.id === record.id ? updatedRecord : r));
+      if (viewingRecord?.id === record.id) {
+        setViewingRecord(updatedRecord);
+      }
+      showToast(`Lekcja „${cleanTopic}” została zatwierdzona i jest widoczna dla kursanta!`);
+    } catch (err: any) {
+      alert("Błąd podczas zatwierdzania lekcji: " + (err?.message || String(err)));
+    } finally {
+      setIsConfirmingLessonId(null);
+    }
+  };
+
   const generateStrongPassword = () => {
     const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     const lowercase = "abcdefghijklmnopqrstuvwxyz";
@@ -990,6 +1098,10 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
   const [practiceLogs, setPracticeLogs] = useState<PracticeLog[]>([]);
   const [lessonRecords, setLessonRecords] = useState<LessonRecord[]>([]);
+  const [rejectedLessons, setRejectedLessons] = useState<RejectedNotionItem[]>([]);
+  const [showRejectedLessonsSection, setShowRejectedLessonsSection] = useState(false);
+  const [isRejectingLessonId, setIsRejectingLessonId] = useState<string | null>(null);
+  const [isConfirmingLessonId, setIsConfirmingLessonId] = useState<string | null>(null);
   const [groupByMonth, setGroupByMonth] = useState(true);
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [userSets, setUserSets] = useState<FlashcardSet[]>([]);
@@ -1203,8 +1315,16 @@ const [users, setUsers] = useState<UserWithId[]>([]);
       const sId = record.studentId || selectedUser?.id || '';
       setLessonFormStudentId(sId);
       setLessonFormStudentIds(sId ? [sId] : []);
-      setLessonFormDate(record.date);
-      setLessonFormTopic(record.topic);
+      let initialDate = record.date;
+      if (!initialDate || /brak daty/i.test(initialDate) || record.isDateMissing) {
+        initialDate = new Date().toISOString().split('T')[0];
+      }
+      setLessonFormDate(initialDate);
+      let initialTopic = record.topic || '';
+      if (/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i.test(initialTopic)) {
+        initialTopic = initialTopic.replace(/^Podsumowanie lekcji\s*—\s*brak daty\s*—\s*/i, '');
+      }
+      setLessonFormTopic(initialTopic);
       setLessonFormWords(record.vocabularyText || (record as any).words || '');
       setLessonFormExcludedItems([]);
       setLessonFormRecallCandidates([]);
@@ -1997,194 +2117,338 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                     <Button size="sm" onClick={() => openLessonRecordModal('edit')}>{i18n.t("Dodaj wpis")}</Button>
                   </div>
                 </div>
-                {lessonRecords.length > 0 ? (
-                  <div className="space-y-4">
-                    {(() => {
-                      if (!groupByMonth) {
-                        return (
-                          <div className="grid grid-cols-1 gap-2.5">
-                            {lessonRecords.map((record, index) => (
-                              <Card 
-                                key={record.id}
-                                className="relative group cursor-pointer p-3 rounded-xl liquid-glass-hover bg-base-200/40 border border-white/5"
-                                onClick={() => openLessonRecordModal('view', record)}
-                              >
-                                <div className="absolute top-1/2 -translate-y-1/2 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleGenerateHomeworkFromLesson(record); }}
-                                    className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-primary/10 transition-colors"
-                                    title="Wygeneruj pracę domową z tej lekcji"
-                                  >
-                                    <Sparkles className="h-4 w-4 text-primary" />
-                                  </button>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); openLessonRecordModal('edit', record); }}
-                                    className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-base-200 transition-colors"
-                                    title="Edytuj lekcję"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                    </svg>
-                                  </button>
-                                  <button 
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteLessonRecord(record); }}
-                                    className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-danger hover:bg-base-200 transition-colors"
-                                    title="Usuń lekcję"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </div>
-                                <div className="flex items-center gap-3 pr-20">
-                                  <div className="w-10 h-10 flex-shrink-0 bg-primary/10 text-primary font-mono text-sm font-bold rounded-lg flex items-center justify-center">
-                                    #{lessonRecords.length - index}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                     <div className="flex items-center gap-2 flex-wrap">
-                                       <h4 className="font-bold text-base line-clamp-1">{record.topic}</h4>
-                                       {record.scenarioTopic && (
-                                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 truncate max-w-[220px]" title={`Podstawa lekcji: ${record.scenarioTopic}`}>
-                                           🔗 {record.scenarioTopic}
-                                         </span>
-                                       )}
-                                     </div>
-                                     <span className="text-xs font-mono text-content-muted">{record.date}</span>
-                                  </div>
-                                </div>
-                              </Card>
-                            ))}
-                          </div>
-                        );
-                      }
+                {(() => {
+                  const pendingLessons = lessonRecords.filter(isLessonPendingConfirmation);
+                  const confirmedLessons = lessonRecords.filter(r => !isLessonPendingConfirmation(r) && r.status !== 'rejected');
 
-                      const groups: { key: string, items: typeof lessonRecords }[] = [];
-                      let currentGroupKey = '';
-                      let currentGroup: { key: string, items: typeof lessonRecords } | null = null;
-                      
-                      lessonRecords.forEach(record => {
-                          const d = new Date(record.date);
-                          const diffTime = new Date().getTime() - d.getTime();
-                          const diffDays = diffTime / (1000 * 3600 * 24);
-
-                          let groupKey = '';
-                          if (diffDays >= 0 && diffDays <= 7) {
-                              groupKey = 'Ostatni tydzień';
-                          } else if (Number.isNaN(d.getTime())) {
-                              groupKey = 'Inne';
-                          } else {
-                              groupKey = d.toLocaleString('pl-PL', { month: 'long', year: 'numeric' }).toUpperCase();
-                          }
-
-                          if (groupKey !== currentGroupKey) {
-                              currentGroupKey = groupKey;
-                              currentGroup = { key: groupKey, items: [] };
-                              groups.push(currentGroup);
-                          }
-                          currentGroup?.items.push(record);
-                      });
-
-                      return groups.map((group) => {
-                          const isExpanded = expandedMonths[group.key] === true; // Default to false
-                          
-                          return (
-                              <div key={group.key} className="flex flex-col gap-2.5">
-                                  {/* Left-aligned aesthetic header */}
-                                  <div 
-                                      className={`flex items-center justify-between p-3.5 rounded-xl cursor-pointer transition-all border liquid-glass-tile ${
-                                          isExpanded 
-                                              ? 'bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(114,240,180,0.15)]' 
-                                              : 'bg-base-200/40 border-white/10 hover:bg-base-200 hover:border-white/20'
-                                      }`}
-                                      onClick={() => setExpandedMonths(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
-                                  >
-                                      <div className="flex items-center gap-3.5">
-                                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                                              isExpanded ? 'bg-primary text-accent-ink' : 'bg-base-300 text-content-muted'
-                                          }`}>
-                                              <Calendar className="w-4 h-4" />
-                                          </div>
-                                          <span className={`text-sm font-bold tracking-wide ${isExpanded ? 'text-primary' : 'text-content'}`}>
-                                              {group.key}
-                                          </span>
-                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-base-300 text-content-muted">
-                                              {group.items.length}
-                                          </span>
-                                      </div>
-                                      <div className={`p-1 rounded-md transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
-                                          <ChevronDown className={`w-4 h-4 ${isExpanded ? 'text-primary' : 'text-content-muted'}`} />
-                                      </div>
-                                  </div>
-
-                                  {/* Group Items */}
-                                  {isExpanded && (
-                                      <div className="grid grid-cols-1 gap-2.5 pl-2 sm:pl-4 border-l-2 border-primary/10 ml-2 sm:ml-4 mt-1 mb-2 animate-fadeIn">
-                                          {group.items.map(record => {
-                                              const globalIndex = lessonRecords.findIndex(l => l.id === record.id);
-                                              const lessonNumber = lessonRecords.length - globalIndex;
-
-                                              return (
-                                                  <Card 
-                                                    key={record.id}
-                                                    className="relative group cursor-pointer p-3 rounded-xl liquid-glass-hover bg-base-200/40 border border-white/5"
-                                                    onClick={() => openLessonRecordModal('view', record)}
-                                                  >
-                                                    <div className="absolute top-1/2 -translate-y-1/2 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                      <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleGenerateHomeworkFromLesson(record); }}
-                                                        className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-primary/10 transition-colors"
-                                                        title="Wygeneruj pracę domową z tej lekcji"
-                                                      >
-                                                        <Sparkles className="h-4 w-4 text-primary" />
-                                                      </button>
-                                                      <button 
-                                                        onClick={(e) => { e.stopPropagation(); openLessonRecordModal('edit', record); }}
-                                                        className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-base-200 transition-colors"
-                                                        title="Edytuj lekcję"
-                                                      >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                        </svg>
-                                                      </button>
-                                                      <button 
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteLessonRecord(record); }}
-                                                        className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-danger hover:bg-base-200 transition-colors"
-                                                        title="Usuń lekcję"
-                                                      >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                      </button>
-                                                    </div>
-                                                    <div className="flex items-center gap-3 pr-20">
-                                                      <div className="w-10 h-10 flex-shrink-0 bg-primary/10 text-primary font-mono text-sm font-bold rounded-lg flex items-center justify-center">
-                                                        #{lessonNumber}
-                                                      </div>
-                                                      <div className="flex-1 min-w-0">
-                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                           <h4 className="font-bold text-base line-clamp-1">{record.topic}</h4>
-                                                           {record.scenarioTopic && (
-                                                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 truncate max-w-[220px]" title={`Podstawa lekcji: ${record.scenarioTopic}`}>
-                                                               🔗 {record.scenarioTopic}
-                                                             </span>
-                                                           )}
-                                                         </div>
-                                                         <span className="text-xs font-mono text-content-muted">{record.date}</span>
-                                                      </div>
-                                                    </div>
-                                                  </Card>
-                                              );
-                                          })}
-                                      </div>
-                                  )}
+                  return (
+                    <div className="space-y-6">
+                      {/* Sekcja: Do potwierdzenia (manualny przegląd lektora) */}
+                      {pendingLessons.length > 0 && (
+                        <div className="p-4 sm:p-5 rounded-2xl bg-amber-950/25 border border-amber-500/35 space-y-3.5 shadow-[0_0_25px_rgba(245,158,11,0.08)]">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                                <AlertTriangle size={18} />
                               </div>
-                          );
-                      });
-                    })()}
-                  </div>
-                ) : (
-                  <p className="text-content-muted italic">{i18n.t("Brak historii lekcji.")}</p>
-                )}
+                              <div>
+                                <h4 className="text-base font-bold text-amber-300 flex items-center gap-2">
+                                  Do potwierdzenia ({pendingLessons.length})
+                                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                                    Tylko dla lektora
+                                  </span>
+                                </h4>
+                                <p className="text-xs text-amber-200/80 mt-0.5">
+                                  Te lekcje pochodzą z Notion, lecz mają brakującą datę lub wymagają weryfikacji. Kursant ich nie widzi dopóki ich nie zatwierdzisz.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {pendingLessons.map((record) => {
+                              const isDateBad = !record.date || /brak daty|empty/i.test(record.date) || record.isDateMissing;
+                              return (
+                                <div
+                                  key={record.id}
+                                  className="p-3.5 rounded-xl bg-base-200/90 border border-amber-500/25 hover:border-amber-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                                >
+                                  <div className="space-y-1 min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md ${
+                                        isDateBad ? 'bg-danger/20 text-danger border border-danger/30 animate-pulse' : 'bg-base-300 text-content-muted'
+                                      }`}>
+                                        {isDateBad ? '⚠️ Brak daty w Notion' : record.date}
+                                      </span>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                                        {record.pendingReason || (record.isDateMissing ? 'Brak daty spotkania w Notion' : 'Format do weryfikacji')}
+                                      </span>
+                                    </div>
+                                    <h5 className="font-bold text-sm text-white truncate">{record.topic}</h5>
+                                    {record.lessonSummary ? (
+                                      <p className="text-xs text-content-muted line-clamp-1 italic">{record.lessonSummary}</p>
+                                    ) : (
+                                      <p className="text-xs text-content-muted italic">Brak wpisanego streszczenia z Notion.</p>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                    <Button
+                                      size="sm"
+                                      variant="primary"
+                                      onClick={() => openLessonRecordModal('edit', record)}
+                                      className="text-xs font-bold bg-primary text-accent-ink hover:brightness-110 flex items-center gap-1.5"
+                                    >
+                                      <Edit3 size={13} />
+                                      Przejrzyj i zatwierdź
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleRejectNotionLesson(record)}
+                                      isLoading={isRejectingLessonId === record.id}
+                                      className="text-xs font-bold text-danger hover:bg-danger/15 hover:text-danger flex items-center gap-1"
+                                      title="Odrzuć ten wpis i zablokuj przed kolejnym importem"
+                                    >
+                                      <X size={14} />
+                                      Odrzuć
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Lista zatwierdzonych lekcji */}
+                      {confirmedLessons.length > 0 ? (
+                        <div className="space-y-4">
+                          {(() => {
+                            if (!groupByMonth) {
+                              return (
+                                <div className="grid grid-cols-1 gap-2.5">
+                                  {confirmedLessons.map((record, index) => (
+                                    <Card 
+                                      key={record.id}
+                                      className="relative group cursor-pointer p-3 rounded-xl liquid-glass-hover bg-base-200/40 border border-white/5"
+                                      onClick={() => openLessonRecordModal('view', record)}
+                                    >
+                                      <div className="absolute top-1/2 -translate-y-1/2 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                          onClick={(e) => { e.stopPropagation(); handleGenerateHomeworkFromLesson(record); }}
+                                          className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                                          title="Wygeneruj pracę domową z tej lekcji"
+                                        >
+                                          <Sparkles className="h-4 w-4 text-primary" />
+                                        </button>
+                                        <button 
+                                          onClick={(e) => { e.stopPropagation(); openLessonRecordModal('edit', record); }}
+                                          className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-base-200 transition-colors"
+                                          title="Edytuj lekcję"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                          </svg>
+                                        </button>
+                                        <button 
+                                          onClick={(e) => { e.stopPropagation(); handleDeleteLessonRecord(record); }}
+                                          className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-danger hover:bg-base-200 transition-colors"
+                                          title="Usuń lekcję"
+                                        >
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      <div className="flex items-center gap-3 pr-20">
+                                        <div className="w-10 h-10 flex-shrink-0 bg-primary/10 text-primary font-mono text-sm font-bold rounded-lg flex items-center justify-center">
+                                          #{confirmedLessons.length - index}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                           <div className="flex items-center gap-2 flex-wrap">
+                                             <h4 className="font-bold text-base line-clamp-1">{record.topic}</h4>
+                                             {record.scenarioTopic && (
+                                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 truncate max-w-[220px]" title={`Podstawa lekcji: ${record.scenarioTopic}`}>
+                                                 🔗 {record.scenarioTopic}
+                                               </span>
+                                             )}
+                                           </div>
+                                           <span className="text-xs font-mono text-content-muted">{record.date}</span>
+                                        </div>
+                                      </div>
+                                    </Card>
+                                  ))}
+                                </div>
+                              );
+                            }
+
+                            const groups: { key: string, items: typeof confirmedLessons }[] = [];
+                            let currentGroupKey = '';
+                            let currentGroup: { key: string, items: typeof confirmedLessons } | null = null;
+                            
+                            confirmedLessons.forEach(record => {
+                                const d = new Date(record.date);
+                                const diffTime = new Date().getTime() - d.getTime();
+                                const diffDays = diffTime / (1000 * 3600 * 24);
+
+                                let groupKey = '';
+                                if (diffDays >= 0 && diffDays <= 7) {
+                                    groupKey = 'Ostatni tydzień';
+                                } else if (Number.isNaN(d.getTime())) {
+                                    groupKey = 'Inne';
+                                } else {
+                                    groupKey = d.toLocaleString('pl-PL', { month: 'long', year: 'numeric' }).toUpperCase();
+                                }
+
+                                if (groupKey !== currentGroupKey) {
+                                    currentGroupKey = groupKey;
+                                    currentGroup = { key: groupKey, items: [] };
+                                    groups.push(currentGroup);
+                                }
+                                currentGroup?.items.push(record);
+                            });
+
+                            return groups.map((group) => {
+                                const isExpanded = expandedMonths[group.key] === true; // Default to false
+                                
+                                return (
+                                    <div key={group.key} className="flex flex-col gap-2.5">
+                                        <div 
+                                            className={`flex items-center justify-between p-3.5 rounded-xl cursor-pointer transition-all border liquid-glass-tile ${
+                                                isExpanded 
+                                                    ? 'bg-primary/10 border-primary/30 shadow-[0_0_15px_rgba(114,240,180,0.15)]' 
+                                                    : 'bg-base-200/40 border-white/10 hover:bg-base-200 hover:border-white/20'
+                                            }`}
+                                            onClick={() => setExpandedMonths(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
+                                        >
+                                            <div className="flex items-center gap-3.5">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                                    isExpanded ? 'bg-primary text-accent-ink' : 'bg-base-300 text-content-muted'
+                                                }`}>
+                                                    <Calendar className="w-4 h-4" />
+                                                </div>
+                                                <span className={`text-sm font-bold tracking-wide ${isExpanded ? 'text-primary' : 'text-content'}`}>
+                                                    {group.key}
+                                                </span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-base-300 text-content-muted">
+                                                    {group.items.length}
+                                                </span>
+                                            </div>
+                                            <div className={`p-1 rounded-md transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                                                <ChevronDown className={`w-4 h-4 ${isExpanded ? 'text-primary' : 'text-content-muted'}`} />
+                                            </div>
+                                        </div>
+
+                                        {isExpanded && (
+                                            <div className="grid grid-cols-1 gap-2.5 pl-2 sm:pl-4 border-l-2 border-primary/10 ml-2 sm:ml-4 mt-1 mb-2 animate-fadeIn">
+                                                {group.items.map(record => {
+                                                    const globalIndex = confirmedLessons.findIndex(l => l.id === record.id);
+                                                    const lessonNumber = confirmedLessons.length - globalIndex;
+
+                                                    return (
+                                                        <Card 
+                                                          key={record.id}
+                                                          className="relative group cursor-pointer p-3 rounded-xl liquid-glass-hover bg-base-200/40 border border-white/5"
+                                                          onClick={() => openLessonRecordModal('view', record)}
+                                                        >
+                                                          <div className="absolute top-1/2 -translate-y-1/2 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button 
+                                                              onClick={(e) => { e.stopPropagation(); handleGenerateHomeworkFromLesson(record); }}
+                                                              className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-primary/10 transition-colors"
+                                                              title="Wygeneruj pracę domową z tej lekcji"
+                                                            >
+                                                              <Sparkles className="h-4 w-4 text-primary" />
+                                                            </button>
+                                                            <button 
+                                                              onClick={(e) => { e.stopPropagation(); openLessonRecordModal('edit', record); }}
+                                                              className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-primary hover:bg-base-200 transition-colors"
+                                                              title="Edytuj lekcję"
+                                                            >
+                                                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                              </svg>
+                                                            </button>
+                                                            <button 
+                                                              onClick={(e) => { e.stopPropagation(); handleDeleteLessonRecord(record); }}
+                                                              className="p-1.5 bg-base-100 rounded-lg text-content-muted hover:text-danger hover:bg-base-200 transition-colors"
+                                                              title="Usuń lekcję"
+                                                            >
+                                                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                              </svg>
+                                                            </button>
+                                                          </div>
+                                                          <div className="flex items-center gap-3 pr-20">
+                                                            <div className="w-10 h-10 flex-shrink-0 bg-primary/10 text-primary font-mono text-sm font-bold rounded-lg flex items-center justify-center">
+                                                              #{lessonNumber}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                               <div className="flex items-center gap-2 flex-wrap">
+                                                                 <h4 className="font-bold text-base line-clamp-1">{record.topic}</h4>
+                                                                 {record.scenarioTopic && (
+                                                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/25 truncate max-w-[220px]" title={`Podstawa lekcji: ${record.scenarioTopic}`}>
+                                                                     🔗 {record.scenarioTopic}
+                                                                   </span>
+                                                                 )}
+                                                               </div>
+                                                               <span className="text-xs font-mono text-content-muted">{record.date}</span>
+                                                            </div>
+                                                          </div>
+                                                        </Card>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            });
+                          })()}
+                        </div>
+                      ) : (
+                        <p className="text-content-muted italic">
+                          {pendingLessons.length > 0 
+                            ? `Wszystkie wpisy (${pendingLessons.length}) oczekują na Twoje potwierdzenie w sekcji powyżej.`
+                            : i18n.t("Brak historii lekcji.")}
+                        </p>
+                      )}
+
+                      {/* Sekcja podręczna: Odrzucone z Notion */}
+                      {rejectedLessons.length > 0 && (
+                        <div className="mt-6 border border-white/10 rounded-2xl bg-base-200/30 overflow-hidden text-xs">
+                          <div
+                            onClick={() => setShowRejectedLessonsSection(prev => !prev)}
+                            className="p-3.5 bg-base-300/40 flex items-center justify-between cursor-pointer hover:bg-base-300/70 transition-colors select-none"
+                          >
+                            <div className="flex items-center gap-2 text-content-muted font-medium">
+                              <span className="text-sm">🛡️</span>
+                              <span className="font-bold text-white">Odrzucone tematy z Notion ({rejectedLessons.length})</span>
+                              <span className="text-[11px] text-content-muted hidden sm:inline">
+                                — aplikacja nie importuje ich przy kolejnych synchronizacjach
+                              </span>
+                            </div>
+                            <ChevronDown
+                              size={16}
+                              className={`text-content-muted transition-transform duration-200 ${
+                                showRejectedLessonsSection ? 'rotate-180' : ''
+                              }`}
+                            />
+                          </div>
+
+                          {showRejectedLessonsSection && (
+                            <div className="p-4 space-y-2 border-t border-white/5 bg-base-200/20">
+                              <p className="text-[11px] text-content-muted mb-3 leading-relaxed">
+                                Poniższe pozycje zostały odrzucone z Notion. Dzięki temu przy kolejnych synchronizacjach nie pojawią się ponownie w historii ani w podsumowaniach. Jeśli chcesz przywrócić dany temat, aby móc go ponownie zaimportować, kliknij „Przywróć”.
+                              </p>
+                              <div className="divide-y divide-white/5">
+                                {rejectedLessons.map((rej) => (
+                                  <div key={rej.id} className="py-2.5 flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-white truncate text-xs">{rej.topic}</div>
+                                      <div className="text-[10px] text-content-muted flex items-center gap-3 mt-0.5">
+                                        {rej.date && <span>Data: {rej.date}</span>}
+                                        <span>Odrzucono: {new Date(rej.rejectedAt).toLocaleDateString('pl-PL')}</span>
+                                        {rej.reason && <span className="italic text-content-muted/80">({rej.reason})</span>}
+                                      </div>
+                                    </div>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleRestoreRejectedLesson(rej.id, rej.topic)}
+                                      className="text-xs text-primary hover:underline hover:bg-primary/10 shrink-0 font-bold"
+                                    >
+                                      Przywróć
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
@@ -3593,6 +3857,8 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                       onDelete={() => handleDeleteLessonRecord(viewingRecord)}
                       onClose={() => setShowLessonRecordModal(false)}
                       onUpdateRecord={handleUpdateViewingRecord}
+                      onConfirmLesson={() => handleConfirmLessonDirectly(viewingRecord)}
+                      onRejectLesson={() => handleRejectNotionLesson(viewingRecord)}
                     />
                   )}
                 </div>

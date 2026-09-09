@@ -354,10 +354,19 @@ const splitName = (full: string): { firstName: string; lastName: string } => {
   return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 };
 
-const lessonDate = (page: NotionPage): string => {
+const lessonDate = (
+  page: NotionPage,
+  parsed?: { extractedDate?: string }
+): { date: string; isDateMissing: boolean } => {
   const raw = propText(page, 'Data lekcji');
-  if (raw) return raw.slice(0, 10);
-  return (page.last_edited_time || new Date().toISOString()).slice(0, 10);
+  if (raw && !raw.toLowerCase().includes('brak')) {
+    return { date: raw.slice(0, 10), isDateMissing: false };
+  }
+  if (parsed?.extractedDate) {
+    return { date: parsed.extractedDate, isDateMissing: false };
+  }
+  const fallback = (page.last_edited_time || new Date().toISOString()).slice(0, 10);
+  return { date: fallback, isDateMissing: true };
 };
 
 /**
@@ -395,6 +404,7 @@ export const importSelection = async (
   /** notionId → uid, budowane w trakcie: konta mogą powstać w tym przebiegu. */
   const uidByNotionId = new Map<string, string>();
   const uidByName = new Map<string, string>();
+  const rejectedByUid = new Map<string, Set<string>>();
 
   for (const page of pages) {
     const selection = wanted.get(page.id);
@@ -450,8 +460,11 @@ export const importSelection = async (
       continue;
     }
 
+    const password = tempPassword();
+    const { firstName, lastName } = splitName(name);
+    const { level, profile } = splitLevel(propText(page, 'Poziom / profil'));
+
     try {
-      const password = tempPassword();
       let record;
       try {
         record = await auth.createUser({ email, password, displayName: name });
@@ -465,8 +478,6 @@ export const importSelection = async (
         }
       }
 
-      const { firstName, lastName } = splitName(name);
-      const { level, profile } = splitLevel(propText(page, 'Poziom / profil'));
       await db.collection('users').doc(record.uid).set(
         {
           username: name,
@@ -503,6 +514,30 @@ export const importSelection = async (
     if (!uid) continue;
 
     const topic = propText(ref.page, 'Temat lekcji') || 'Lekcja';
+
+    // Sprawdzenie listy odrzuconych wpisów Notion dla tego kursanta
+    if (!rejectedByUid.has(uid)) {
+      try {
+        const rejSnap = await db.collection('users').doc(uid).collection('rejectedNotionLessons').get();
+        const set = new Set<string>();
+        rejSnap.docs.forEach((d) => {
+          set.add(d.id);
+          const t = d.data()?.topic;
+          if (t) set.add(normalize(t));
+        });
+        rejectedByUid.set(uid, set);
+      } catch {
+        rejectedByUid.set(uid, new Set());
+      }
+    }
+
+    const rejectedSet = rejectedByUid.get(uid);
+    if (rejectedSet?.has(ref.page.id) || rejectedSet?.has(normalize(topic))) {
+      logger.info(`Pominięto lekcję „${topic}” (znajduje się na liście odrzuconych przez lektora)`);
+      report.lessonsSkipped += 1;
+      continue;
+    }
+
     let parsed;
     try {
       parsed = parseLessonSummary(await pageToText(token, ref.page.id));
@@ -516,10 +551,30 @@ export const importSelection = async (
     const doc = db.collection('users').doc(uid).collection('lessonRecords').doc(ref.page.id);
     const existing = await doc.get();
 
+    const dateInfo = lessonDate(ref.page, parsed);
+    const isPending = dateInfo.isDateMissing || parsed.needsReview;
+    const pendingReasons: string[] = [];
+    if (dateInfo.isDateMissing) pendingReasons.push('Brak daty spotkania w Notion');
+    if (parsed.needsReview) pendingReasons.push('Wybrakowane podsumowanie lub format do weryfikacji');
+
+    const structuredBlocks = {
+      summary: parsed.lessonSummary,
+      vocabulary: parsed.vocabularyText,
+      corrections: parsed.corrections,
+      homework: parsed.homeworkText,
+      answerKey: parsed.homeworkAnswerKey || '',
+      nextLesson: parsed.suggestedFollowUp,
+      learningCurve: parsed.learningCurve || '',
+    };
+
     await doc.set(
       {
         studentId: uid,
-        date: lessonDate(ref.page),
+        date: dateInfo.date,
+        isDateMissing: dateInfo.isDateMissing,
+        status: isPending ? 'pending_confirmation' : 'confirmed',
+        isPendingConfirmation: isPending,
+        pendingReason: pendingReasons.length > 0 ? pendingReasons.join(' • ') : '',
         topic,
         vocabularyText: parsed.vocabularyText,
         lessonSummary: parsed.lessonSummary,
@@ -529,8 +584,8 @@ export const importSelection = async (
         homeworkAnswerKey: parsed.homeworkAnswerKey || '',
         suggestedFollowUp: parsed.suggestedFollowUp,
         nextLessonPlan: parsed.suggestedFollowUp,
-        // Ślad pochodzenia: po nim widać, czego nie edytować ręcznie w panelu,
-        // bo kolejny import nadpisze to treścią z Notion.
+        studentSpeaking: parsed.learningCurve,
+        structuredBlocks,
         source: 'notion',
         notionPageId: ref.page.id,
         notionUrl: ref.page.url || '',
@@ -542,7 +597,7 @@ export const importSelection = async (
     );
 
     report.lessonsImported += 1;
-    if (parsed.needsReview) report.needsReview += 1;
+    if (isPending) report.needsReview += 1;
   }
 
   return report;
