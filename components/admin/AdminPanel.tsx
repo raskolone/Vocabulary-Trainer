@@ -205,7 +205,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
     const nextTab = targetTab || activeTab || 'profile';
     setActiveTab(nextTab);
     if (onUserSelect) onUserSelect(user.id);
-    if (onViewChange) onViewChange(`admin-${nextTab}`);
+    // Nie wywołujemy onViewChange dla wewnętrznych zakładek — Dashboard
+    // remontowałby AdminPanel i tracił selectedUser.
     fetchUserLogsAndStats(user.id);
     setIsStudentPickerOpen(false);
   };
@@ -221,9 +222,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
       else setActiveTab('students-database');
       return;
     }
+    // Wewnętrzne zakładki (profile, stats, tests, homework, vocabulary,
+    // lesson-planner, presentation) — zmiana wyłącznie wewnątrz AdminPanel,
+    // bez wywoływania onViewChange, żeby Dashboard nie remontował komponentu.
     if (tabId === 'lesson-planner' || tabId === 'presentation') {
       setActiveTab(tabId);
-      if (onViewChange) onViewChange(`admin-${tabId}`);
       return;
     }
     if (!selectedUser) {
@@ -231,7 +234,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
       setIsStudentPickerOpen(true);
     } else {
       setActiveTab(tabId);
-      if (onViewChange) onViewChange(`admin-${tabId}`);
     }
   };
 
@@ -1329,7 +1331,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-    if (onViewChange) onViewChange(tab ? `admin-${tab}` : 'admin');
   };
   useEffect(() => {
     if (selectedUser) {
@@ -1516,7 +1517,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   <button
                     onClick={() => {
                       setActiveTab('profile');
-                      if (onViewChange) onViewChange('admin-profile');
                     }}
                     className="hover:text-primary transition-colors inline-flex items-center gap-1 group text-left cursor-pointer"
                     title="Kliknij, aby edytować profil lub adres e-mail kursanta"

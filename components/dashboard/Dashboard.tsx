@@ -324,8 +324,15 @@ const Dashboard: React.FC = () => {
     if (view === 'students-database' || view === 'students' || (view as any) === 'admin-students-database') {
       return <AdminPanel initialTab="students-database" onViewChange={handleNavigate} />;
     }
-    if (view === 'admin' || (isTeacher && view === 'dashboard')) {
-      return <AdminPanel onViewChange={handleNavigate} />;
+    // Wszystkie widoki admin-* (admin-profile, admin-history, admin-tests itd.)
+    // oraz sam 'admin' i domyślny 'dashboard' dla lektora — AdminPanel z właściwą
+    // zakładką. Bez tego wybranie kursanta i kliknięcie kafelka przenosiło do
+    // widoku kursanta zamiast zostać w panelu nauczyciela.
+    if (view === 'admin' || (isTeacher && view === 'dashboard') || (typeof view === 'string' && view.startsWith('admin-'))) {
+      const tabFromView = typeof view === 'string' && view.startsWith('admin-')
+        ? view.replace('admin-', '')
+        : undefined;
+      return <AdminPanel initialTab={tabFromView} onViewChange={handleNavigate} />;
     }
 
     // „Widok kursanta" — pięć kafelków lektora, każdy dokładnie ten sam
