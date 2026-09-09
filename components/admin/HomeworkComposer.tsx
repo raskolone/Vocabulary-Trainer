@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, doc, getDocs, updateDoc } from 'firebase/firestore';
-import { AlertTriangle, Check, Loader2, Send, Sparkles, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Loader2, Send, Sparkles, Trash2 } from 'lucide-react';
 import { db } from '../../firebase';
 import { HomeworkType, LessonRecord, User } from '../../types';
 import { getLessonRecordsForStudent } from '../../services/lessonRecord';
@@ -171,6 +171,33 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
           ? { ...section, items: section.items.filter((_, i) => i !== index) }
           : section
       )
+    );
+  };
+
+  const moveSection = (index: number, direction: 'up' | 'down') => {
+    setSections((prev) => {
+      const target = direction === 'up' ? index - 1 : index + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[target];
+      next[target] = temp;
+      return next;
+    });
+  };
+
+  const moveItem = (type: HomeworkType, index: number, direction: 'up' | 'down') => {
+    setSections((prev) =>
+      prev.map((section) => {
+        if (section.type !== type) return section;
+        const target = direction === 'up' ? index - 1 : index + 1;
+        if (target < 0 || target >= section.items.length) return section;
+        const nextItems = [...section.items];
+        const temp = nextItems[index];
+        nextItems[index] = nextItems[target];
+        nextItems[target] = temp;
+        return { ...section, items: nextItems };
+      })
     );
   };
 
@@ -449,11 +476,40 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
         <section className="rounded-2xl border border-white/10 bg-base-200/40 p-4 sm:p-5 space-y-4">
           {stepLabel(4, 'Sprawdź i przypisz')}
 
-          {sections.map((section) => (
-            <div key={section.type} className="space-y-2">
-              <h4 className="text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-content-muted">
-                {HOMEWORK_TYPE_LABELS[section.type].pl} · {section.items.length}
-              </h4>
+          {sections.map((section, sIdx) => (
+            <div key={section.type} className="space-y-2 p-3.5 rounded-xl bg-base-100/30 border border-white/10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-5 h-5 rounded bg-primary/20 text-primary text-[11px] font-mono font-bold flex items-center justify-center">
+                    {sIdx + 1}
+                  </span>
+                  <h4 className="text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-white">
+                    {HOMEWORK_TYPE_LABELS[section.type].pl} · {section.items.length} {exerciseNoun(section.items.length)}
+                  </h4>
+                </div>
+                {sections.length > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveSection(sIdx, 'up')}
+                      disabled={sIdx === 0}
+                      title="Przesuń blok zadań wyżej"
+                      className="p-1.5 rounded-lg text-content-muted hover:text-white hover:bg-white/10 disabled:opacity-20 transition-colors"
+                    >
+                      <ChevronUp size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveSection(sIdx, 'down')}
+                      disabled={sIdx === sections.length - 1}
+                      title="Przesuń blok zadań niżej"
+                      className="p-1.5 rounded-lg text-content-muted hover:text-white hover:bg-white/10 disabled:opacity-20 transition-colors"
+                    >
+                      <ChevronDown size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {section.error && (
                 <p className="text-[13px] text-warn">{section.error}</p>
@@ -463,18 +519,42 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
                 {section.items.map((item, index) => (
                   <li
                     key={index}
-                    className="flex items-start gap-2 p-3 rounded-xl bg-base-100/50 border border-white/[0.07]"
+                    className="flex items-start gap-2.5 p-3 rounded-xl bg-base-100/60 border border-white/[0.07] hover:border-white/15 transition-all"
                   >
+                    <span className="w-6 h-6 rounded-md bg-base-300/80 text-content-muted text-xs font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
+                      {index + 1}
+                    </span>
                     <span className="flex-1 min-w-0 text-sm text-content leading-snug">
                       <ItemPreview type={section.type} item={item} />
                     </span>
-                    <button
-                      onClick={() => removeItem(section.type, index)}
-                      title="Usuń zadanie"
-                      className="w-9 h-9 shrink-0 flex items-center justify-center rounded-lg text-content-muted hover:text-danger"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => moveItem(section.type, index, 'up')}
+                        disabled={index === 0}
+                        title="Przesuń zadanie wyżej"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-content-muted hover:text-white hover:bg-white/10 disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveItem(section.type, index, 'down')}
+                        disabled={index === section.items.length - 1}
+                        title="Przesuń zadanie niżej"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-content-muted hover:text-white hover:bg-white/10 disabled:opacity-20 transition-colors"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(section.type, index)}
+                        title="Usuń zadanie"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-content-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

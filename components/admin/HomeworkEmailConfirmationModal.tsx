@@ -486,12 +486,6 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
 
                   <table className="w-full text-xs border border-slate-200 rounded-lg mb-4">
                     <tbody>
-                      <tr className="border-b border-slate-100">
-                        <td className="p-2 text-slate-500 font-medium">Liczba zadań</td>
-                        <td className="p-2 text-slate-900 font-bold text-right">
-                          {task.sentences?.length || 0}
-                        </td>
-                      </tr>
                       {task.dueDate && (
                         <tr className="border-b border-slate-100">
                           <td className="p-2 text-slate-500 font-medium">Termin wykonania</td>
@@ -507,44 +501,44 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
                     </tbody>
                   </table>
 
-                  {task.sentences && task.sentences.length > 0 && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs mb-4">
-                      <p className="font-bold text-slate-700 text-[11px] uppercase tracking-wider mb-2">
-                        Zadania w zestawie ({task.sentences.length}):
-                      </p>
-                      <ol className="list-decimal list-inside space-y-1 text-slate-800 text-[11px]">
-                        {task.sentences.slice(0, 5).map((s, idx) => (
-                          <li key={idx}>
-                            <span className="font-medium">
-                              {s.polishSentence || s.question || s.text || s.sentenceWithBlank || `Zadanie ${idx + 1}`}
-                            </span>
-                            {s.hint && (
-                              <span className="text-slate-500 italic ml-1">
-                                (wskazówka: {s.hint})
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                      {task.sentences.length > 5 && (
-                        <p className="text-[10px] text-slate-500 italic mt-2">
-                          ... oraz {task.sentences.length - 5} kolejnych zadań w aplikacji.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="text-center my-4">
+                  <div className="text-center my-6">
                     <span className="inline-block bg-teal-700 text-white font-bold text-xs py-2.5 px-6 rounded-lg shadow">
                       Otwórz zadanie w aplikacji →
                     </span>
                   </div>
-                </div>
 
-                {/* Stopka */}
-                <div className="bg-slate-50 border-t border-slate-200 p-4 text-center text-[10px] text-slate-500">
-                  <p className="font-bold text-slate-700">CRIBRO ENGLISH • Nauka Języka Angielskiego</p>
-                  <p className="mt-0.5">Spersonalizowana platforma powtórek & lekcje indywidualne</p>
+                  {/* Wizytówka stopki lektora */}
+                  <div className="mt-6 border-[1.5px] border-blue-600 rounded p-4 bg-white text-slate-900 text-left">
+                    <div className="text-base font-extrabold text-slate-900 leading-tight">
+                      Maciej Wyrozumski
+                    </div>
+                    <div className="text-[11px] font-normal text-slate-600 mt-1">
+                      Instructional Designer | AI EdTech Specialist | English Trainer
+                    </div>
+                    <div className="my-3 border-t-2 border-slate-900" />
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">✉️</span>
+                        <span className="font-medium text-slate-900">wyrozumski@maciej.pro</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">📞</span>
+                        <span className="font-medium text-slate-900">+48 698 250 507</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">🌐</span>
+                        <span className="font-medium text-slate-900">www.maciej.pro</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">🔗</span>
+                        <span className="font-medium text-slate-900">linkedin.com/in/maciej-pro</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">🐙</span>
+                        <span className="font-medium text-slate-900">github.com/raskolone</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

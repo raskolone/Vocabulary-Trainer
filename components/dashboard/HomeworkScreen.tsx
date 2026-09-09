@@ -45,7 +45,9 @@ import {
   CheckCheck,
   Archive,
   RotateCcw,
-  Calendar
+  Calendar,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 interface HomeworkScreenProps {
@@ -766,6 +768,29 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
     }
   };
 
+  const moveTranslationItem = (index: number, direction: 'up' | 'down') => {
+    setTranslationItems((prev) => {
+      const target = direction === 'up' ? index - 1 : index + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[target];
+      next[target] = temp;
+      return next;
+    });
+  };
+
+  const moveErrorCorrectionItem = (index: number, direction: 'up' | 'down') => {
+    setErrorCorrectionItems((prev) => {
+      const target = direction === 'up' ? index - 1 : index + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[target];
+      next[target] = temp;
+      return next;
+    });
+  };
 
   // Save/Assign Homework (Teacher)
   const handleSaveHomework = async () => {
@@ -1976,13 +2001,34 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                     <div key={idx} className="p-4 rounded-xl bg-base-200/60 border border-white/5 space-y-2 relative">
                       <div className="flex justify-between items-center text-xs font-mono font-bold text-primary mb-1">
                         <span>Zdanie #{idx + 1}</span>
-                        <button
-                          type="button"
-                          onClick={() => setTranslationItems(prev => prev.filter((_, i) => i !== idx))}
-                          className="text-danger hover:opacity-80 p-1"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => moveTranslationItem(idx, 'up')}
+                            disabled={idx === 0}
+                            title="Przesuń zdanie w górę"
+                            className="p-1 rounded text-content-muted hover:text-white disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronUp size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveTranslationItem(idx, 'down')}
+                            disabled={idx === translationItems.length - 1}
+                            title="Przesuń zdanie w dół"
+                            className="p-1 rounded text-content-muted hover:text-white disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronDown size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTranslationItems(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-danger hover:opacity-80 p-1"
+                            title="Usuń zadanie"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2049,13 +2095,34 @@ export const HomeworkScreen: React.FC<HomeworkScreenProps> = ({
                     <div key={idx} className="p-4 rounded-xl bg-base-200/60 border border-white/5 space-y-2 relative">
                       <div className="flex justify-between items-center text-xs font-mono font-bold text-primary mb-1">
                         <span>Zdanie z błędem #{idx + 1}</span>
-                        <button
-                          type="button"
-                          onClick={() => setErrorCorrectionItems(prev => prev.filter((_, i) => i !== idx))}
-                          className="text-danger hover:opacity-80 p-1"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => moveErrorCorrectionItem(idx, 'up')}
+                            disabled={idx === 0}
+                            title="Przesuń zdanie w górę"
+                            className="p-1 rounded text-content-muted hover:text-white disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronUp size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveErrorCorrectionItem(idx, 'down')}
+                            disabled={idx === errorCorrectionItems.length - 1}
+                            title="Przesuń zdanie w dół"
+                            className="p-1 rounded text-content-muted hover:text-white disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronDown size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setErrorCorrectionItems(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-danger hover:opacity-80 p-1"
+                            title="Usuń zadanie"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="space-y-3">

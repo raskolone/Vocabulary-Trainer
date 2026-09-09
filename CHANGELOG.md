@@ -134,7 +134,35 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 - **Bezpieczne usuwanie (Bulk Delete & Single Delete)**:
   - Modal masowego usuwania z listą usuwanych użytkowników, wyraźnym ostrzeżeniem o nieodwracalności oraz usunięciem kont zarówno z bazy Firestore, jak i z systemu Firebase Authentication.
 
-### E. Architektura Panelu Nauczyciela & Poprawki UI/UX
+### F. Zmiana Kolejności Zadań (Reordering) oraz Nowy Standard E-mail ze Stopką-Wizytówką
+- **Zmiana kolejności zadań przed przypisaniem kursantowi (Reordering)**:
+  - **Kreator prac domowych ([HomeworkComposer.tsx](components/admin/HomeworkComposer.tsx))**:
+    - W kroku 4 („Sprawdź i przypisz”) dodano możliwość zmiany kolejności całych bloków/typów ćwiczeń (`moveSection`) oraz pojedynczych zadań wewnątrz sekcji (`moveItem`) przy pomocy przycisków góra/dół (`ChevronUp`, `ChevronDown`).
+    - Każde zadanie otrzymało wyraźny numer porządkowy odzwierciedlający dokładną sekwencję, w jakiej uczeń będzie je wykonywać.
+  - **Generator zadań specjalnych AI ([TeacherSpecialTaskModal.tsx](components/admin/TeacherSpecialTaskModal.tsx))**:
+    - W liście wygenerowanych przez modele AI zdań dodano przyciski przesuwania `moveSentence` w górę i w dół, pozwalając lektorowi dowolnie ułożyć kolejność pytań przed zapisaniem i przypisaniem zadania.
+  - **Generator testów ([AdminTestGenerator.tsx](components/admin/AdminTestGenerator.tsx))**:
+    - Oprócz istniejącego przestawiania pytań głównych, dodano funkcję `moveSentenceInQuestion` z przyciskami góra/dół dla zdań podrzędnych (np. w pytaniach złożonych z wielu zdań do tłumaczenia lub korekty), z automatyczną synchronizacją i reindeksacją klucza odpowiedzi.
+  - **Ręczny edytor pracy domowej ([HomeworkScreen.tsx](components/dashboard/HomeworkScreen.tsx))**:
+    - W formularzu tworzenia/edycji zadań lektora dodano przyciski góra/dół dla ćwiczeń tłumaczeniowych (`moveTranslationItem`) oraz zdań z błędami do korekty (`moveErrorCorrectionItem`).
+- **Uproszczenie treści e-maila z powiadomieniem o pracy domowej**:
+  - Zgodnie z wytycznymi usunięto szczegółowe listowanie treści zadań i zdań w wiadomości e-mail — mail zawiera wyłącznie zwięzłą informację o przypisaniu pracy domowej z tytułem, opcjonalnym terminem wykonania, ewentualnymi wskazówkami/notatką lektora oraz dużym przyciskiem CTA kierującym do aplikacji ([services/homeworkEmail.ts](services/homeworkEmail.ts), [functions/src/emailTemplate.ts](functions/src/emailTemplate.ts)).
+  - Zsynchronizowano wizualny podgląd w modalu potwierdzenia lektora ([HomeworkEmailConfirmationModal.tsx](components/admin/HomeworkEmailConfirmationModal.tsx)).
+- **Elegancka stopka maila — Wizytówka lektora (zgodnie ze wzorem)**:
+  - Wdrożono wizytówkę lektora w stopce wiadomości o strukturze:
+    - Obramowanie w kolorze niebieskim (`border: 1.5px solid #2563eb`), zaokrąglone rogi i tło karty,
+    - Pogrubione imię i nazwisko: **Maciej Wyrozumski**,
+    - Tytuł zawodowy: `Instructional Designer | AI EdTech Specialist | English Trainer`,
+    - Ciemna linia oddzielająca (`border-top: 2px solid #0f172a`),
+    - Zestaw 5 kontaktów z dedykowanymi ikonami i aktywnymi linkami:
+      1. ✉️ `wyrozumski@maciej.pro` (mailto)
+      2. 📞 `+48 698 250 507` (tel)
+      3. 🌐 `www.maciej.pro` (https)
+      4. 🔗 `linkedin.com/in/maciej-pro` (https)
+      5. 🐙 `github.com/raskolone` (https)
+    - Wersja czysto-tekstowa (plain text) zachowuje ten sam układ i komplet danych kontaktowych.
+
+### G. Architektura Panelu Nauczyciela & Poprawki UI/UX
 - **Wydzielenie bazy kursantów**:
   - Utworzono niezależny ekran bazy uczniów [StandaloneStudentDatabaseScreen.tsx](components/admin/StandaloneStudentDatabaseScreen.tsx).
   - Usunięto problematyczny kafelek z panelu nauczyciela, rozwiązując błędy z zapętlonym routingiem i nieintencjonalnym spadaniem do panelu kursanta.
@@ -145,7 +173,7 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 - **Wymiana natywnych alertów**:
   - Wszystkie przeglądarkowe wywołania `window.alert(...)` zastąpiono nowoczesnym, wycentrowanym oknem modalnym [AdminMessageModal.tsx](components/ui/AdminMessageModal.tsx).
 
-### F. Jakość Kodu, Typowanie i Testy Automatyczne
+### H. Jakość Kodu, Typowanie i Testy Automatyczne
 - **Testy jednostkowe**:
   - Przechodzi **144 na 144 testów jednostkowych** (100% pass):
     - `tests/studentDatabaseBulk.test.ts` (9 testów operacji masowych i selekcji)

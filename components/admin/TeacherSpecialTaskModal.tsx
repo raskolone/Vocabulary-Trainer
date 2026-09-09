@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, TranslationExercise, LessonRecord } from '../../types';
 import Button from '../ui/Button';
-import { X, Sparkles, Check, Trash2, Plus, RefreshCw, BookOpen, Eye, EyeOff, Send, MessageSquare, Bot, User as UserIcon, Edit2 } from 'lucide-react';
+import { X, Sparkles, Check, Trash2, Plus, RefreshCw, BookOpen, Eye, EyeOff, Send, MessageSquare, Bot, User as UserIcon, Edit2, ChevronUp, ChevronDown } from 'lucide-react';
 import { generateHomeworkChatPipeline, HomeworkChatMessage } from '../../services/geminiService';
 import { getLessonRecordsForStudent } from '../../services/lessonRecord';
 import { collection, addDoc, updateDoc, doc, serverTimestamp, getDocs } from 'firebase/firestore';
@@ -281,6 +281,18 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
           : s
       )
     );
+  };
+
+  const moveSentence = (index: number, direction: 'up' | 'down') => {
+    setGeneratedSentences((prev) => {
+      const target = direction === 'up' ? index - 1 : index + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const temp = next[index];
+      next[index] = next[target];
+      next[target] = temp;
+      return next;
+    });
   };
 
   const handleSaveTask = async () => {
@@ -624,6 +636,24 @@ const TeacherSpecialTaskModal: React.FC<TeacherSpecialTaskModalProps> = ({
                             {s.hint && <p className="text-[11px] text-content-muted">Wskazówka: {s.hint}</p>}
                           </div>
                           <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => moveSentence(index, 'up')}
+                              disabled={index === 0}
+                              className="p-1.5 text-content-muted hover:text-white rounded-lg hover:bg-white/5 disabled:opacity-20 transition-colors"
+                              title="Przesuń zdanie w górę"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveSentence(index, 'down')}
+                              disabled={index === generatedSentences.length - 1}
+                              className="p-1.5 text-content-muted hover:text-white rounded-lg hover:bg-white/5 disabled:opacity-20 transition-colors"
+                              title="Przesuń zdanie w dół"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               onClick={() => setEditingSentenceId(s.id)}
                               className="p-1.5 text-content-muted hover:text-white rounded-lg hover:bg-white/5"

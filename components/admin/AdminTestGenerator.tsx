@@ -483,6 +483,39 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
     setGeneratedQuestions(newQuestions);
   };
 
+  const moveSentenceInQuestion = (qIdx: number, sIdx: number, direction: 'up' | 'down') => {
+    if (!generatedQuestions) return;
+    const q = generatedQuestions[qIdx];
+    const items = parseNumberedItems(q.prompt);
+    const targetIdx = direction === 'up' ? sIdx - 1 : sIdx + 1;
+    if (targetIdx < 0 || targetIdx >= items.length) return;
+
+    const temp = items[sIdx];
+    items[sIdx] = items[targetIdx];
+    items[targetIdx] = temp;
+
+    const newPrompt = items.map((it, idx) => `${idx + 1}. ${it.text}`).join('\n');
+
+    let newAnswer = q.correctAnswer;
+    if (q.correctAnswer) {
+      const ansItems = parseNumberedItems(q.correctAnswer);
+      if (ansItems.length === items.length) {
+        const tempAns = ansItems[sIdx];
+        ansItems[sIdx] = ansItems[targetIdx];
+        ansItems[targetIdx] = tempAns;
+        newAnswer = ansItems.map((it, idx) => `${idx + 1}. ${it.text}`).join('\n');
+      }
+    }
+
+    const newQuestions = [...generatedQuestions];
+    newQuestions[qIdx] = {
+      ...newQuestions[qIdx],
+      prompt: newPrompt,
+      correctAnswer: newAnswer,
+    };
+    setGeneratedQuestions(newQuestions);
+  };
+
   const toggleLesson = (id: string) => {
     setSelectedLessons(prev => 
       prev.includes(id) ? prev.filter(l => l !== id) : [...prev, id]
@@ -789,6 +822,26 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
                                         className="w-full bg-base-100 border border-white/10 rounded-lg p-2.5 text-white text-sm md:text-base font-semibold outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all cursor-text"
                                         placeholder={`Zdanie ${item.num}`}
                                       />
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => moveSentenceInQuestion(i, sIdx, 'up')}
+                                          disabled={sIdx === 0}
+                                          title="Przesuń zdanie w górę"
+                                          className="p-2 rounded-lg bg-base-300 text-content hover:bg-white/10 disabled:opacity-20 transition-colors"
+                                        >
+                                          <ChevronUp className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => moveSentenceInQuestion(i, sIdx, 'down')}
+                                          disabled={sIdx === parseNumberedItems(q.prompt).length - 1}
+                                          title="Przesuń zdanie w dół"
+                                          className="p-2 rounded-lg bg-base-300 text-content hover:bg-white/10 disabled:opacity-20 transition-colors"
+                                        >
+                                          <ChevronDown className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
 
                                     {/* Podgląd pola na odpowiedź kursanta */}
