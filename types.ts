@@ -290,6 +290,23 @@ export interface GeneratedLessonScenario {
   tags?: string[];
 }
 
+export interface LessonBlocks {
+  /** BLOK 1: Lekcja w skrócie (Overview / Context / Revision Notes) */
+  summary: string;
+  /** BLOK 2a: Key Language (Słownictwo do powtórek / hasło - tłumaczenie) */
+  vocabulary: string;
+  /** BLOK 2b: Corrections & Pronunciation (Korekty językowe, błędy z lekcji) */
+  corrections: string;
+  /** BLOK 3: Homework — Cribro Habit (Zdania do tłumaczenia, zadania) */
+  homework: string;
+  /** BLOK 3: Klucz odpowiedzi do zadania domowego (Answer Key) */
+  answerKey?: string;
+  /** BLOK 4: Next Lesson (Plan i cele na kolejną lekcję) */
+  nextLesson: string;
+  /** Learning Curve / Kontekst wypowiedzi kursanta */
+  learningCurve?: string;
+}
+
 export interface LessonRecord {
   id: string;
   studentId: string;
@@ -304,6 +321,16 @@ export interface LessonRecord {
   scenarioId?: string;
   scenarioTopic?: string;
   scenarioContent?: string;
+  /** BLOK 2b: Wyodrębnione korekty gramatyczne i wymowa */
+  corrections?: string;
+  /** BLOK 3: Wyodrębniona treść pracy domowej / zdania z lekcji */
+  homeworkText?: string;
+  /** BLOK 3: Klucz odpowiedzi do pracy domowej */
+  homeworkAnswerKey?: string;
+  /** BLOK 4: Wyodrębniony plan na kolejną lekcję */
+  nextLessonPlan?: string;
+  /** Elastyczny obiekt bloków ułatwiający renderowanie i eksport */
+  structuredBlocks?: LessonBlocks;
   createdAt: string;
   updatedAt: string;
 }

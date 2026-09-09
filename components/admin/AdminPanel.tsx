@@ -33,13 +33,14 @@ import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
 import NotionSyncButton from './NotionSyncButton';
 import StudentNotionSyncModal from './StudentNotionSyncModal';
+import CleanLessonsModal from './CleanLessonsModal';
 import AdminMailingScreen from './AdminMailingScreen';
 import { useLanguage } from '../../context/LanguageContext';
 import { 
   Trash2, Download, Printer, FileText, CheckCircle2, AlertCircle,
   User as UserIcon, Users, Search, X, ChevronRight, ChevronDown, ChevronUp, Sparkles, BarChart2, Clock, 
   BookOpen, BookMarked, UserCheck, Filter, Award, Activity, Calendar, 
-  RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay, Mail, Database
+  RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay, Mail, Database, Wand2
 } from 'lucide-react';
 import i18n from "i18next";
 import html2pdf from 'html2pdf.js';
@@ -1141,6 +1142,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showBulkPreviewModal, setShowBulkPreviewModal] = useState(false);
   const [showStudentNotionSyncModal, setShowStudentNotionSyncModal] = useState(false);
+  const [showCleanLessonsModal, setShowCleanLessonsModal] = useState(false);
   const [bulkPreviewLessons, setBulkPreviewLessons] = useState<any[]>([]);
   const [expandedBulkIndex, setExpandedBulkIndex] = useState<number | null>(null);
   const [bulkNotes, setBulkNotes] = useState('');
@@ -1276,6 +1278,23 @@ const [users, setUsers] = useState<UserWithId[]>([]);
     }
   };
 
+  const handleUpdateViewingRecord = async (updatedFields: Partial<LessonRecord>) => {
+    if (!selectedUser || !viewingRecord) return;
+    try {
+      const updated = {
+        ...viewingRecord,
+        ...updatedFields,
+        updatedAt: new Date().toISOString()
+      };
+      await updateDoc(doc(db, `users/${selectedUser.id}/lessonRecords`, viewingRecord.id), updatedFields);
+      setViewingRecord(updated);
+      setLessonRecords(prev => prev.map(r => r.id === viewingRecord.id ? updated : r));
+      showToast('Zaktualizowano lekcję kursanta do formatu bloków Notion!');
+    } catch (err: any) {
+      alert('Błąd aktualizacji lekcji: ' + (err?.message || err));
+    }
+  };
+
 
   const handleGenerateHomeworkFromLesson = (record: LessonRecord) => {
     let targetUser = selectedUser;
@@ -1386,6 +1405,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   useEscapeModal(showBulkModal, () => setShowBulkModal(false));
   useEscapeModal(showBulkPreviewModal, () => setShowBulkPreviewModal(false));
   useEscapeModal(showStudentNotionSyncModal, () => setShowStudentNotionSyncModal(false));
+  useEscapeModal(showCleanLessonsModal, () => setShowCleanLessonsModal(false));
   useEscapeModal(showLessonRecordModal, () => closeLessonRecordModal());
   useEscapeModal(!!userToDelete, () => setUserToDelete(null), 5);
   useEscapeModal(!!(profileSaveModal && profileSaveModal.isOpen), () => setProfileSaveModal(null), 5);
@@ -1957,6 +1977,16 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                     >
                       <RefreshCw className="w-3.5 h-3.5 text-primary" />
                       <span>{i18n.t("Synchronizuj z Notion")}</span>
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="secondary" 
+                      onClick={() => setShowCleanLessonsModal(true)}
+                      className="flex items-center gap-1.5 text-white font-medium border-white/10 hover:border-amber-400/50"
+                      title="Uporządkuj dotychczas zaimportowane lekcje do czystego formatu bloków Notion"
+                    >
+                      <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{i18n.t("Uporządkuj lekcje (Notion)")}</span>
                     </Button>
                     <Button size="sm" variant="secondary" onClick={() => setShowAIModal(true)}>
                       {i18n.t("✨ AI Lesson Summary")}
@@ -3616,6 +3646,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                       onEdit={() => openLessonRecordModal('edit', viewingRecord)}
                       onDelete={() => handleDeleteLessonRecord(viewingRecord)}
                       onClose={() => setShowLessonRecordModal(false)}
+                      onUpdateRecord={handleUpdateViewingRecord}
                     />
                   )}
                 </div>
@@ -4226,6 +4257,19 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               fetchUserLogsAndStats(selectedUser.id);
             }
             fetchUsers();
+          }}
+        />
+      )}
+
+      {showCleanLessonsModal && (
+        <CleanLessonsModal
+          isOpen={showCleanLessonsModal}
+          onClose={() => setShowCleanLessonsModal(false)}
+          selectedUser={selectedUser}
+          lessonRecords={lessonRecords}
+          onCleanComplete={(updated) => {
+            setLessonRecords(updated);
+            showToast('Pomyślnie zaktualizowano lekcje do formatu bloków Notion!');
           }}
         />
       )}

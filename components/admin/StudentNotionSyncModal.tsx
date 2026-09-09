@@ -1,18 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Activity,
   AlertTriangle,
   BookOpen,
   Calendar,
   Check,
   CheckCircle2,
+  CheckSquare,
+  Edit3,
   ExternalLink,
+  KeyRound,
   Layers,
+  ListChecks,
   Loader2,
   RefreshCw,
   Sparkles,
+  Square,
+  Target,
+  Wand2,
   X,
 } from 'lucide-react';
-import { collection, doc, getDocs, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, orderBy, query, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { LessonRecord, User } from '../../types';
 import {
@@ -29,12 +37,28 @@ import {
   countVocabularyItems,
   splitVocabularyLines,
 } from '../../utils/vocabulary';
+import { extractLessonBlocks } from '../../utils/lessonBlocks';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   selectedUser: User | null;
   onSyncComplete?: () => void;
+}
+
+export interface StagedLesson {
+  id: string;
+  date: string;
+  topic: string;
+  approved: boolean;
+  summary: string;
+  vocabulary: string;
+  corrections: string;
+  homework: string;
+  answerKey: string;
+  nextLesson: string;
+  learningCurve: string;
+  originalRecord: LessonRecord;
 }
 
 const normalize = (v: string): string =>
@@ -60,7 +84,9 @@ const StudentNotionSyncModal: React.FC<Props> = ({
   selectedUser,
   onSyncComplete,
 }) => {
-  const [step, setStep] = useState<'checking' | 'verification' | 'importing' | 'success' | 'error'>('checking');
+  const [step, setStep] = useState<
+    'checking' | 'verification' | 'importing' | 'staging' | 'saving_staged' | 'success' | 'error'
+  >('checking');
   const [errorMsg, setErrorMsg] = useState('');
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [matchedStudent, setMatchedStudent] = useState<StudentPreview | null>(null);
@@ -69,6 +95,10 @@ const StudentNotionSyncModal: React.FC<Props> = ({
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [recentLessons, setRecentLessons] = useState<LessonRecord[]>([]);
   const [localLessonCount, setLocalLessonCount] = useState<number>(0);
+
+  // Stan dla etapu weryfikacji i stagingu AI (kontrola lektora przed utrwaleniem)
+  const [stagedLessons, setStagedLessons] = useState<StagedLesson[]>([]);
+  const [activeStagedIndex, setActiveStagedIndex] = useState<number>(0);
 
   // Uruchomienie sprawdzania bazy Notion przy otwarciu okna
   useEffect(() => {
@@ -89,6 +119,8 @@ const StudentNotionSyncModal: React.FC<Props> = ({
     setImportReport(null);
     setRecentLessons([]);
     setLocalLessonCount(0);
+    setStagedLessons([]);
+    setActiveStagedIndex(0);
   };
 
   const findBestMatch = (students: StudentPreview[], user: User): StudentPreview | null => {
@@ -197,412 +229,712 @@ const StudentNotionSyncModal: React.FC<Props> = ({
         allRecords.push({ id: docSnap.id, ...docSnap.data() } as LessonRecord);
       });
 
-      // Krok 3: Wytyczne AI & generowanie zasobów ćwiczeniowych:
-      // Dla każdej lekcji z Notion tworzymy/aktualizujemy VocabularySet i zestaw fiszek
-      let setsCreated = 0;
-      for (const record of allRecords) {
-        if (record.vocabularyText && record.vocabularyText.trim().length > 0) {
-          const vocabSetId = `vocab-${record.id}`;
+      // Krok 3: Przygotowanie lekcji do etapu Stagingu i Weryfikacji AI
+      // Bierzemy najnowsze lekcje (np. do 15 lekcji zsynchronizowanych lub wszystkich)
+      const stageItems: StagedLesson[] = allRecords.slice(0, 15).map((rec) => {
+        const blocks = extractLessonBlocks(rec);
+        return {
+          id: rec.id,
+          date: rec.date || new Date().toISOString().split('T')[0],
+          topic: rec.topic || 'Lekcja bez tematu',
+          approved: true,
+          summary: blocks.summary || '',
+          vocabulary: blocks.vocabulary || '',
+          corrections: blocks.corrections || '',
+          homework: blocks.homework || '',
+          answerKey: blocks.answerKey || '',
+          nextLesson: blocks.nextLesson || '',
+          learningCurve: blocks.learningCurve || '',
+          originalRecord: rec,
+        };
+      });
+
+      setStagedLessons(stageItems);
+      setActiveStagedIndex(0);
+
+      // Przechodzimy do kroku weryfikacji i stagingu z kontrolą lektora
+      setStep('staging');
+    } catch (err: any) {
+      console.error('Błąd podczas importu z Notion:', err);
+      setErrorMsg(err?.message || 'Wystąpił błąd podczas importowania danych z Notion.');
+      setStep('error');
+    }
+  };
+
+  const updateActiveStaged = (fields: Partial<StagedLesson>) => {
+    setStagedLessons((prev) =>
+      prev.map((item, idx) => (idx === activeStagedIndex ? { ...item, ...fields } : item))
+    );
+  };
+
+  const handleSaveStagedLessons = async () => {
+    if (!selectedUser) return;
+    setStep('saving_staged');
+    setErrorMsg('');
+
+    try {
+      const batch = writeBatch(db);
+      const approvedLessons = stagedLessons.filter((s) => s.approved);
+
+      for (const staged of approvedLessons) {
+        const recordRef = doc(db, `users/${selectedUser.id}/lessonRecords/${staged.id}`);
+        const structuredBlocks = {
+          summary: staged.summary,
+          vocabulary: staged.vocabulary,
+          corrections: staged.corrections,
+          homework: staged.homework,
+          answerKey: staged.answerKey,
+          nextLesson: staged.nextLesson,
+          learningCurve: staged.learningCurve,
+        };
+
+        batch.update(recordRef, {
+          date: staged.date,
+          topic: staged.topic,
+          lessonSummary: staged.summary,
+          vocabularyText: staged.vocabulary,
+          corrections: staged.corrections,
+          thingsToImprove: staged.corrections,
+          homeworkText: staged.homework,
+          homeworkAnswerKey: staged.answerKey || '',
+          suggestedFollowUp: staged.nextLesson,
+          nextLessonPlan: staged.nextLesson,
+          studentSpeaking: staged.learningCurve,
+          structuredBlocks: structuredBlocks,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      await batch.commit();
+
+      // Generowanie zestawów słówek i fiszek dla zatwierdzonych lekcji
+      for (const staged of approvedLessons) {
+        if (staged.vocabulary && staged.vocabulary.trim().length > 0) {
+          const vocabSetId = `vocab-${staged.id}`;
           const setRef = doc(db, `users/${selectedUser.id}/vocabularySets/${vocabSetId}`);
-          
+
           await setDoc(
             setRef,
             {
               id: vocabSetId,
               studentId: selectedUser.id,
-              lessonRecordId: record.id,
-              title: buildVocabularySetTitle(record.date, record.topic),
-              date: record.date,
-              topic: record.topic,
-              vocabularyText: record.vocabularyText,
-              approvedItems: splitVocabularyLines(record.vocabularyText),
-              itemCount: countVocabularyItems(record.vocabularyText),
+              lessonRecordId: staged.id,
+              title: buildVocabularySetTitle(staged.date, staged.topic),
+              date: staged.date,
+              topic: staged.topic,
+              vocabularyText: staged.vocabulary,
+              approvedItems: splitVocabularyLines(staged.vocabulary),
+              itemCount: countVocabularyItems(staged.vocabulary),
               status: 'ready',
               source: 'lesson_record',
-              createdAt: record.createdAt || new Date().toISOString(),
+              createdAt: staged.originalRecord.createdAt || new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               used: false,
             },
             { merge: true }
           );
 
-          // Synchronizacja fiszek dla ucznia
           await syncFlashcardSetForLesson(
-            record.id,
+            staged.id,
             selectedUser.id,
-            record.date,
-            record.topic,
-            record.vocabularyText
+            staged.date,
+            staged.topic,
+            staged.vocabulary
           );
-          setsCreated++;
         }
       }
 
-      // Krok 4: Ustawienie flag powiadomień na profilu kursanta
+      // Oznaczenie kursanta o nowej lekcji
       try {
         await updateDoc(doc(db, 'users', selectedUser.id), {
           hasNewLesson: true,
           hasNewVocabulary: true,
-          notionPageId: selectedNotionId,
         });
-      } catch (uErr) {
-        console.warn('Could not update user hasNewLesson flag:', uErr);
+      } catch (e) {
+        console.warn('Nie udało się ustawić hasNewLesson:', e);
       }
 
-      setRecentLessons(allRecords.slice(0, 5));
-      setStep('success');
+      // Odświeżenie listy zaktualizowanych lekcji
+      const finalRecords: LessonRecord[] = approvedLessons.map((s) => ({
+        ...s.originalRecord,
+        date: s.date,
+        topic: s.topic,
+        vocabularyText: s.vocabulary,
+        lessonSummary: s.summary,
+        corrections: s.corrections,
+        homeworkText: s.homework,
+        homeworkAnswerKey: s.answerKey,
+        suggestedFollowUp: s.nextLesson,
+        studentSpeaking: s.learningCurve,
+      }));
 
-      // Krok 5: Odświeżenie danych w panelu nadrzędnym
+      setRecentLessons(finalRecords);
+      setStep('success');
       onSyncComplete?.();
     } catch (err: any) {
-      console.error('Błąd importu z Notion:', err);
-      setErrorMsg(err?.message || 'Wystąpił błąd podczas importowania lekcji z Notion.');
+      console.error('Błąd zapisu zatwierdzonych lekcji:', err);
+      setErrorMsg(err?.message || 'Nie udało się zapisać zatwierdzonych lekcji do bazy.');
       setStep('error');
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !selectedUser) return null;
 
-  const studentName = selectedUser
-    ? `${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim() || selectedUser.username
-    : 'Nie wybrano kursanta';
-
-  const notionLessonCount = matchedStudent?.lessonCount ?? 0;
+  const studentName = `${selectedUser.firstName || ''} ${selectedUser.lastName || selectedUser.username}`.trim();
+  const notionLessonCount = matchedStudent ? matchedStudent.lessonCount : 0;
   const newLessonsCount = Math.max(0, notionLessonCount - localLessonCount);
+  const activeStaged = stagedLessons[activeStagedIndex] || null;
 
   return (
-    <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-ink/75 backdrop-blur-md"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-white/10 bg-base-200 p-5 md:p-6 space-y-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Nagłówek modalu */}
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl border border-white/10 bg-base-300 shadow-2xl overflow-hidden">
+        {/* NAGŁÓWEK */}
+        <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between gap-3 bg-base-200/80 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold text-lg shrink-0">
-              <RefreshCw className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary border border-primary/30 flex items-center justify-center shrink-0">
+              <RefreshCw size={20} className={step === 'importing' || step === 'saving_staged' ? 'animate-spin' : ''} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>Synchronizacja lekcji z Notion</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-mono font-medium">
-                  Notion DB
+              <h3 className="font-extrabold text-white text-base sm:text-lg flex items-center gap-2">
+                {step === 'staging'
+                  ? 'Weryfikacja podziału lekcji przez AI (Notion Staging)'
+                  : 'Synchronizacja lekcji z Notion'}
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary border border-primary/30">
+                  AI Enhanced
                 </span>
               </h3>
               <p className="text-xs text-content-muted">
-                Profil w aplikacji:{' '}
-                <strong className="text-white">{studentName}</strong>
+                {step === 'staging'
+                  ? 'Przejrzyj podział lekcji na bloki Notion i zatwierdź wpisy przed zapisaniem do historii.'
+                  : `Kursant: ${studentName}`}
               </p>
             </div>
           </div>
+
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg border border-white/10 flex items-center justify-center text-content-muted hover:text-white transition-colors"
+            className="p-2 rounded-xl text-content-muted hover:text-white hover:bg-white/10 transition-colors"
           >
-            <X size={16} />
+            <X size={20} />
           </button>
         </div>
 
-        {/* 1. KROK SPRAWDZANIA BAZY */}
-        {step === 'checking' && (
-          <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <div className="space-y-1">
-              <h4 className="text-base font-bold text-white">Sprawdzam bazę danych Notion…</h4>
-              <p className="text-xs text-content-muted max-w-md">
-                Pobieram najnowsze wpisy ze statusem <em>Odbyta</em> lub <em>Podsumowanie</em> oraz
-                dopasowuję kartę kursanta.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* 2. KROK BŁĘDU */}
-        {step === 'error' && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-warn/10 border border-warn/25 text-warn text-sm flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+        {/* ZAWARTOŚĆ OKNA */}
+        <div className="p-5 overflow-y-auto flex-1">
+          {/* 1. KROK SPRAWDZANIA */}
+          {step === 'checking' && (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
               <div className="space-y-1">
-                <p className="font-bold">Nie udało się ukończyć operacji</p>
-                <p className="text-xs text-content leading-relaxed">{errorMsg}</p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-content-muted hover:text-white"
-              >
-                Zamknij
-              </button>
-              <button
-                onClick={checkNotionDatabase}
-                className="px-4 py-2 rounded-xl bg-primary text-accent-ink font-bold text-sm hover:brightness-110 flex items-center gap-2"
-              >
-                <RefreshCw size={14} />
-                Spróbuj ponownie
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 3. KROK WERYFIKACJI DANYCH (PRZED IMPORTEM) */}
-        {step === 'verification' && (
-          <div className="space-y-5">
-            {/* Wybór lub potwierdzenie powiązanej karty z Notion */}
-            <div className="p-4 rounded-xl bg-base-100/60 border border-white/8 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-content-muted flex items-center gap-1.5">
-                  <BookOpen size={14} className="text-primary" />
-                  Karta kursanta w Notion
-                </span>
-                {matchedStudent && (
-                  <span className="text-[11px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
-                    {MATCH_LABELS[matchedStudent.matchedBy || 'notion']}
-                  </span>
-                )}
-              </div>
-
-              {matchedStudent ? (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
-                  <div>
-                    <h4 className="text-base font-extrabold text-white flex items-center gap-2">
-                      <span>{matchedStudent.name}</span>
-                      {matchedStudent.level && (
-                        <span className="text-xs font-mono px-2 py-0.5 rounded bg-white/10 text-content-muted">
-                          {matchedStudent.level}
-                        </span>
-                      )}
-                    </h4>
-                    <p className="text-xs text-content-muted mt-0.5">
-                      {matchedStudent.emails?.length > 0
-                        ? matchedStudent.emails.join(', ')
-                        : 'Brak wpisanego e-maila w Notion'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setMatchedStudent(null)}
-                    className="text-xs text-primary hover:underline self-start sm:self-center"
-                  >
-                    Zmień kartę z Notion
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2 pt-1">
-                  <p className="text-xs text-warn font-semibold">
-                    ⚠️ Nie dopasowano automatycznie żadnej karty dla „{studentName}”. Wybierz właściwą
-                    kartę z Notion:
-                  </p>
-                  <select
-                    value={selectedNotionId}
-                    onChange={(e) => handleSelectNotionCard(e.target.value)}
-                    className="w-full text-xs font-semibold bg-base-200 border border-white/10 rounded-xl p-2.5 text-white focus:outline-none focus:border-primary"
-                  >
-                    {allStudents.map((s) => (
-                      <option key={s.notionId} value={s.notionId}>
-                        {s.name} ({s.lessonCount} lekcji) {s.emails?.[0] ? `· ${s.emails[0]}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* Statystyki: Liczba lekcji w bazie Notion vs w Aplikacji */}
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3 rounded-xl bg-base-100/50 border border-white/8">
-                <span className="text-[11px] text-content-muted block font-medium">Baza Notion</span>
-                <span className="text-xl font-bold font-mono text-white mt-1 block">
-                  {notionLessonCount}
-                </span>
-                <span className="text-[10px] text-content-muted">gotowych lekcji</span>
-              </div>
-              <div className="p-3 rounded-xl bg-base-100/50 border border-white/8">
-                <span className="text-[11px] text-content-muted block font-medium">W aplikacji</span>
-                <span className="text-xl font-bold font-mono text-content mt-1 block">
-                  {localLessonCount}
-                </span>
-                <span className="text-[10px] text-content-muted">zapisanych wpisów</span>
-              </div>
-              <div className={`p-3 rounded-xl border ${newLessonsCount > 0 ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-base-100/50 border-white/8 text-content-muted'}`}>
-                <span className="text-[11px] block font-medium">Nowe lekcje</span>
-                <span className="text-xl font-bold font-mono mt-1 block">
-                  {newLessonsCount > 0 ? `+${newLessonsCount}` : '0'}
-                </span>
-                <span className="text-[10px]">
-                  {newLessonsCount > 0 ? 'czeka na import' : 'baza aktualna'}
-                </span>
-              </div>
-            </div>
-
-            {/* Weryfikacja zgodności z Wytycznymi AI */}
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2.5 text-xs">
-              <h5 className="font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide text-[11px]">
-                <Sparkles size={14} />
-                Wytyczne AI dotyczące układania lekcji w aplikacji
-              </h5>
-              <ul className="space-y-1.5 text-content-muted leading-relaxed">
-                <li className="flex items-start gap-2">
-                  <Check size={14} className="text-primary shrink-0 mt-0.5" />
-                  <span>
-                    <strong className="text-white">Dokładna data (YYYY-MM-DD):</strong> Bezwzględnie
-                    zachowujemy oryginalną datę przeprowadzonej lekcji z Notion.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check size={14} className="text-primary shrink-0 mt-0.5" />
-                  <span>
-                    <strong className="text-white">Dokładny temat lekcji:</strong> Oryginalny tytuł
-                    z karty Notion pozostaje tematem lekcji, aby kursant mógł go podejrzeć w swoim panelu.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check size={14} className="text-primary shrink-0 mt-0.5" />
-                  <span>
-                    <strong className="text-white">4-blokowa struktura notatek:</strong> Rozbicie na
-                    podsumowanie, słówka (format <code>angielski - polski</code>), błędy do poprawy
-                    i plan kolejnej lekcji.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check size={14} className="text-primary shrink-0 mt-0.5" />
-                  <span>
-                    <strong className="text-white">Baza pod generowanie ćwiczeń:</strong> Zestaw słówek
-                    oraz fiszki są tworzone automatycznie, umożliwiając lektorowi natychmiastowe generowanie
-                    zadań domowych jednym kliknięciem.
-                  </span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Przyciski akcji */}
-            <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/10">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-content-muted hover:text-white transition-colors"
-              >
-                Anuluj
-              </button>
-
-              <button
-                type="button"
-                onClick={handleRunImport}
-                disabled={!selectedNotionId}
-                className="px-5 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 transition-all flex items-center gap-2 shadow-btn disabled:opacity-50"
-              >
-                <RefreshCw size={14} />
-                <span>
-                  {newLessonsCount > 0
-                    ? `Zaimportuj najnowsze lekcje (+${newLessonsCount})`
-                    : 'Zsynchronizuj i zaktualizuj lekcje z Notion'}
-                </span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* 4. KROK IMPORTOWANIA */}
-        {step === 'importing' && (
-          <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <div className="space-y-1">
-              <h4 className="text-base font-bold text-white">Importuję i przetwarzam lekcje…</h4>
-              <p className="text-xs text-content-muted max-w-md">
-                Pobieram treść bloków z Notion, ujednolicam słownictwo oraz tworzę powiązane zestawy
-                ćwiczeń i fiszek. Może to potrwać kilkanaście sekund.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* 5. KROK SUKCESU */}
-        {step === 'success' && (
-          <div className="space-y-5">
-            <div className="p-4 rounded-xl bg-primary/10 border border-primary/30 text-primary flex items-start gap-3">
-              <CheckCircle2 className="w-6 h-6 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <h4 className="text-sm font-extrabold text-white">
-                  Synchronizacja zakończona sukcesem!
-                </h4>
-                <p className="text-xs text-content-muted leading-relaxed">
-                  Zaimportowano i zaktualizowano lekcje dla kursanta{' '}
-                  <strong className="text-white">{studentName}</strong>. Zgodnie z wytycznymi AI
-                  dopasowano dokładne daty i tematy, a słówka zostały przygotowane do generowania
-                  ćwiczeń.
+                <h4 className="text-base font-bold text-white">Sprawdzam bazę danych Notion…</h4>
+                <p className="text-xs text-content-muted max-w-sm">
+                  Wyszukuję powiązane karty ucznia oraz sprawdzam, czy pojawiły się nowe lekcje do zaimportowania.
                 </p>
               </div>
             </div>
+          )}
 
-            {/* Podsumowanie raportu */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="p-3 rounded-xl bg-base-100/50 border border-white/8 text-center">
-                <span className="text-[11px] text-content-muted block">Zaimportowane lekcje</span>
-                <span className="text-xl font-bold font-mono text-primary mt-0.5 block">
-                  {importReport?.lessonsImported ?? recentLessons.length}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-base-100/50 border border-white/8 text-center">
-                <span className="text-[11px] text-content-muted block">Zestawy do ćwiczeń</span>
-                <span className="text-xl font-bold font-mono text-white mt-0.5 block">
-                  Aktywne
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-base-100/50 border border-white/8 text-center col-span-2 sm:col-span-1">
-                <span className="text-[11px] text-content-muted block">Status w aplikacji</span>
-                <span className="text-sm font-bold text-primary mt-1 block">Zsynchronizowano</span>
-              </div>
-            </div>
-
-            {/* Podgląd ostatnich lekcji */}
-            {recentLessons.length > 0 && (
-              <div className="space-y-2 pt-1">
-                <span className="text-xs font-bold text-content-muted uppercase tracking-wider block">
-                  Ostatnie zsynchronizowane lekcje:
-                </span>
-                <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
-                  {recentLessons.map((l) => (
-                    <div
-                      key={l.id}
-                      className="p-3 rounded-xl bg-base-100/60 border border-white/8 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-primary font-bold">{l.date}</span>
-                          <span className="font-bold text-white truncate">{l.topic}</span>
-                        </div>
-                        {l.vocabularyText && (
-                          <p className="text-[11px] text-content-muted truncate mt-0.5 font-mono">
-                            {l.vocabularyText.split('\n')[0]}
-                          </p>
-                        )}
-                      </div>
-                      <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold shrink-0">
-                        Gotowa do zadań ✨
-                      </span>
-                    </div>
-                  ))}
+          {/* 2. KROK BŁĘDU */}
+          {step === 'error' && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 rounded-xl bg-danger/10 border border-danger/30 text-danger flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-white">Wystąpił problem podczas synchronizacji</h4>
+                  <p className="text-xs text-danger/90 leading-relaxed">{errorMsg}</p>
                 </div>
               </div>
-            )}
-
-            <div className="flex justify-end pt-3 border-t border-white/10">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 transition-all shadow-btn"
-              >
-                Zamknij okno
-              </button>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl border border-white/10 text-xs font-semibold text-content-muted hover:text-white"
+                >
+                  Zamknij
+                </button>
+                <button
+                  type="button"
+                  onClick={checkNotionDatabase}
+                  className="px-4 py-2 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 flex items-center gap-1.5"
+                >
+                  <RefreshCw size={14} />
+                  Spróbuj ponownie
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* 3. KROK WERYFIKACJI POWIĄZANIA */}
+          {step === 'verification' && (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl bg-base-200/90 border border-white/10 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-content-muted uppercase tracking-wider">
+                    Dopasowana karta kursanta w Notion:
+                  </span>
+                  {matchedStudent?.matchedBy && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-primary border border-primary/30">
+                      {MATCH_LABELS[matchedStudent.matchedBy]}
+                    </span>
+                  )}
+                </div>
+
+                {matchedStudent ? (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-base-100/60 border border-white/5">
+                    <div>
+                      <h4 className="font-extrabold text-white text-sm">{matchedStudent.name}</h4>
+                      <p className="text-xs text-content-muted mt-0.5">
+                        {matchedStudent.emails?.join(', ') || 'Brak zapisanego e-maila'}
+                        {matchedStudent.level && ` • Poziom: ${matchedStudent.level}`}
+                        {matchedStudent.company && ` • Firma: ${matchedStudent.company}`}
+                      </p>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-base-300 text-xs font-mono font-bold text-primary border border-white/10 shrink-0">
+                      {matchedStudent.lessonCount} lekcji w Notion
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-warn">
+                      Nie dopasowano automatycznie karty. Wybierz ręcznie odpowiednią kartę z Notion:
+                    </p>
+                    <select
+                      value={selectedNotionId}
+                      onChange={(e) => handleSelectNotionCard(e.target.value)}
+                      className="w-full text-xs font-semibold bg-base-200 border border-white/10 rounded-xl p-2.5 text-white focus:outline-none focus:border-primary"
+                    >
+                      {allStudents.map((s) => (
+                        <option key={s.notionId} value={s.notionId}>
+                          {s.name} ({s.lessonCount} lekcji) {s.emails?.[0] ? `· ${s.emails[0]}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {/* Statystyki: Liczba lekcji w bazie Notion vs w Aplikacji */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="p-3 rounded-xl bg-base-100/50 border border-white/8">
+                  <span className="text-[11px] text-content-muted block font-medium">Baza Notion</span>
+                  <span className="text-xl font-bold font-mono text-white mt-1 block">
+                    {notionLessonCount}
+                  </span>
+                  <span className="text-[10px] text-content-muted">gotowych lekcji</span>
+                </div>
+                <div className="p-3 rounded-xl bg-base-100/50 border border-white/8">
+                  <span className="text-[11px] text-content-muted block font-medium">W aplikacji</span>
+                  <span className="text-xl font-bold font-mono text-content mt-1 block">
+                    {localLessonCount}
+                  </span>
+                  <span className="text-[10px] text-content-muted">zapisanych wpisów</span>
+                </div>
+                <div className={`p-3 rounded-xl border ${newLessonsCount > 0 ? 'bg-primary/10 border-primary/30 text-primary' : 'bg-base-100/50 border-white/8 text-content-muted'}`}>
+                  <span className="text-[11px] block font-medium">Nowe lekcje</span>
+                  <span className="text-xl font-bold font-mono mt-1 block">
+                    {newLessonsCount > 0 ? `+${newLessonsCount}` : '0'}
+                  </span>
+                  <span className="text-[10px]">
+                    {newLessonsCount > 0 ? 'czeka na import' : 'baza aktualna'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Weryfikacja zgodności z Wytycznymi AI */}
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2.5 text-xs">
+                <h5 className="font-bold text-primary flex items-center gap-1.5 uppercase tracking-wide text-[11px]">
+                  <Sparkles size={14} />
+                  Wytyczne AI dotyczące podziału na Bloki Notion
+                </h5>
+                <ul className="space-y-1.5 text-content-muted leading-relaxed">
+                  <li className="flex items-start gap-2">
+                    <Check size={14} className="text-primary shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-white">Podział na 4 Bloki:</strong> Lekcja w skrócie (1), Słownictwo & Korekty (2), Zadania domowe (3) oraz Następna lekcja (4).
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check size={14} className="text-primary shrink-0 mt-0.5" />
+                    <span>
+                      <strong className="text-white">Elastyczność i kontrola lektora:</strong> Po pobraniu lekcji zobaczysz podsumowanie, w którym możesz dowolnie modyfikować treść każdego bloku przed zatwierdzeniem.
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Przyciski akcji */}
+              <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-content-muted hover:text-white transition-colors"
+                >
+                  Anuluj
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRunImport}
+                  disabled={!selectedNotionId}
+                  className="px-5 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 transition-all flex items-center gap-2 shadow-btn disabled:opacity-50"
+                >
+                  <RefreshCw size={14} />
+                  <span>
+                    {newLessonsCount > 0
+                      ? `Pobierz i przejdź do weryfikacji bloków (+${newLessonsCount})`
+                      : 'Pobierz lekcje z Notion do weryfikacji'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 4. KROK IMPORTOWANIA / POBIERANIA Z NOTION */}
+          {step === 'importing' && (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-white">Pobieram i analizuję lekcje z Notion…</h4>
+                <p className="text-xs text-content-muted max-w-md">
+                  Odczytuję zawartość stron, dopasowuję bloki według wytycznych AI i przygotowuję zestawienie do zatwierdzenia przez lektora.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 5. KROK STAGINGU I WERYFIKACJI BLOKÓW PRZEZ LEKTORA (Nowy kluczowy element) */}
+          {step === 'staging' && activeStaged && (
+            <div className="space-y-4">
+              {/* Pasek wyboru lekcji (Pills) */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-white/10 select-none">
+                {stagedLessons.map((l, idx) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setActiveStagedIndex(idx)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all flex items-center gap-2 border ${
+                      idx === activeStagedIndex
+                        ? 'bg-primary/20 text-primary border-primary/40 shadow-glow'
+                        : 'bg-base-200 text-content-muted border-white/5 hover:text-white'
+                    }`}
+                  >
+                    <span>{l.date}</span>
+                    <span className="truncate max-w-[120px] font-normal">{l.topic}</span>
+                    {l.approved ? (
+                      <CheckCircle2 size={12} className="text-primary shrink-0" />
+                    ) : (
+                      <X size={12} className="text-danger shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Formularz edycji i zatwierdzania aktywnej lekcji */}
+              <div className="p-4 rounded-2xl bg-base-200/80 border border-white/10 space-y-4">
+                {/* Górny pasek lekcji: Data, Temat, Checkbox zatwierdzenia */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[10px] font-mono font-bold uppercase text-content-muted block mb-1">
+                        📅 Data lekcji (YYYY-MM-DD)
+                      </label>
+                      <input
+                        type="text"
+                        value={activeStaged.date}
+                        onChange={(e) => updateActiveStaged({ date: e.target.value })}
+                        className="w-full bg-base-300 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-mono font-bold uppercase text-content-muted block mb-1">
+                        🏷️ Temat lekcji
+                      </label>
+                      <input
+                        type="text"
+                        value={activeStaged.topic}
+                        onChange={(e) => updateActiveStaged({ topic: e.target.value })}
+                        className="w-full bg-base-300 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0">
+                    <button
+                      type="button"
+                      onClick={() => updateActiveStaged({ approved: !activeStaged.approved })}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                        activeStaged.approved
+                          ? 'bg-primary/15 text-primary border-primary/30'
+                          : 'bg-base-300 text-content-muted border-white/10'
+                      }`}
+                    >
+                      {activeStaged.approved ? <CheckSquare size={14} /> : <Square size={14} />}
+                      {activeStaged.approved ? 'Zatwierdzona do importu' : 'Pomiń tę lekcję'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Edycja 4 Bloków Notion */}
+                <div className="space-y-3.5">
+                  {/* BLOK 1 */}
+                  <div className="rounded-xl border border-sky-500/30 bg-sky-950/20 p-3 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        BLOK 1
+                      </span>
+                      <label className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                        <BookOpen size={13} /> Lekcja w skrócie (Streszczenie i przebieg)
+                      </label>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={activeStaged.summary}
+                      onChange={(e) => updateActiveStaged({ summary: e.target.value })}
+                      placeholder="Główne zagadnienia poruszone na lekcji..."
+                      className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-sky-400 leading-relaxed resize-y"
+                    />
+                  </div>
+
+                  {/* BLOK 2 */}
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        BLOK 2
+                      </span>
+                      <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <Sparkles size={13} /> Key Language & Corrections
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <span className="text-[11px] font-bold text-emerald-400 block mb-1">
+                          📚 Słownictwo (angielski - polski):
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={activeStaged.vocabulary}
+                          onChange={(e) => updateActiveStaged({ vocabulary: e.target.value })}
+                          placeholder="word - słowo..."
+                          className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 leading-relaxed resize-y"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-bold text-emerald-400 block mb-1">
+                          ⚠️ Korekty językowe & wymowa:
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={activeStaged.corrections}
+                          onChange={(e) => updateActiveStaged({ corrections: e.target.value })}
+                          placeholder="Błędy, wymowa, reguły..."
+                          className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-emerald-400 leading-relaxed resize-y"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BLOK 3 */}
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        BLOK 3
+                      </span>
+                      <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <ListChecks size={13} /> Homework — Cribro Habit (Zadania domowe)
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <span className="text-[11px] font-bold text-amber-400 block mb-1">
+                          📝 Zdania do tłumaczenia / Treść zadania:
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={activeStaged.homework}
+                          onChange={(e) => updateActiveStaged({ homework: e.target.value })}
+                          placeholder="1. Zdanie do przetłumaczenia..."
+                          className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400 leading-relaxed resize-y"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-bold text-amber-400 block mb-1">
+                          🔑 Klucz odpowiedzi (Answer Key):
+                        </span>
+                        <textarea
+                          rows={4}
+                          value={activeStaged.answerKey}
+                          onChange={(e) => updateActiveStaged({ answerKey: e.target.value })}
+                          placeholder="1. Prawidłowa wersja..."
+                          className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-amber-400 leading-relaxed resize-y"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BLOK 4 & LEARNING CURVE */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-yellow-500/30 bg-yellow-950/20 p-3 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                          BLOK 4
+                        </span>
+                        <label className="text-xs font-bold text-yellow-300 flex items-center gap-1.5">
+                          <Target size={13} /> Next Lesson (Plany)
+                        </label>
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={activeStaged.nextLesson}
+                        onChange={(e) => updateActiveStaged({ nextLesson: e.target.value })}
+                        placeholder="Cele i materiał na kolejne spotkanie..."
+                        className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-yellow-400 leading-relaxed resize-y"
+                      />
+                    </div>
+
+                    <div className="rounded-xl border border-purple-500/30 bg-purple-950/20 p-3 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          CURVE
+                        </span>
+                        <label className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                          <Activity size={13} /> O czym mówił kursant
+                        </label>
+                      </div>
+                      <textarea
+                        rows={2}
+                        value={activeStaged.learningCurve}
+                        onChange={(e) => updateActiveStaged({ learningCurve: e.target.value })}
+                        placeholder="Kontekst, wypowiedzi, dynamika kursanta..."
+                        className="w-full bg-base-300/80 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-400 leading-relaxed resize-y"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dolny pasek zatwierdzania */}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setStep('verification')}
+                  className="px-4 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-content-muted hover:text-white"
+                >
+                  Wróć do wyboru
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-content-muted mr-2">
+                    Zatwierdzono {stagedLessons.filter((s) => s.approved).length} z {stagedLessons.length} lekcji
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSaveStagedLessons}
+                    disabled={stagedLessons.filter((s) => s.approved).length === 0}
+                    className="px-6 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 transition-all flex items-center gap-2 shadow-btn disabled:opacity-50 cursor-pointer"
+                  >
+                    <CheckCircle2 size={15} />
+                    <span>Zatwierdź i zapisz lekcje do historii</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 6. KROK ZAPISU ZATWIERDZONYCH LEKCJI */}
+          {step === 'saving_staged' && (
+            <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
+              <div className="space-y-1">
+                <h4 className="text-base font-bold text-white">Zapisuję zatwierdzone lekcje do historii…</h4>
+                <p className="text-xs text-content-muted max-w-sm">
+                  Aktualizuję rekordy w bazie, tworzę zestawy słownictwa oraz generuję fiszki dla kursanta.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 7. KROK SUKCESU */}
+          {step === 'success' && (
+            <div className="space-y-5">
+              <div className="p-4 rounded-xl bg-primary/10 border border-primary/30 text-primary flex items-start gap-3">
+                <CheckCircle2 className="w-6 h-6 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-sm font-extrabold text-white">
+                    Lekcje zostały pomyślnie zsynchronizowane i zapisane!
+                  </h4>
+                  <p className="text-xs text-content-muted leading-relaxed">
+                    Zatwierdzone lekcje dla kursanta{' '}
+                    <strong className="text-white">{studentName}</strong> zostały podzielone na czyste bloki Notion i są natychmiast gotowe do generowania zadań domowych oraz ćwiczeń.
+                  </p>
+                </div>
+              </div>
+
+              {/* Podsumowanie raportu */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-base-100/50 border border-white/8 text-center">
+                  <span className="text-[11px] text-content-muted block">Zatwierdzone lekcje</span>
+                  <span className="text-xl font-bold font-mono text-primary mt-0.5 block">
+                    {recentLessons.length}
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-base-100/50 border border-white/8 text-center">
+                  <span className="text-[11px] text-content-muted block">Format bloków Notion</span>
+                  <span className="text-sm font-bold text-primary mt-1 block">
+                    100% Czysty
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-base-100/50 border border-white/8 text-center col-span-2 sm:col-span-1">
+                  <span className="text-[11px] text-content-muted block">Zestawy do ćwiczeń</span>
+                  <span className="text-sm font-bold text-primary mt-1 block">Aktywne ✨</span>
+                </div>
+              </div>
+
+              {/* Podgląd ostatnich lekcji */}
+              {recentLessons.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <span className="text-xs font-bold text-content-muted uppercase tracking-wider block">
+                    Zapisane lekcje w historii:
+                  </span>
+                  <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                    {recentLessons.map((l) => (
+                      <div
+                        key={l.id}
+                        className="p-3 rounded-xl bg-base-100/60 border border-white/8 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-primary font-bold">{l.date}</span>
+                            <span className="font-bold text-white truncate">{l.topic}</span>
+                          </div>
+                          {l.vocabularyText && (
+                            <p className="text-[11px] text-content-muted truncate mt-0.5 font-mono">
+                              {l.vocabularyText.split('\n')[0]}
+                            </p>
+                          )}
+                        </div>
+                        <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-bold shrink-0">
+                          Zatwierdzona ✓
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl bg-primary text-accent-ink font-bold text-xs hover:brightness-110 transition-all shadow-btn cursor-pointer"
+                >
+                  Zamknij okno
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

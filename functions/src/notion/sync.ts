@@ -524,7 +524,11 @@ export const importSelection = async (
         vocabularyText: parsed.vocabularyText,
         lessonSummary: parsed.lessonSummary,
         thingsToImprove: parsed.thingsToImprove,
+        corrections: parsed.corrections,
+        homeworkText: parsed.homeworkText,
+        homeworkAnswerKey: parsed.homeworkAnswerKey || '',
         suggestedFollowUp: parsed.suggestedFollowUp,
+        nextLessonPlan: parsed.suggestedFollowUp,
         // Ślad pochodzenia: po nim widać, czego nie edytować ręcznie w panelu,
         // bo kolejny import nadpisze to treścią z Notion.
         source: 'notion',

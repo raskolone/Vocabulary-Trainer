@@ -1,0 +1,144 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  cleanMarkdownArtifacts,
+  extractLessonBlocks,
+  isRecordNeedsCleanup,
+  migrateRecordToBlocks,
+  parseNumberedItems,
+  splitHomeworkAndAnswerKey,
+} from '../utils/lessonBlocks';
+import { LessonRecord } from '../types';
+
+describe('utils/lessonBlocks', () => {
+  it('cleanMarkdownArtifacts zdejmuje znaczniki ~~~markdown oraz ```', () => {
+    const raw = '~~~markdown\n1. Pierwsze zdanie.\n2. Drugie zdanie.\n~~~';
+    const cleaned = cleanMarkdownArtifacts(raw);
+    assert.equal(cleaned, '1. Pierwsze zdanie.\n2. Drugie zdanie.');
+  });
+
+  it('splitHomeworkAndAnswerKey dzieli zadanie na treść i klucz odpowiedzi', () => {
+    const raw = `Blok 1 — zdania do przetłumaczenia
+1. Firma poinformowała klientów o wycieku danych.
+2. Zawsze włączam uwierzytelnianie dwuskładnikowe.
+
+Answer Key
+Blok 2 — odpowiedzi:
+1. The company informed customers about data breach.
+2. I always enable two-factor authentication.`;
+
+    const result = splitHomeworkAndAnswerKey(raw);
+    assert.ok(result.homework.includes('Firma poinformowała klientów'));
+    assert.ok(result.answerKey);
+    assert.ok(result.answerKey.includes('The company informed customers'));
+  });
+
+  it('extractLessonBlocks poprawnie rozbija surowy wpis ze zrzutu ekranu kursanta', () => {
+    const rawScreenshotSample: Partial<LessonRecord> = {
+      topic: 'Cybersecurity & Privacy in the AI Era',
+      date: '2026-09-07',
+      lessonSummary: 'Omówienie wycieków danych, prywatności i szyfrowania.',
+      vocabularyText: 'data breach - wyciek danych\nencryption - szyfrowanie',
+      thingsToImprove: `Corrections:
+- Say: "two weeks later", not "after two weeks".
+
+Zadanie z lekcji:
+Zadanie domowe — format obowiązkowy
+Blok 1 — zdania do przetłumaczenia
+~~~markdown
+1. Firma poinformowała klientów o wycieku danych dopiero po dwóch tygodniach.
+1. Zawsze włączam uwierzytelnianie dwuskładnikowe na ważnych kontach.
+~~~
+Answer Key
+Blok 2 — odpowiedzi:
+~~~markdown
+1. The company only informed customers about the data breach two weeks later.
+1. I always enable two-factor authentication on important accounts.
+~~~`,
+      suggestedFollowUp: 'Dalsza analiza phishing attacks na kolejnej lekcji.',
+      studentSpeaking: 'Kursant chętnie dzielił się doświadczeniami z pracy w IT.',
+    };
+
+    const blocks = extractLessonBlocks(rawScreenshotSample);
+
+    // Blok 1
+    assert.equal(blocks.summary, 'Omówienie wycieków danych, prywatności i szyfrowania.');
+    // Blok 2a
+    assert.equal(blocks.vocabulary, 'data breach - wyciek danych\nencryption - szyfrowanie');
+    // Blok 2b: Korekty nie zawierają zadań domowych!
+    assert.ok(blocks.corrections.includes('two weeks later'));
+    assert.ok(!blocks.corrections.includes('Zadanie domowe'));
+    assert.ok(!blocks.corrections.includes('Answer Key'));
+
+    // Blok 3: Zadanie domowe zawiera zdania bez markdown fence
+    assert.ok(blocks.homework.includes('Firma poinformowała klientów'));
+    assert.ok(!blocks.homework.includes('~~~markdown'));
+
+    // Answer Key jest wyodrębniony
+    assert.ok(blocks.answerKey);
+    assert.ok(blocks.answerKey.includes('The company only informed customers'));
+    assert.ok(!blocks.answerKey.includes('~~~markdown'));
+
+    // Blok 4
+    assert.equal(blocks.nextLesson, 'Dalsza analiza phishing attacks na kolejnej lekcji.');
+    // Learning curve
+    assert.equal(blocks.learningCurve, 'Kursant chętnie dzielił się doświadczeniami z pracy w IT.');
+  });
+
+  it('isRecordNeedsCleanup wykrywa zanieczyszczone wpisy historyczne', () => {
+    const dirtyRecord = {
+      id: 'l-1',
+      studentId: 's-1',
+      date: '2026-09-07',
+      topic: 'Cybersecurity',
+      vocabularyText: 'test',
+      thingsToImprove: 'Zadanie z lekcji:\nZadanie domowe\n~~~markdown\n1. zdanie',
+      createdAt: '',
+      updatedAt: '',
+    } as LessonRecord;
+
+    const cleanRecord = {
+      id: 'l-2',
+      studentId: 's-1',
+      date: '2026-09-07',
+      topic: 'Cybersecurity',
+      vocabularyText: 'test',
+      corrections: 'Watch pronunciation of "threat"',
+      homeworkText: '1. Translate sentence',
+      homeworkAnswerKey: '1. Translated',
+      createdAt: '',
+      updatedAt: '',
+    } as LessonRecord;
+
+    assert.equal(isRecordNeedsCleanup(dirtyRecord), true);
+    assert.equal(isRecordNeedsCleanup(cleanRecord), false);
+  });
+
+  it('migrateRecordToBlocks tworzy zaktualizowany rekord bez utraty danych', () => {
+    const dirtyRecord = {
+      id: 'l-1',
+      studentId: 's-1',
+      date: '2026-09-07',
+      topic: 'Cybersecurity',
+      vocabularyText: 'phishing - wyłudzanie danych',
+      lessonSummary: 'Wstęp do cybersecurity.',
+      thingsToImprove: 'Poprawić wymowę słowa authentication.\n\nZadanie z lekcji:\n1. Przetłumacz: To był phishing.',
+      createdAt: '2026-09-07T10:00:00Z',
+      updatedAt: '2026-09-07T10:00:00Z',
+    } as LessonRecord;
+
+    const migrated = migrateRecordToBlocks(dirtyRecord);
+
+    assert.equal(migrated.lessonSummary, 'Wstęp do cybersecurity.');
+    assert.equal(migrated.corrections, 'Poprawić wymowę słowa authentication.');
+    assert.equal(migrated.thingsToImprove, 'Poprawić wymowę słowa authentication.');
+    assert.ok(migrated.homeworkText?.includes('To był phishing'));
+    assert.ok(migrated.structuredBlocks);
+  });
+
+  it('parseNumberedItems wyciąga czyste elementy bez punktorów', () => {
+    const text = '1. Zdanie pierwsze.\n2) Zdanie drugie.\n- Zdanie trzecie.';
+    const items = parseNumberedItems(text);
+    assert.deepEqual(items, ['Zdanie pierwsze.', 'Zdanie drugie.', 'Zdanie trzecie.']);
+  });
+});

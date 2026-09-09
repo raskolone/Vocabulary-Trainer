@@ -15,16 +15,19 @@ export interface ParsedSummary {
   lessonSummary: string;
   vocabularyText: string;
   thingsToImprove: string;
+  corrections: string;
+  homeworkText: string;
+  homeworkAnswerKey?: string;
   suggestedFollowUp: string;
   /** Nierozpoznany format — rekord powstanie, ale wymaga przejrzenia. */
   needsReview: boolean;
 }
 
 /** Nagłówki czterech bloków, po fragmentach odpornych na numerację i emoji. */
-const SECTION_MARKERS: Array<{ key: keyof typeof EMPTY; needles: string[] }> = [
+const SECTION_MARKERS: Array<{ key: 'lessonSummary' | 'vocabularyText' | 'homework' | 'suggestedFollowUp'; needles: string[] }> = [
   { key: 'lessonSummary', needles: ['lekcja w skrócie', 'lekcja w skrocie'] },
   { key: 'vocabularyText', needles: ['key language', 'corrections'] },
-  { key: 'thingsToImprove', needles: ['homework', 'cribro habit'] },
+  { key: 'homework', needles: ['homework', 'cribro habit', 'zadanie domowe'] },
   { key: 'suggestedFollowUp', needles: ['next lesson', 'kolejna lekcja'] },
 ];
 
@@ -32,6 +35,9 @@ const EMPTY = {
   lessonSummary: '',
   vocabularyText: '',
   thingsToImprove: '',
+  corrections: '',
+  homeworkText: '',
+  homeworkAnswerKey: '',
   suggestedFollowUp: '',
 };
 
@@ -98,7 +104,7 @@ const splitKeyLanguage = (body: string): { vocabulary: string; fixes: string } =
 
 export const parseLessonSummary = (text: string): ParsedSummary => {
   const sections: Record<string, string[]> = {};
-  let current: keyof typeof EMPTY | null = null;
+  let current: 'lessonSummary' | 'vocabularyText' | 'homework' | 'suggestedFollowUp' | null = null;
 
   for (const raw of (text || '').split('\n')) {
     const line = raw.replace(/\s+$/, '');
@@ -123,14 +129,26 @@ export const parseLessonSummary = (text: string): ParsedSummary => {
   }
 
   const keyLanguage = splitKeyLanguage((sections.vocabularyText || []).join('\n'));
-  const homework = (sections.thingsToImprove || []).join('\n').trim();
+  const rawHw = (sections.homework || []).join('\n').trim();
+
+  // Rozpoznanie ewentualnego Answer Key w zadaniu domowym
+  let hwText = rawHw;
+  let hwAnswerKey = '';
+  const akRegex = /(?:\n\s*|\n{2,})(?:#{1,4}\s*)?(?:answer\s*key|klucz\s*odpowiedzi|blok\s*2\s*[-—–]\s*odpowiedzi|odpowiedzi\s*:)/i;
+  const akMatch = rawHw.search(akRegex);
+  if (akMatch !== -1) {
+    hwText = rawHw.slice(0, akMatch).trim();
+    hwAnswerKey = rawHw.slice(akMatch).replace(/^(?:#{1,4}\s*)?(?:answer\s*key|klucz\s*odpowiedzi|blok\s*2\s*[-—–]\s*odpowiedzi|odpowiedzi\s*:)\s*/i, '').trim();
+  }
 
   return {
     lessonSummary: (sections.lessonSummary || []).join('\n').trim().slice(0, 4000),
     vocabularyText: keyLanguage.vocabulary.slice(0, 8000),
-    // Korekty i wymowa to materiał „do poprawy"; zadanie domowe z bloku 3
-    // dopisujemy niżej, bo lektor czyta jedno pole przed kolejną lekcją.
-    thingsToImprove: [keyLanguage.fixes, homework && `Zadanie z lekcji:\n${homework}`]
+    corrections: keyLanguage.fixes.slice(0, 4000),
+    homeworkText: hwText.slice(0, 4000),
+    homeworkAnswerKey: hwAnswerKey.slice(0, 4000),
+    // thingsToImprove zachowane dla wstecznej kompatybilności
+    thingsToImprove: [keyLanguage.fixes, hwText && `Zadanie z lekcji:\n${hwText}`]
       .filter(Boolean)
       .join('\n\n')
       .slice(0, 4000),
