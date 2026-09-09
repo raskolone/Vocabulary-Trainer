@@ -736,7 +736,7 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
                               : q.type === 'fill_in_blank' ? 'Luki' 
                               : q.type === 'matching' ? 'Łączenie w pary' 
                               : q.type === 'writing' ? 'Writing' 
-                              : q.type === 'find_mistake' ? 'Poprawne zdanie' 
+                              : q.type === 'find_mistake' ? 'Korekta błędów w zdaniach' 
                               : 'Tłumaczenie'}
                           </div>
                           <div className="flex items-center gap-2">
@@ -768,7 +768,7 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
                               />
                             )}
 
-                            {(q.type === 'translation' || q.type === 'fill_in_blank') ? (
+                            {(q.type === 'translation' || q.type === 'fill_in_blank' || (q.type === 'find_mistake' && (!q.options || q.options.length === 0))) ? (
                               <div className="space-y-3">
                                 {parseNumberedItems(q.prompt).map((item, sIdx) => (
                                   <div key={sIdx} className="p-3.5 rounded-xl bg-black/40 border border-white/10 space-y-2.5">
@@ -1086,7 +1086,7 @@ const AdminTestGenerator: React.FC<AdminTestGeneratorProps> = ({ user: initialUs
                   { id: 'fill_in_blank', label: 'Wpisywanie luk', countLabel: 'Ilość zdań:' },
                   { id: 'fill_in_blank_bank', label: 'Luki z banku słów (rozsypka)', countLabel: 'Ilość zdań:' },
                   { id: 'matching', label: 'Łączenie w pary', countLabel: 'Ilość par:' },
-                  { id: 'find_mistake', label: 'Wybór poprawnego zdania', countLabel: 'Ilość zdań:' },
+                  { id: 'find_mistake', label: 'Korekta błędów w zdaniach', countLabel: 'Ilość zdań:' },
                   { id: 'multiple_choice', label: 'Wielokrotny wybór', countLabel: 'Ilość pytań:' },
                   { id: 'writing', label: 'Writing (otwarte)', countLabel: 'Ilość zadań:' },
                 ].map(type => {

@@ -36,6 +36,10 @@ test('formatHomeworkAnswerText bezpiecznie formatuje tablice i liczby', () => {
 test('homeworkItemType poprawnie rozpoznaje typ ćwiczenia z elementu lub zadania', () => {
   assert.equal(homeworkItemType({ type: 'fill_in_the_blank' }), 'fill_in_the_blank');
   assert.equal(homeworkItemType({ type: 'multiple_choice' }), 'multiple_choice');
+  assert.equal(homeworkItemType({ type: 'find_errors' }), 'find_errors');
+  assert.equal(homeworkItemType({ incorrectSentence: 'She don\'t know.' }), 'find_errors');
+  assert.equal(homeworkItemType({ chunks: ['She', 'doesn\'t', 'know'] }), 'word_order');
+  assert.equal(homeworkItemType({}, { type: 'find_errors' }), 'find_errors');
   assert.equal(homeworkItemType({}, { type: 'word_order' }), 'word_order');
   assert.equal(homeworkItemType({}, null), 'translation');
 });

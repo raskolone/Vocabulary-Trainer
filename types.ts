@@ -453,10 +453,12 @@ export interface TestQuestion {
 }
 
 export interface ErrorCorrectionExercise {
+  type?: HomeworkType;
   incorrectSentence: string;
   correctSentence: string;
   explanation?: string;
   hint?: string;
+  polishHint?: string;
 }
 
 /**

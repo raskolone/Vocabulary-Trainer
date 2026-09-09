@@ -75,8 +75,18 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 - **Usprawnienia sprawdzania prac i AI Evaluation**:
   - Wdrożono motywujący, konstruktywny prompt ewaluacji AI dla lektora w [aiSuggestions.ts](services/aiSuggestions.ts).
   - Zabezpieczono renderowanie odpowiedzi typu *fill-in-the-blank* (obsługa zarówno stringów, jak i obiektów `{ blankWord, sentence }` w [StudentHomeworkScreen.tsx](components/dashboard/StudentHomeworkScreen.tsx) i panelu nauczyciela).
-  - Dodano sekcję sprawdzonych prac domowych z akordeonami w widoku nauczyciela.
   - Zaimplementowano wyskakujące okno z podsumowaniem dla kursanta po sprawdzeniu pracy ([StudentHomeworkGradedModal.tsx](components/dashboard/StudentHomeworkGradedModal.tsx)) z blokadą przeskakiwania ekranu.
+- **Nowy typ zadania: Korekta błędów w zdaniu (Find Errors / Spot the Mistakes) w Pracy Domowej i Testach**:
+  - **Praca domowa (`find_errors`)**:
+    - Włączono typ `find_errors` do kreatora prac domowych lektora ([HomeworkComposer.tsx](components/admin/HomeworkComposer.tsx)) oraz silnika generowania [services/homeworkGenerator.ts](services/homeworkGenerator.ts).
+    - Generowanie wykorzystuje wszystkie dostępne informacje o kursancie: historię lekcji, poziom CEFR, słownictwo, a w szczególności sekcje `thingsToImprove` i `corrections` (rzeczywiste błędy kursanta zanotowane podczas lekcji w Notion) oraz typowe interferencje językowe.
+    - Każde ćwiczenie generuje: zdanie z błędem (`incorrectSentence`), poprawne zdanie (`correctSentence`), regułę gramatyczną/wyjaśnienie (`explanation`), wskazówkę (`hint`) oraz polskie znaczenie (`polishHint`).
+    - Nowoczesny, responsywny interfejs w [HomeworkExercise.tsx](components/dashboard/HomeworkExercise.tsx): wyróżniona karta ze zdaniem z błędem, kontekst znaczeniowy, rozwijana wskazówka oraz szybki przycisk **„Kopiuj zdanie do edycji”** (umożliwiający natychmiastowe wklejenie tekstu do poprawy bez konieczności przepisywania całego zdania na klawiaturze mobilnej).
+    - Pełna integracja z ocenianiem, formatowaniem odpowiedzi i widokiem recenzji w [StudentHomeworkScreen.tsx](components/dashboard/StudentHomeworkScreen.tsx).
+  - **Testy (`find_mistake`)**:
+    - Zoptymalizowano reguły generowania testów w [server.ts](server.ts) pod kątem tworzenia zbiorczych zadań korekty zdań z błędami opartych o profil ucznia.
+    - W [TestQuestionFields.tsx](components/tests/TestQuestionFields.tsx) zintegrowano obsługę `find_mistake` z komponentem `SentenceListTask`, wyposażonym w odznaki błędów, etykiety korekty oraz asystenta kopiowania do edycji.
+    - W panelu lektora [AdminTestGenerator.tsx](components/admin/AdminTestGenerator.tsx) ujednolicono nazwę na *„Korekta błędów w zdaniach”* wraz z edycją punkt po punkcie.
 
 ### C. Zaawansowana Synchronizacja z Notion i Układ 4 Bloków
 - **Granularna selekcja lekcji w synchronizacji z Notion**:

@@ -550,6 +550,26 @@ const ItemPreview: React.FC<{ type: HomeworkType; item: any }> = ({ type, item }
       </>
     );
   }
+  if (type === 'find_errors') {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 text-warn font-semibold text-[13px]">
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-warn/15 border border-warn/30 uppercase font-bold">
+            Błąd
+          </span>
+          <span className="line-through opacity-85">{item.incorrectSentence}</span>
+        </div>
+        <span className="block text-primary/90 font-mono text-[13px] pl-1">
+          ➜ {item.correctSentence}
+        </span>
+        {item.explanation && (
+          <span className="block text-content-muted text-[12px] italic pl-1">
+            💡 {item.explanation}
+          </span>
+        )}
+      </div>
+    );
+  }
   if (type === 'word_order') {
     return (
       <>

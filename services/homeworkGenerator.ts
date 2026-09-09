@@ -1,4 +1,5 @@
 import {
+  ErrorCorrectionExercise,
   HomeworkType,
   LessonRecord,
   MultipleChoiceExercise,
@@ -114,9 +115,10 @@ export const HOMEWORK_TYPE_LABELS: Record<
   },
 };
 
-/** Typy oferowane w kreatorze — `find_errors` zostaje w danych, ale nie w UI. */
+/** Typy oferowane w kreatorze pracy domowej. */
 export const OFFERED_HOMEWORK_TYPES: HomeworkType[] = [
   'translation',
+  'find_errors',
   'word_order',
   'multiple_choice',
   'fill_in_the_blank',
@@ -335,6 +337,52 @@ Zwróć JSON:
   return { items, modelUsed };
 };
 
+/** Znajdź błąd w zdaniu: generujemy zdania z jednym konkretnym, wiarygodnym błędem do poprawy. */
+const generateFindErrors = async (
+  req: HomeworkGenerationRequest,
+  sourceText: string,
+  briefing?: string
+): Promise<{ items: ErrorCorrectionExercise[]; modelUsed: string }> => {
+  const prompt = `${baseContext(req, sourceText, briefing)}
+
+ZADANIE:
+Ułóż ${req.perType} zdań w języku angielskim zawierających DOKŁADNIE JEDEN, jednoznaczny błąd gramatyczny,
+leksykalny, przyimkowy, szyku wyrazów lub formy czasownika (ang. Spot the mistake / Find the error).
+Zadaniem kursanta jest zidentyfikowanie tego błędu i podanie w pełni poprawionego zdania.
+Materiały oprzyj na powyższym materiale z lekcji (wykorzystaj słownictwo, tematy oraz sekcje "Do poprawy u kursanta", jeśli są obecne).
+
+WYMAGANIA SZCZEGÓŁOWE DLA ZADAŃ TYPU ZNAJDŹ BŁĄD (find_errors):
+- Zdanie musi zawierać DOKŁADNIE JEDEN błąd, typowy dla polskiego ucznia na poziomie ${req.level || 'B1'}
+  (np. zły przyimek np. "interested for" zamiast "in", zły czasownik posiłkowy np. "She don't" zamiast "doesn't",
+  brak końcówki -s w 3. os., kalka z polskiego, pomylony czas gramatyczny, fałszywy przyjaciel, zły szyk).
+- Zdanie musi brzmieć naturalnie w kontekście i mieć sens — nie twórz zdań absurdalnych.
+- Do każdego zadania dołącz:
+  1. incorrectSentence: zdanie po angielsku zawierające ten jeden błąd.
+  2. correctSentence: w pełni poprawne zdanie po angielsku (bez błędu).
+  3. explanation: jasne, zwięzłe wyjaśnienie reguły po polsku (dlaczego forma była błędna i jak brzmi zasada).
+  4. hint: subtelna wskazówka po polsku kierująca uwagę na obszar błędu (np. "Zwróć uwagę na czasownik posiłkowy w przeczeniu.").
+  5. polishHint: naturalne polskie znaczenie zdania (żeby uczeń znał intencję wypowiedzi).
+
+Zwróć JSON:
+{"items":[{"incorrectSentence":"She don't like working overtime on Fridays.","correctSentence":"She doesn't like working overtime on Fridays.","explanation":"W 3. osobie liczby pojedynczej czasu Present Simple przeczenie tworzymy za pomocą 'doesn't', a nie 'don't'.","hint":"Zwróć uwagę na czasownik posiłkowy w przeczeniu.","polishHint":"Ona nie lubi pracować po godzinach w piątki."}]}`;
+
+  const { parsed, modelUsed } = await askForJson(prompt);
+  const raw = Array.isArray(parsed?.items) ? parsed.items : [];
+
+  const items: ErrorCorrectionExercise[] = raw
+    .filter((item: any) => item?.incorrectSentence && item?.correctSentence)
+    .map((item: any) => ({
+      type: 'find_errors',
+      incorrectSentence: String(item.incorrectSentence).trim(),
+      correctSentence: String(item.correctSentence).trim(),
+      explanation: item.explanation ? String(item.explanation).trim() : undefined,
+      hint: item.hint ? String(item.hint).trim() : undefined,
+      polishHint: item.polishHint ? String(item.polishHint).trim() : undefined,
+    }));
+
+  return { items, modelUsed };
+};
+
 /** Tłumaczenia — istniejący generator, tylko z materiałem z tego kreatora. */
 const generateTranslations = async (
   req: HomeworkGenerationRequest,
@@ -397,6 +445,7 @@ export const generateHomeworkSet = async (
 
   const runners: Record<string, () => Promise<{ items: any[]; modelUsed: string }>> = {
     translation: () => generateTranslations(req, sourceText, briefing, level),
+    find_errors: () => generateFindErrors(req, sourceText, briefing),
     word_order: () => generateWordOrder(req, sourceText, briefing),
     multiple_choice: () => generateMultipleChoice(req, sourceText, briefing),
     fill_in_the_blank: () => generateGaps(req, sourceText, briefing, level),

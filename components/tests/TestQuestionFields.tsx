@@ -23,7 +23,7 @@ import {
 
 export const QUESTION_TYPE_LABELS: Record<string, string> = {
   multiple_choice: 'Wielokrotny wybór',
-  find_mistake: 'Wybór poprawnego zdania',
+  find_mistake: 'Korekta błędów w zdaniach',
   fill_in_blank_bank: 'Luki z banku słów (rozsypka)',
   fill_in_blank: 'Luki',
   matching: 'Łączenie w pary',
@@ -38,7 +38,7 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
  * napisać sam, a nie co potrafi skopiować z translatora w drugiej karcie.
  */
 export const SentenceListTask: React.FC<{
-  type: 'translation' | 'fill_in_blank';
+  type: 'translation' | 'fill_in_blank' | 'find_mistake';
   prompt: string;
   initialAnswer?: string;
   onChange: (ans: string) => void;
@@ -60,15 +60,43 @@ export const SentenceListTask: React.FC<{
     onChange(formatSubAnswers(updated, sentences.length));
   };
 
+  const isFindMistake = type === 'find_mistake';
+
   return (
     <div className="space-y-5">
       {sentences.map((s, idx) => (
         <div
           key={idx}
-          className="p-5 md:p-6 rounded-2xl bg-base-200/60 border border-white/10 space-y-3.5 shadow-md"
+          className={`p-5 md:p-6 rounded-2xl border space-y-3.5 shadow-md transition-all ${
+            isFindMistake
+              ? 'bg-amber-950/15 border-amber-500/25'
+              : 'bg-base-200/60 border-white/10'
+          }`}
         >
+          {isFindMistake && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <span>⚠️</span> Zdanie z błędem {s.num}:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleTextChange(idx, s.text)}
+                className="text-[11px] text-primary hover:underline font-bold cursor-pointer"
+                title="Wstaw to zdanie do pola edycji, aby szybko poprawić felerny fragment"
+              >
+                Kopiuj do edycji
+              </button>
+            </div>
+          )}
+
           <div className="p-4 rounded-xl bg-black/50 border border-white/10 flex items-start gap-3.5">
-            <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-primary/20 text-primary font-extrabold text-sm shrink-0 mt-0.5">
+            <span
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-lg font-extrabold text-sm shrink-0 mt-0.5 ${
+                isFindMistake
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : 'bg-primary/20 text-primary'
+              }`}
+            >
               {s.num}
             </span>
             <p className="text-base md:text-lg font-semibold text-white leading-relaxed pt-0.5">
@@ -80,6 +108,8 @@ export const SentenceListTask: React.FC<{
             <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-2 px-1">
               {type === 'translation'
                 ? `Twoje tłumaczenie zdania ${s.num}:`
+                : isFindMistake
+                ? `Twoja poprawiona wersja zdania ${s.num}:`
                 : `Twoja odpowiedź dla zdania ${s.num}:`}
             </label>
             <input
@@ -101,6 +131,8 @@ export const SentenceListTask: React.FC<{
               placeholder={
                 type === 'translation'
                   ? `Wpisz tłumaczenie zdania ${s.num}...`
+                  : isFindMistake
+                  ? `Wpisz poprawione zdanie ${s.num}...`
                   : `Wpisz odpowiedź dla zdania ${s.num}...`
               }
               className="w-full bg-black/60 border border-white/15 focus:border-primary focus:ring-1 focus:ring-primary rounded-xl p-3.5 text-base text-white outline-none transition-all placeholder:text-content-muted/40 font-medium cursor-text"
@@ -197,7 +229,7 @@ const TestQuestionFields: React.FC<TestQuestionFieldsProps> = ({ question: q, an
     );
   }
 
-  if (q.type === 'fill_in_blank' || q.type === 'translation') {
+  if (q.type === 'fill_in_blank' || q.type === 'translation' || q.type === 'find_mistake') {
     return (
       <SentenceListTask
         type={q.type}

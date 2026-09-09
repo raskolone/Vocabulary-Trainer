@@ -119,6 +119,9 @@ const answerToText = (type: HomeworkType, item: any, answer: any): string => {
       .map((key) => `${key}=${blanks[key]}`)
       .join(', ');
   }
+  if (type === 'find_errors') {
+    return String(answer || '').trim();
+  }
   return String(answer || '');
 };
 
@@ -151,6 +154,7 @@ const getExerciseReviewRows = (task: SpecialTask): ReviewExerciseItem[] => {
 
     const prompt =
       ev.polishSentence ||
+      item.incorrectSentence ||
       item.polishSentence ||
       item.polish ||
       item.question ||
@@ -160,7 +164,8 @@ const getExerciseReviewRows = (task: SpecialTask): ReviewExerciseItem[] => {
 
     let expected = ev.correctTranslation || item.englishTranslation || item.english || '';
     if (!expected) {
-      if (itemType === 'word_order') expected = item.correctSentence || '';
+      if (itemType === 'find_errors') expected = item.correctSentence || '';
+      else if (itemType === 'word_order') expected = item.correctSentence || '';
       else if (itemType === 'multiple_choice') expected = item.options?.[item.correctIndex] || '';
       else if (itemType === 'fill_in_the_blank' && item.blanks) {
         expected = Object.entries(item.blanks)
@@ -517,6 +522,18 @@ const StudentHomeworkScreen: React.FC<StudentHomeworkScreenProps> = ({
   /** Ocena bez modelu — dla typów o jednej poprawnej odpowiedzi. */
   const gradeDeterministic = (type: HomeworkType, item: any, answer: any): EvaluationRow => {
     const studentAnswer = answerToText(type, item, answer);
+
+    if (type === 'find_errors') {
+      const isCorrect = normalize(studentAnswer) === normalize(item.correctSentence);
+      return {
+        polishSentence: item.polishHint || item.incorrectSentence,
+        correctTranslation: item.correctSentence,
+        studentAnswer,
+        isCorrect,
+        score: isCorrect ? 100 : 0,
+        explanation: item.explanation,
+      };
+    }
 
     if (type === 'word_order') {
       const isCorrect = normalize(studentAnswer) === normalize(item.correctSentence);

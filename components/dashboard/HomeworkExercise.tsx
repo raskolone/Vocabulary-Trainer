@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HelpCircle, RotateCcw } from 'lucide-react';
+import { AlertCircle, Check, Copy, HelpCircle, RotateCcw } from 'lucide-react';
 import { HomeworkType } from '../../types';
 
 /**
@@ -203,6 +203,80 @@ const HomeworkExercise: React.FC<HomeworkExerciseProps> = ({ type, item, answer,
               </button>
             );
           })}
+        </div>
+      </div>
+    );
+  }
+
+  if (type === 'find_errors') {
+    const incorrect = String(item.incorrectSentence || '').trim();
+    const currentValue = typeof answer === 'string' ? answer : '';
+
+    return (
+      <div className="space-y-4">
+        {/* Nagłówek typu z odznaką i wskazówką */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider">
+            <AlertCircle size={13} className="shrink-0 text-amber-400" />
+            Znajdź i popraw błąd w zdaniu
+          </span>
+          {item.hint && (
+            <button
+              type="button"
+              onClick={() => setShowHint((v) => !v)}
+              className="inline-flex items-center gap-1 text-xs font-bold text-warn hover:underline"
+            >
+              <HelpCircle size={13} />
+              {showHint ? 'Ukryj wskazówkę' : 'Wskazówka'}
+            </button>
+          )}
+        </div>
+
+        {/* Zdanie z błędem w wyeksponowanej karcie */}
+        <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 shadow-sm">
+          <span className="text-[11px] font-mono uppercase tracking-wider text-amber-400/90 font-bold block">
+            Zdanie z błędem do korekty:
+          </span>
+          <p className="text-lg font-bold text-white leading-snug">
+            {incorrect}
+          </p>
+          {item.polishHint && (
+            <p className="text-xs text-content-muted pt-2 border-t border-white/5 flex items-center gap-1.5">
+              <span className="font-semibold text-content">Znaczenie:</span>
+              <span className="italic">{item.polishHint}</span>
+            </p>
+          )}
+        </div>
+
+        {showHint && item.hint && (
+          <p className="text-[13px] text-warn bg-warn/10 border border-warn/20 rounded-xl p-3">
+            💡 {item.hint}
+          </p>
+        )}
+
+        {/* Pole odpowiedzi z szybką opcją wstawienia zdania do edycji */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-content-muted">Twoja poprawiona wersja:</label>
+            {incorrect && currentValue !== incorrect && (
+              <button
+                type="button"
+                onClick={() => onChange(incorrect)}
+                className="inline-flex items-center gap-1 text-[11px] text-primary/90 hover:text-primary font-bold transition-colors cursor-pointer"
+                title="Wstaw zdanie z błędem, aby szybko zmienić tylko niepoprawne słowo"
+              >
+                <Copy size={11} /> Kopiuj zdanie do edycji
+              </button>
+            )}
+          </div>
+
+          <textarea
+            value={currentValue}
+            onChange={(e) => onChange(e.target.value)}
+            rows={2}
+            placeholder="Wpisz w pełni poprawione zdanie po angielsku…"
+            className="w-full px-3.5 py-3 bg-base-100 text-white text-[15px] border border-white/15 rounded-xl focus:border-primary focus:outline-none resize-y"
+          />
         </div>
       </div>
     );

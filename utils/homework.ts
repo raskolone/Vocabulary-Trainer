@@ -49,7 +49,14 @@ export const studentTasksQuery = (uid: string) =>
 export const homeworkItemType = (
   item: any,
   task?: { type?: HomeworkType } | null
-): HomeworkType => (item?.type as HomeworkType) || (task?.type as HomeworkType) || 'translation';
+): HomeworkType => {
+  if (item?.type) return item.type as HomeworkType;
+  if (item?.incorrectSentence) return 'find_errors';
+  if (item?.chunks) return 'word_order';
+  if (item?.options && typeof item?.correctIndex === 'number') return 'multiple_choice';
+  if (item?.textWithBlanks || item?.blanks) return 'fill_in_the_blank';
+  return (task?.type as HomeworkType) || 'translation';
+};
 
 /**
  * Praca domowa w podziale na bloki jednego rodzaju.
