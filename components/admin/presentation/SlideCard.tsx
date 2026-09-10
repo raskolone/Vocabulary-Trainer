@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Sparkles, Volume2, HelpCircle, CheckCircle2, ChevronRight, 
   Clock, Eye, EyeOff, Dice5, AlertTriangle, Lightbulb, Bookmark,
-  Layers, MessageSquare, ArrowRight, Check, X
+  Layers, MessageSquare, ArrowRight, Check, X, Music, Maximize2
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { PresentationSlide, PresentationSlideItem } from '../../../types';
@@ -35,6 +35,7 @@ interface SlideCardProps {
   totalSlides: number;
   isFullscreen?: boolean;
   onUpdateSlideItem?: (itemId: string, updates: Partial<PresentationSlideItem>) => void;
+  onJumpToSlide?: (slideIndex: number) => void;
   /**
    * Sterowanie interakcją z zewnątrz. Podane — komponent przestaje trzymać stan
    * u siebie i pokazuje to, co dostał; bez tego zachowuje się jak dotąd, więc
@@ -50,10 +51,12 @@ export const SlideCard: React.FC<SlideCardProps> = ({
   totalSlides,
   isFullscreen = false,
   onUpdateSlideItem,
+  onJumpToSlide,
   interaction,
   onInteractionChange
 }) => {
   const [localInteraction, setLocalInteraction] = useState<SlideInteraction>(EMPTY_SLIDE_INTERACTION);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
 
   const isControlled = Boolean(interaction && onInteractionChange);
   const state = isControlled ? (interaction as SlideInteraction) : localInteraction;
@@ -116,18 +119,22 @@ export const SlideCard: React.FC<SlideCardProps> = ({
           </span>
           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider font-mono border ${
             slide.type === 'title' ? 'bg-primary/20 text-primary border-primary/30' :
+            slide.type === 'toc' ? 'bg-indigo-400/20 text-indigo-300 border-indigo-400/30' :
             slide.type === 'warmup' ? 'bg-amber-400/20 text-amber-300 border-amber-400/30' :
             slide.type === 'vocabulary' ? 'bg-sky-400/20 text-sky-300 border-sky-400/30' :
             slide.type === 'grammar' ? 'bg-purple-400/20 text-purple-300 border-purple-400/30' :
+            slide.type === 'listening' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
             slide.type === 'practice' ? 'bg-emerald-400/20 text-emerald-300 border-emerald-400/30' :
             slide.type === 'speaking' ? 'bg-pink-400/20 text-pink-300 border-pink-400/30' :
             slide.type === 'correction' ? 'bg-rose-400/20 text-rose-300 border-rose-400/30' :
             'bg-white/10 text-content-muted border-white/10'
           }`}>
             {slide.type === 'title' && 'Wprowadzenie'}
+            {slide.type === 'toc' && 'Plan lekcji & Agenda'}
             {slide.type === 'warmup' && 'Warm-up / Rozgrzewka'}
             {slide.type === 'vocabulary' && 'Słownictwo & Wymowa'}
             {slide.type === 'grammar' && 'Struktury & Wzorce'}
+            {slide.type === 'listening' && 'Listening & Audio'}
             {slide.type === 'speaking' && 'Konwersacje & Scenka'}
             {slide.type === 'practice' && 'Practice / Drills'}
             {slide.type === 'enclosure' && 'Enclosure / Podsumowanie'}
@@ -180,6 +187,50 @@ export const SlideCard: React.FC<SlideCardProps> = ({
           )}
         </div>
 
+        {/* Audio Player Banner (if audioUrl attached) */}
+        {slide.audioUrl && (
+          <div className="mb-6 p-4 rounded-2xl bg-purple-950/40 border border-purple-500/30 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 animate-fadeIn">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-300 flex items-center justify-center shrink-0">
+                <Volume2 size={20} />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase font-mono font-bold text-purple-400 tracking-wider block">Nagranie audio lekcji</span>
+                <h4 className="text-sm font-bold text-white truncate max-w-[280px]" title={slide.audioName || 'Ścieżka dźwiękowa'}>
+                  {slide.audioName || 'Ścieżka dźwiękowa do odsłuchania'}
+                </h4>
+              </div>
+            </div>
+            <div className="w-full sm:w-auto flex-1 max-w-md">
+              <audio 
+                controls 
+                src={slide.audioUrl} 
+                className="w-full h-9 rounded-lg accent-primary"
+                preload="metadata"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Textbook Image / Screenshot Container (if imageUrl attached) */}
+        {slide.imageUrl && (
+          <div className="mb-6 relative rounded-2xl overflow-hidden border border-white/15 bg-black/40 group max-h-[300px] flex items-center justify-center">
+            <img 
+              src={slide.imageUrl} 
+              alt="Materiały dydaktyczne do lekcji" 
+              className="max-h-[300px] w-auto object-contain cursor-pointer transition-transform group-hover:scale-[1.02]"
+              onClick={() => setIsImageModalOpen(true)}
+            />
+            <button
+              type="button"
+              onClick={() => setIsImageModalOpen(true)}
+              className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl bg-black/75 hover:bg-black/90 text-white text-xs font-semibold flex items-center gap-1.5 backdrop-blur-md border border-white/20 transition-all cursor-pointer shadow-lg"
+            >
+              <Eye size={14} /> Powiększ materiał
+            </button>
+          </div>
+        )}
+
         {/* Content Type Renderers */}
         {slide.type === 'title' && (
           <div className="space-y-6 max-w-3xl">
@@ -199,6 +250,102 @@ export const SlideCard: React.FC<SlideCardProps> = ({
                 <MessageSquare size={16} /> Wspólny notatnik na bieżąco
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TABLE OF CONTENTS / LESSON PLAN (TOC) */}
+        {slide.type === 'toc' && (
+          <div className="space-y-4">
+            {slide.content && (
+              <p className="text-sm md:text-base text-content-muted leading-relaxed max-w-3xl">
+                {slide.content}
+              </p>
+            )}
+            {slide.items && slide.items.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-2">
+                {slide.items.map((item, tIdx) => {
+                  const targetSlideIndex = tIdx + 2; // Slide 0 = Title, Slide 1 = TOC, Slide 2+ = stages
+                  return (
+                    <div
+                      key={item.id || tIdx}
+                      onClick={() => onJumpToSlide && onJumpToSlide(targetSlideIndex)}
+                      className={`p-4 rounded-2xl bg-base-300/70 border border-white/10 hover:border-primary/50 hover:bg-base-300/90 transition-all flex flex-col justify-between space-y-2.5 group relative overflow-hidden ${
+                        onJumpToSlide ? 'cursor-pointer hover:shadow-[0_0_20px_rgba(114,240,180,0.15)]' : ''
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-primary/15 text-primary font-mono font-bold text-xs flex items-center justify-center shrink-0 border border-primary/20">
+                          {tIdx + 1}
+                        </span>
+                        {item.definition && (
+                          <span className="text-[11px] font-mono text-content-muted px-2 py-0.5 rounded bg-white/5 border border-white/10">
+                            {item.definition}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-white text-base group-hover:text-primary transition-colors flex items-center justify-between">
+                          <span>{item.term}</span>
+                          <ChevronRight size={16} className="text-content-muted group-hover:text-primary group-hover:translate-x-1 transition-all" />
+                        </h4>
+                        {item.example && (
+                          <p className="text-xs text-content-muted line-clamp-2 mt-1">
+                            {item.example}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* LISTENING & AUDIO COMPREHENSION */}
+        {slide.type === 'listening' && (
+          <div className="space-y-6">
+            {slide.content && (
+              <div className="p-5 rounded-2xl bg-base-300/60 border border-purple-500/20 text-white text-base leading-relaxed">
+                <Markdown>{slide.content}</Markdown>
+              </div>
+            )}
+            {slide.items && slide.items.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+                  <HelpCircle size={15} /> Pytania i zadania do nagrania:
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {slide.items.map((item, lIdx) => (
+                    <div key={item.id || lIdx} className="p-4 rounded-xl bg-base-300/50 border border-white/10 space-y-2">
+                      <div className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 rounded-md bg-purple-500/20 text-purple-300 font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                          {lIdx + 1}
+                        </span>
+                        <p className="font-semibold text-white text-sm">{item.question || item.term}</p>
+                      </div>
+                      {item.answer && (
+                        <div className="pl-7 pt-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => toggleReveal(item.id)}
+                            className="h-6 px-2 text-[11px] text-purple-300 hover:bg-purple-500/10"
+                          >
+                            {revealedAnswers[item.id] ? 'Ukryj odpowiedź' : 'Pokaż odpowiedź'}
+                          </Button>
+                          {revealedAnswers[item.id] && (
+                            <p className="mt-1 p-2 rounded-lg bg-purple-950/60 text-xs text-purple-200 font-bold animate-fadeIn">
+                              {item.answer}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -500,6 +647,39 @@ export const SlideCard: React.FC<SlideCardProps> = ({
           <div className="flex items-center gap-1.5 italic">
             <Bookmark size={13} className="text-primary" />
             <span>Wskazówka dydaktyczna: {slide.speakerNotes}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Textbook Image Lightbox Modal */}
+      {isImageModalOpen && slide.imageUrl && (
+        <div 
+          className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setIsImageModalOpen(false)}
+        >
+          <div 
+            className="relative max-w-5xl max-h-[92vh] bg-base-100 border border-white/20 rounded-2xl overflow-hidden shadow-2xl p-2 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
+              <span className="text-xs font-bold text-white flex items-center gap-2">
+                <Eye size={14} className="text-primary" /> Podgląd materiału źródłowego ze scenariusza
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsImageModalOpen(false)}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-2 overflow-auto flex items-center justify-center">
+              <img 
+                src={slide.imageUrl} 
+                alt="Pełny podgląd materiału" 
+                className="max-w-full max-h-[80vh] object-contain rounded-xl"
+              />
+            </div>
           </div>
         </div>
       )}

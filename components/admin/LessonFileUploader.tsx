@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   UploadCloud, FileText, Image as ImageIcon, FileCode, 
-  Trash2, X, AlertCircle, CheckCircle2, Paperclip, Eye
+  Trash2, X, AlertCircle, CheckCircle2, Paperclip, Eye,
+  Volume2, Music
 } from 'lucide-react';
 import { LessonAttachment } from '../../types';
 
@@ -35,6 +36,8 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
 
     if (file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
       detectedType = 'image';
+    } else if (file.type.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'ogg', 'aac', 'flac'].includes(ext)) {
+      detectedType = 'audio';
     } else if (file.type === 'application/pdf' || ext === 'pdf') {
       detectedType = 'pdf';
     } else if (ext === 'md' || ext === 'markdown') {
@@ -65,6 +68,22 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
           type: 'image',
           size: file.size,
           mimeType: file.type || 'image/png',
+          dataUrl
+        };
+      } else if (detectedType === 'audio') {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        return {
+          id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          name: file.name,
+          type: 'audio',
+          size: file.size,
+          mimeType: file.type || 'audio/mpeg',
           dataUrl
         };
       } else if (detectedType === 'pdf') {
@@ -201,7 +220,7 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,.pdf,.txt,.md,.markdown,.html,.htm"
+          accept="image/*,audio/*,.mp3,.wav,.m4a,.ogg,.pdf,.txt,.md,.markdown,.html,.htm"
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
               handleFiles(e.target.files);
@@ -220,16 +239,19 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
 
           <div className="space-y-0.5">
             <p className="text-xs sm:text-sm font-extrabold text-white">
-              <span className="text-primary group-hover:underline">Kliknij lub przeciągnij pliki</span>, które chcesz wykorzystać
+              <span className="text-primary group-hover:underline">Kliknij lub przeciągnij materiały</span> do analizy lekcji
             </p>
             <p className="text-[11px] text-content-muted">
-              Screenshoty (możesz też wkleić ze schowka <kbd className="px-1.5 py-0.5 rounded bg-black/40 text-[10px] font-mono border border-white/10 text-primary">Ctrl+V</kbd>), PDF, Markdown, HTML i zwykły tekst
+              Strony podręczników, screenshoty (<kbd className="px-1.5 py-0.5 rounded bg-black/40 text-[10px] font-mono border border-white/10 text-primary">Ctrl+V</kbd>), nagrania audio, PDF, Markdown i notatki
             </p>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
             <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-content-muted">
-              PNG / JPG / WEBP
+              PNG / JPG (skany/screenshoty)
+            </span>
+            <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[10px] font-mono text-purple-300">
+              MP3 / AUDIO
             </span>
             <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-content-muted">
               PDF
@@ -238,10 +260,7 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
               Markdown (.md)
             </span>
             <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-content-muted">
-              HTML
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-mono text-content-muted">
-              TXT
+              HTML / TXT
             </span>
           </div>
         </div>
@@ -304,6 +323,10 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
                       <Eye size={12} />
                     </div>
                   </div>
+                ) : att.type === 'audio' ? (
+                  <div className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center bg-purple-500/15 border border-purple-500/30 text-purple-300">
+                    <Volume2 size={18} />
+                  </div>
                 ) : (
                   <div className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center bg-base-100 border border-white/10 text-primary">
                     {att.type === 'pdf' ? (
@@ -326,8 +349,13 @@ export const LessonFileUploader: React.FC<LessonFileUploaderProps> = ({
                   <p className="text-[10px] font-mono text-content-muted flex items-center gap-1.5">
                     <span>{formatFileSize(att.size)}</span>
                     <span>•</span>
-                    <span className="uppercase text-primary font-semibold">{att.type}</span>
+                    <span className={`uppercase font-semibold ${att.type === 'audio' ? 'text-purple-400' : 'text-primary'}`}>{att.type}</span>
                   </p>
+                  {att.type === 'audio' && att.dataUrl && (
+                    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                      <audio controls src={att.dataUrl} className="h-6 w-full max-w-[170px]" preload="metadata" />
+                    </div>
+                  )}
                 </div>
 
                 {/* Remove Button */}

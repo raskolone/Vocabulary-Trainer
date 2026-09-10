@@ -335,8 +335,8 @@ Instrukcje dla tego modułu: ${m.placeholderInstruction || 'Przygotuj zawartoś�
     if (customSettings.homeworkType === 'speaking') homeworkText = 'Zadanie ustne: przygotowanie 2-minutowej wypowiedzi z wykorzystaniem 5 poznanych struktur';
     if (customSettings.homeworkType === 'mixed') homeworkText = 'Zadanie mieszane: 4 zdania do tłumaczenia + 1 krótkie pytanie problemowe (mini-case)';
 
-    return `Jesteś doświadczonym metodykiem języka angielskiego (Senior ESL Curriculum Designer & Master Teacher) oraz inteligentnym partnerem do rozmowy dla lektora.
-Tworzysz angażujące, praktyczne i nowoczesne materiały dydaktyczne dla dorosłych kursantów.
+    return `Jesteś doświadczonym metodykiem języka angielskiego, Content Designerem (Senior ESL Curriculum & Content Designer) oraz inteligentnym partnerem do rozmowy dla lektora.
+Tworzysz angażujące, przejrzyste, praktyczne i nowoczesne materiały dydaktyczne dla dorosłych kursantów na podstawie pomysłów, screenshotów z podręczników, skanów PDF lub tematów z bazy.
 
 PARAMETRY LEKCJI:
 - Czas trwania: ${lessonDuration}
@@ -349,6 +349,15 @@ PARAMETRY LEKCJI:
 ${studentContext}
 ${customDirectives}
 ${modulesStructurePrompt}
+
+WYTYCZNE DLA CONTENT DESIGNERA (EKSTRAKCJA Z PODRĘCZNIKÓW I SKANÓW):
+1. EKSTRAKCJA I SYNTEZA:
+   - Jeśli załączono screenshoty lub skany podręczników / PDF, dokładnie przeanalizuj ich treść, wyodrębnij z nich kluczowe zagadnienia, słownictwo, kolokacje oraz pytania dyskusyjne.
+   - Odsiej przestarzałą gramatykę i nudne teksty – przekształć je w dynamiczne, nowoczesne ćwiczenia konwersacyjne i biznesowe.
+2. INTERAKTYWNE ZADANIA Z ODPOWIEDZIAMI:
+   - Przy zadaniach i ćwiczeniach (gap-fill, tłumaczenia, pytania kontrolne) ZAWSZE podawaj prawidłową odpowiedź lub modelowe tłumaczenie w nawiasie na końcu linii, np. "(Odpowiedź: ...)" lub "(Tłumaczenie: ...)", co umożliwi lektorowi interaktywne odkrywanie odpowiedzi na slajdach w czasie rzeczywistym.
+3. PRZEJRZYSTOŚĆ I MODUŁOWOŚĆ:
+   - Zadbaj o czytelny podział na etapy z orientacyjnym czasem trwania (Warm-up, Core Discussion, Vocabulary, Grammar/Pronunciation, Practice/Exit Ticket, Homework).
 
 TRYBY INTERAKCJI Z LEKTOREM:
 1. TRYB SUGESTII TEMATÓW (Gdy lektor prosi o sugestie np. "zasugeruj temat", "zaproponuj 3 tematy na podstawie historii"):
@@ -446,7 +455,8 @@ ${rawPrompt || 'Dostosuj powyższy scenariusz pod profil wybranego kursanta, zac
           lessonType,
           vocabularyText: extractedVocab || parsed.vocabularyText,
           stages: parsed.stages,
-          sourceFiles: attachments.map(a => a.name)
+          sourceFiles: attachments.map(a => a.name),
+          attachments: attachments.length > 0 ? attachments : undefined
         });
 
         setScenariosTimestamp(Date.now());
@@ -837,6 +847,7 @@ ${rawPrompt || 'Dostosuj powyższy scenariusz pod profil wybranego kursanta, zac
                             lessonType,
                             vocabularyText: msg.extractedVocab || parsed.vocabularyText,
                             stages: parsed.stages,
+                            attachments: msg.scenario?.attachments || (attachments.length > 0 ? attachments : undefined),
                             createdAt: new Date().toISOString()
                           };
                           onOpenInPresentation(sc);

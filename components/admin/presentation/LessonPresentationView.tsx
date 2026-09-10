@@ -588,6 +588,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
               isFullscreen={isFullscreen}
               interaction={slideInteraction}
               onInteractionChange={setSlideInteraction}
+              onJumpToSlide={setActiveSlideIndex}
             />
           )}
 
@@ -797,6 +798,7 @@ export const LessonPresentationView: React.FC<LessonPresentationViewProps> = ({
                   isFullscreen
                   interaction={slideInteraction}
                   onInteractionChange={() => {}}
+                  onJumpToSlide={setActiveSlideIndex}
                 />
               </div>
             ) : undefined

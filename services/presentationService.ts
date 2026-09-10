@@ -214,6 +214,9 @@ export const createPresentationFromScenario = (
 ): LessonPresentation => {
   const slides: PresentationSlide[] = [];
 
+  const imageAttachments = scenario.attachments?.filter(a => a.type === 'image' && a.dataUrl) || [];
+  const audioAttachments = scenario.attachments?.filter(a => a.type === 'audio' && a.dataUrl) || [];
+
   // 1. Title Slide
   slides.push({
     id: `slide-title-${Date.now()}`,
@@ -226,6 +229,27 @@ export const createPresentationFromScenario = (
     bgTheme: 'emerald'
   });
 
+  // 2. Table of Contents / Lesson Plan Slide (Spis treści i plan lekcji)
+  if (scenario.stages && scenario.stages.length > 0) {
+    slides.push({
+      id: `slide-toc-${Date.now()}`,
+      type: 'toc',
+      title: 'Plan lekcji i spis zagadnień',
+      subtitle: `Agenda zajęć • ${scenario.stages.length} modułów dydaktycznych • Czas łączny: ${scenario.lessonDuration || '60 min'}`,
+      content: 'Interaktywny spis treści – kliknij dowolny moduł na liście lub użyj paska slajdów, aby szybko przejść do wybranego etapu lekcji.',
+      items: scenario.stages.map((stage, sIdx) => ({
+        id: `toc-item-${sIdx}`,
+        term: stage.title,
+        definition: stage.duration ? `Czas: ${stage.duration}` : `Moduł ${sIdx + 1}`,
+        example: stage.body ? stage.body.split('\n')[0].replace(/^[-*•\d.)\s]+/, '').slice(0, 95) : ''
+      })),
+      timerMinutes: 5,
+      speakerNotes: 'Przedstaw kursantowi plan zajęć i cele dydaktyczne na dzisiejszą lekcję.',
+      bgTheme: 'midnight',
+      imageUrl: imageAttachments.length > 0 ? imageAttachments[0].dataUrl : undefined
+    });
+  }
+
   // Convert parsed stages or body to slides
   if (scenario.stages && scenario.stages.length > 0) {
     scenario.stages.forEach((stage, idx) => {
@@ -236,14 +260,36 @@ export const createPresentationFromScenario = (
         slideType = 'warmup';
       } else if (titleLower.includes('vocab') || titleLower.includes('słown') || titleLower.includes('zwrot')) {
         slideType = 'vocabulary';
-      } else if (titleLower.includes('gramm') || titleLower.includes('strukt') || titleLower.includes('wzorzec')) {
+      } else if (titleLower.includes('gramm') || titleLower.includes('strukt') || titleLower.includes('wzorzec') || titleLower.includes('accuracy')) {
         slideType = 'grammar';
-      } else if (titleLower.includes('pract') || titleLower.includes('ćwicz') || titleLower.includes('drill') || titleLower.includes('zadan')) {
+      } else if (titleLower.includes('listen') || titleLower.includes('słucha') || titleLower.includes('audio') || titleLower.includes('nagran')) {
+        slideType = 'listening';
+      } else if (titleLower.includes('pract') || titleLower.includes('ćwicz') || titleLower.includes('drill') || titleLower.includes('zadan') || titleLower.includes('zadanie')) {
         slideType = 'practice';
       } else if (titleLower.includes('speak') || titleLower.includes('dysk') || titleLower.includes('rozmow')) {
         slideType = 'speaking';
-      } else if (titleLower.includes('homew') || titleLower.includes('podsum') || titleLower.includes('wrap')) {
+      } else if (titleLower.includes('homew') || titleLower.includes('podsum') || titleLower.includes('wrap') || titleLower.includes('domow')) {
         slideType = 'summary';
+      }
+
+      // Check for attached audio
+      let assignedAudioUrl: string | undefined;
+      let assignedAudioName: string | undefined;
+      if (slideType === 'listening' && audioAttachments.length > 0) {
+        assignedAudioUrl = audioAttachments[0].dataUrl;
+        assignedAudioName = audioAttachments[0].name;
+      }
+
+      // Check for attached image
+      let assignedImageUrl: string | undefined;
+      if (imageAttachments.length > 0) {
+        // Distribute images to slides if available
+        if (imageAttachments.length === 1 && (slideType === 'practice' || slideType === 'grammar')) {
+          assignedImageUrl = imageAttachments[0].dataUrl;
+        } else if (imageAttachments.length > 1) {
+          const imgCandidate = imageAttachments[(idx + 1) % imageAttachments.length];
+          if (imgCandidate) assignedImageUrl = imgCandidate.dataUrl;
+        }
       }
 
       // Parse bullet points or sentences from stage body
@@ -254,26 +300,66 @@ export const createPresentationFromScenario = (
         const cleanLine = line.replace(/^[-*•\d.)\s]+/, '').trim();
         if (!cleanLine) return;
 
+        // Check for answers in brackets e.g. (Odpowiedź: ...), (Answer: ...), (Tłumaczenie: ...) or (English sentence)
+        let question = cleanLine;
+        let answer: string | undefined;
+        let hasExtractedAnswer = false;
+
+        const ansMatch = cleanLine.match(/\((?:odpowiedź|odpowiedz|answer|tłumaczenie|tlumaczenie|wzorzec|klucz|key):\s*([^)]+)\)/i);
+        if (ansMatch) {
+          question = cleanLine.replace(ansMatch[0], '').trim();
+          answer = ansMatch[1].trim();
+          hasExtractedAnswer = true;
+        } else {
+          const bracketMatch = cleanLine.match(/\(([^()]+)\)$/);
+          if (bracketMatch && (slideType === 'practice' || slideType === 'summary' || /^\d+\./.test(line) || cleanLine.toLowerCase().includes('tłum'))) {
+            question = cleanLine.replace(bracketMatch[0], '').trim();
+            answer = bracketMatch[1].trim();
+            hasExtractedAnswer = true;
+          }
+        }
+
+        if (hasExtractedAnswer) {
+          items.push({
+            id: `item-${idx}-${lineIdx}`,
+            question,
+            answer,
+            hint: 'Kliknij, aby odsłonić poprawną odpowiedź',
+            revealed: false
+          });
+          return;
+        }
+
         if (slideType === 'vocabulary') {
           let term = cleanLine;
           let def = '';
-          if (cleanLine.includes(' - ')) {
-            const parts = cleanLine.split(' - ');
+          let example = '';
+
+          const exMatch = cleanLine.match(/\(\*?["'„](.+?)["'”]\*?\)/) || cleanLine.match(/\((?:np\.|e\.g\.)\s*(.+?)\)/i);
+          let textWithoutEx = cleanLine;
+          if (exMatch) {
+            example = exMatch[1];
+            textWithoutEx = cleanLine.replace(exMatch[0], '').trim();
+          }
+
+          if (textWithoutEx.includes(' - ')) {
+            const parts = textWithoutEx.split(' - ');
             term = parts[0].trim();
             def = parts.slice(1).join(' - ').trim();
-          } else if (cleanLine.includes(' – ')) {
-            const parts = cleanLine.split(' – ');
+          } else if (textWithoutEx.includes(' – ')) {
+            const parts = textWithoutEx.split(' – ');
             term = parts[0].trim();
             def = parts.slice(1).join(' – ').trim();
-          } else if (cleanLine.includes(':')) {
-            const parts = cleanLine.split(':');
+          } else if (textWithoutEx.includes(':')) {
+            const parts = textWithoutEx.split(':');
             term = parts[0].trim();
             def = parts.slice(1).join(':').trim();
           }
           items.push({
             id: `item-${idx}-${lineIdx}`,
             term,
-            definition: def
+            definition: def,
+            example: example || undefined
           });
         } else if (slideType === 'warmup' || slideType === 'speaking') {
           if (cleanLine.includes('?') || cleanLine.length > 15) {
@@ -303,9 +389,47 @@ export const createPresentationFromScenario = (
         items: items.length > 0 ? items : undefined,
         timerMinutes: durNum,
         speakerNotes: `Notatka do etapu ${stage.title}`,
-        bgTheme: idx % 2 === 0 ? 'midnight' : 'dark'
+        bgTheme: idx % 2 === 0 ? 'midnight' : 'dark',
+        imageUrl: assignedImageUrl,
+        audioUrl: assignedAudioUrl,
+        audioName: assignedAudioName,
+        sectionTag: stage.title
       });
     });
+
+    // If audio was attached but not assigned to any slide, insert dedicated listening slide
+    if (audioAttachments.length > 0 && !slides.some(s => s.audioUrl)) {
+      audioAttachments.forEach((att, aIdx) => {
+        slides.splice(2 + aIdx, 0, {
+          id: `slide-audio-${aIdx}-${Date.now()}`,
+          type: 'listening',
+          title: `Słuchanie & Nagranie: ${att.name}`,
+          subtitle: 'Ćwiczenie rozumienia ze słuchu',
+          content: 'Odsłuchaj poniższy materiał audio i wykonaj polecenia lektora.',
+          audioUrl: att.dataUrl,
+          audioName: att.name,
+          timerMinutes: 10,
+          speakerNotes: 'Włącz odsłuch audio i sprawdź zrozumienie kluczowych pojęć u kursanta.',
+          bgTheme: 'midnight'
+        });
+      });
+    }
+
+    // If image was attached but not yet visible on any slide except TOC, add dedicated media slide
+    if (imageAttachments.length > 0 && !slides.some(s => s.imageUrl && s.type !== 'toc')) {
+      imageAttachments.forEach((imgAtt, imgIdx) => {
+        slides.push({
+          id: `slide-img-${imgIdx}-${Date.now()}`,
+          type: 'freeform',
+          title: `Materiały źródłowe: ${imgAtt.name}`,
+          subtitle: 'Załączony skan z podręcznika / screenshot',
+          content: 'Oryginalny materiał dydaktyczny załączony do lekcji.',
+          imageUrl: imgAtt.dataUrl,
+          timerMinutes: 10,
+          bgTheme: 'dark'
+        });
+      });
+    }
   } else {
     // If no structured stages, create standard slides from raw content
     slides.push({
@@ -315,7 +439,10 @@ export const createPresentationFromScenario = (
       subtitle: 'Przebieg zajęć',
       content: scenario.content,
       timerMinutes: 45,
-      bgTheme: 'midnight'
+      bgTheme: 'midnight',
+      imageUrl: imageAttachments.length > 0 ? imageAttachments[0].dataUrl : undefined,
+      audioUrl: audioAttachments.length > 0 ? audioAttachments[0].dataUrl : undefined,
+      audioName: audioAttachments.length > 0 ? audioAttachments[0].name : undefined
     });
   }
 

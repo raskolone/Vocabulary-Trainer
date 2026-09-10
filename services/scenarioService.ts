@@ -1,6 +1,6 @@
 import { db } from '../firebase';
 import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
-import { GeneratedLessonScenario, LessonScenarioStage } from '../types';
+import { GeneratedLessonScenario, LessonScenarioStage, LessonAttachment } from '../types';
 
 const LOCAL_STORAGE_SCENARIOS_KEY = 'cribro_generated_lesson_scenarios_v1';
 
@@ -172,6 +172,7 @@ export async function saveGeneratedScenario(
     stages?: LessonScenarioStage[];
     tags?: string[];
     sourceFiles?: string[];
+    attachments?: LessonAttachment[];
     isTemplate?: boolean;
     category?: string;
   }
@@ -196,6 +197,7 @@ export async function saveGeneratedScenario(
     updatedAt: now,
     tags: input.tags || [],
     sourceFiles: input.sourceFiles || [],
+    attachments: input.attachments,
     isTemplate: input.isTemplate || false,
     category: input.category
   };

@@ -319,6 +319,20 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
   - Na wygenerowanych i załadowanych scenariuszach dodano przycisk **„Uruchom w Prezentacji & Notatniku”**.
   - Jednym kliknięciem scenariusz jest przekształcany w interaktywną talię slajdów (`createPresentationFromScenario`) i zapisywany w `presentationService`, po czym system płynnie przełącza lektora do modułu Prezentacji & Notatnika Live.
 
+### G. Środowisko Content Designera: Spis Treści, Multimedia Audio i Ekstrakcja z Podręczników / PDF
+- **Interaktywny Spis Treści i Plan Lekcji na Slajdach (`type: 'toc'`)**:
+  - Moduł `presentationService.ts` generuje teraz dedykowany Slajd 2 ze spisem treści i planem zajęć (Agenda).
+  - W komponencie [SlideCard.tsx](components/admin/presentation/SlideCard.tsx) wprowadzono przejrzystą siatkę bloków dydaktycznych z czasem trwania i opisem.
+  - Dodano funkcjonalność natychmiastowej nawigacji (`onJumpToSlide`) – lektor może jednym kliknięciem przeskoczyć ze spisu treści do wybranego modułu ćwiczeniowego.
+- **Obsługa i Odtwarzacz Plików Audio dla Lektora i Kursanta**:
+  - Rozszerzono [LessonFileUploader.tsx](components/admin/LessonFileUploader.tsx) o formaty audio (`.mp3`, `.wav`, `.m4a`, `.ogg`, MIME `audio/*`) z wbudowanym odtwarzaczem podglądowym.
+  - W [types.ts](types.ts) oraz [SlideCard.tsx](components/admin/presentation/SlideCard.tsx) zintegrowano pola `slide.audioUrl`, `slide.audioName` oraz typ `listening`.
+  - Odtwarzacz audio jest zsynchronizowany i dostępny zarówno w panelu lektora, jak i w osobnym oknie kursanta ([PresenterScreen.tsx](components/admin/presentation/PresenterScreen.tsx)).
+- **Ekstrakcja Materiałów ze Skanów Podręczników i Ukryte Odpowiedzi**:
+  - Wzbogacono prompt metodyczny w [LessonPlanner.tsx](components/admin/LessonPlanner.tsx) o wytyczne dla roli Content Designera do analizy skanów i wyciągania esencji bez zbędnego szumu.
+  - Parser w `presentationService.ts` automatycznie wyodrębnia odpowiedzi w nawiasach `(Odpowiedź: ...)`, `(Answer: ...)`, `(Tłumaczenie: ...)` i tworzy interaktywne elementy z ukrytą odpowiedzią (`revealed: false`), którą można odkryć jednym kliknięciem.
+  - Załączone zdjęcia i screenshoty stron podręczników są automatycznie przypisywane do slajdów (`slide.imageUrl`) z funkcją powiększenia w pełnym modalu lightbox.
+
 ---
 
 

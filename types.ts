@@ -276,7 +276,7 @@ export interface LessonScenarioStage {
 export interface LessonAttachment {
   id: string;
   name: string;
-  type: 'image' | 'pdf' | 'markdown' | 'html' | 'text';
+  type: 'image' | 'pdf' | 'markdown' | 'html' | 'text' | 'audio';
   size: number;
   mimeType: string;
   dataUrl?: string;
@@ -301,6 +301,7 @@ export interface GeneratedLessonScenario {
   isTemplate?: boolean;
   category?: string;
   sourceFiles?: string[];
+  attachments?: LessonAttachment[];
 }
 
 export interface LessonBlocks {
@@ -648,10 +649,12 @@ export interface LessonPlannerCustomSettings {
 
 export type PresentationSlideType = 
   | 'title' 
+  | 'toc'
   | 'warmup' 
   | 'vocabulary' 
   | 'grammar' 
   | 'speaking' 
+  | 'listening'
   | 'practice' 
   | 'enclosure' 
   | 'correction' 
@@ -698,6 +701,10 @@ export interface PresentationSlide {
   timerMinutes?: number;
   speakerNotes?: string;
   bgTheme?: 'dark' | 'midnight' | 'emerald' | 'amber' | 'clean-light';
+  imageUrl?: string;
+  audioUrl?: string;
+  audioName?: string;
+  sectionTag?: string;
   // Enclosure and pedagogical metrics
   quickCheck?: Array<{ question: string; answer: string; hint?: string }>;
   exitTicketChallenge?: string;
