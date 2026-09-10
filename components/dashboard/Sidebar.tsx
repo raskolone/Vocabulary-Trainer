@@ -362,16 +362,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
             </NavLink>
           )}
 
-          {isTeacher && (
-            <NavLink
-              icon={<Mail size={20} />}
-              isCollapsed={isDesktopCollapsed}
-              onClick={() => handleNavigate('mailing')}
-              isActive={currentView === 'mailing' || currentView === 'admin-mailing'}
-            >
-              <span>Mailing</span>
-            </NavLink>
-          )}
 
           {isTeacher && (
             <div className="pt-3 mt-1 border-t border-base-300">

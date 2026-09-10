@@ -279,6 +279,22 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 - **Zachowanie narzędzi nauczyciela i administratora**:
   - Panele `teacher` oraz `admin` zachowały pełne instrumentarium AI (prompty, wybór modeli, generator sprawdzania, zaawansowane parametry generowania zadań).
 
+### L. Konsolidacja Modułu Mailing: Usunięcie Zdublowanych Odnośników, Dedykowany Pop-up Modal i Powiadomienia na Kafelku
+- **Wyeliminowanie duplikatów wejścia do modułu Mailing**:
+  - Zgodnie z zasadą minimalizmu i braku zbędnego szumu, usunięto zdublowane odnośniki do modułu Mailing z paska bocznego ([Sidebar.tsx](components/dashboard/Sidebar.tsx)) oraz z górnego nagłówka panelu nauczyciela ([AdminPanel.tsx](components/admin/AdminPanel.tsx)).
+  - Jedynym oficjalnym punktem wejścia do modułu Mailing pozostaje elegancki kafelek w sekcji *Główne Narzędzia Lektora* w Panelu Nauczyciela.
+- **Dedykowany Pop-up Modal dla Modułu Mailing ([AdminPanel.tsx](components/admin/AdminPanel.tsx))**:
+  - Kliknięcie kafelka Mailing nie przeładowuje widoku głównego ani nie rozpycha układu pionowego lektora – otwiera pełny, dedykowany pop-up modal w wysokiej estetyce glassmorphism (`z-[100]`, `bg-black/85 backdrop-blur-md`).
+  - Modal zawiera nagłówek z tytułem, opisem, licznikiem nowych wiadomości oraz przyciskiem zamknięcia (wspiera również natychmiastowe zamykanie klawiszem `Escape` oraz kliknięciem w tło).
+  - Wewnątrz modalu osadzony jest komponent `AdminMailingScreen` z pełną funkcjonalnością (szablony, skrzynka, monitoring, konfiguracja BCC i historia wysyłek).
+- **Gotowość pod odbiór wiadomości i dynamiczny kafelek powiadomień**:
+  - Zaimplementowano nasłuchiwanie w czasie rzeczywistym w Firestore (`onSnapshot` na kolekcji `inboundMessages` z warunkiem `read == false`).
+  - W przypadku nadejścia nieprzeczytanych wiadomości (gdy włączony zostanie odbiór):
+    - Kafelek Mailing zmienia kolorystykę na wyróżniający ton ostrzegawczy z ciepłym akcentem bursztynowym (`border-amber-400/80 bg-gradient-to-br from-amber-500/[0.08] via-base-200/80 to-base-200 shadow-[0_0_30px_rgba(245,158,11,0.22)]`).
+    - Na ikonie koperty pojawia się animowany wskaźnik ping (`animate-ping`).
+    - Zamiast standardowej plakietki pojawia się pulsujący badge z liczbą powiadomień: `{count} NOWYCH`.
+    - Dolna etykieta akcji zmienia się na `Otwórz skrzynkę ({count})` w kolorze akcentu.
+
 ---
 
 

@@ -19,7 +19,7 @@ import { getGeneratedScenarios } from '../../services/scenarioService';
 import React, { useState, useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, getDocs, getDoc, doc, deleteDoc, query, orderBy, setDoc, writeBatch, updateDoc, addDoc, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, deleteDoc, query, orderBy, setDoc, writeBatch, updateDoc, addDoc, where, onSnapshot } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
 import { User, PracticeLog, FlashcardSet, LessonRecord, GeneratedLessonScenario, RejectedNotionItem } from '../../types';
 import { useFlashcards } from '../../context/FlashcardContext';
@@ -235,13 +235,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
 
   const handleTileClick = (tabId: string) => {
     if (tabId === 'mailing') {
-      if (onViewChange) onViewChange('mailing');
-      else {
-        setActiveTab(tabId);
-        setTimeout(() => {
-          tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 150);
-      }
+      setIsMailingModalOpen(true);
       return;
     }
     // Moduły ogólne (niezwiązane z profilem) — przełączane bezpośrednio
@@ -1523,7 +1517,30 @@ const [users, setUsers] = useState<UserWithId[]>([]);
   };
 
   // User Profile Edit States
-  const [activeTab, setActiveTab] = useState<string | null>(initialTab || null);
+  const [activeTab, setActiveTab] = useState<string | null>(initialTab === 'mailing' ? null : (initialTab || null));
+  const [isMailingModalOpen, setIsMailingModalOpen] = useState(initialTab === 'mailing');
+  useEscapeModal(isMailingModalOpen, () => setIsMailingModalOpen(false));
+
+  const [unreadMailingCount, setUnreadMailingCount] = useState<number>(0);
+
+  useEffect(() => {
+    try {
+      const q = query(collection(db, 'inboundMessages'), where('read', '==', false));
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          setUnreadMailingCount(snapshot.size);
+        },
+        (err) => {
+          console.warn('inboundMessages snapshot listener warning:', err);
+        }
+      );
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Error setting up inboundMessages listener in AdminPanel:', err);
+    }
+  }, []);
+
   const tabContentRef = useRef<HTMLDivElement>(null);
   
   const profileContainerRef = useRef<HTMLDivElement>(null);
@@ -1563,7 +1580,12 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
 
   useEffect(() => {
-    setActiveTab(initialTab || null);
+    if (initialTab === 'mailing') {
+      setIsMailingModalOpen(true);
+      setActiveTab(null);
+    } else {
+      setActiveTab(initialTab || null);
+    }
   }, [initialTab]);
 
   const handleTabChange = (tab: string) => {
@@ -1664,24 +1686,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            onClick={() => {
-              if (onViewChange) {
-                onViewChange('mailing');
-              } else {
-                setActiveTab(activeTab === 'mailing' ? null : 'mailing');
-              }
-            }}
-            className={`px-3.5 min-h-11 rounded-xl text-xs sm:text-sm font-bold border transition-colors flex items-center justify-center gap-2 cursor-pointer ${
-              activeTab === 'mailing'
-                ? 'bg-primary text-black border-primary shadow-sm'
-                : 'bg-base-200/80 text-white border-white/15 hover:bg-white/10 hover:border-primary/40 hover:text-primary'
-            }`}
-            title="Przejdź do panelu zarządzania pocztą i powiadomieniami"
-          >
-            <Mail size={16} className={activeTab === 'mailing' ? 'text-black' : 'text-primary'} />
-            Mailing
-          </button>
-          <button
             onClick={() => setShowAIModal(true)}
             className="px-3.5 min-h-11 bg-base-200/80 text-primary border border-primary/40 rounded-xl text-xs sm:text-sm font-bold hover:bg-primary/10 transition-colors flex items-center justify-center gap-2"
           >
@@ -1711,7 +1715,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               Tryb ogólny
             </span>
           </h2>
-          {activeTab && ['lesson-planner', 'presentation', 'mailing'].includes(activeTab) && (
+          {activeTab && ['lesson-planner', 'presentation'].includes(activeTab) && (
             <button
               onClick={() => setActiveTab(selectedUser ? 'profile' : null)}
               className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
@@ -1740,42 +1744,62 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             {
               id: 'mailing',
               title: 'Mailing',
-              badge: 'Poczta & Resend',
-              desc: 'Szablony wiadomości, skrzynka odbiorcza oraz monitoring dostarczalności',
-              icon: Mail
+              badge: unreadMailingCount > 0 ? `${unreadMailingCount} NOWYCH` : 'Poczta & Resend',
+              desc: unreadMailingCount > 0
+                ? `Masz ${unreadMailingCount} ${unreadMailingCount === 1 ? 'nową wiadomość' : 'nowych wiadomości'} w skrzynce odbiorczej.`
+                : 'Szablony wiadomości, skrzynka odbiorcza oraz monitoring dostarczalności',
+              icon: Mail,
+              hasNotification: unreadMailingCount > 0,
+              notificationCount: unreadMailingCount,
             }
           ].map((tile) => {
             const IconComp = tile.icon;
-            const isActive = activeTab === tile.id;
+            const isActive = activeTab === tile.id || (tile.id === 'mailing' && isMailingModalOpen);
+            const hasNotification = Boolean((tile as any).hasNotification);
+            const notificationCount = Number((tile as any).notificationCount || 0);
 
             return (
               <div
                 key={tile.id}
                 onClick={() => handleTileClick(tile.id)}
-                className={`p-4.5 sm:p-5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-2xl ${
-                  isActive
-                    ? 'border-primary/80 shadow-[0_0_24px_rgba(114,240,180,0.25)] ring-1 ring-primary/40 bg-ink-2 z-10'
-                    : 'hover:border-primary/50'
+                className={`p-4.5 sm:p-5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-2xl relative overflow-hidden ${
+                  hasNotification
+                    ? 'border-amber-400/80 bg-gradient-to-br from-amber-500/[0.08] via-base-200/80 to-base-200 shadow-[0_0_30px_rgba(245,158,11,0.22)] ring-1 ring-amber-400/50 hover:border-amber-300'
+                    : isActive
+                      ? 'border-primary/80 shadow-[0_0_24px_rgba(114,240,180,0.25)] ring-1 ring-primary/40 bg-ink-2 z-10'
+                      : 'hover:border-primary/50'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className={`p-2.5 rounded-xl transition-colors ${
-                      isActive
-                        ? 'bg-primary text-accent-ink shadow-[0_0_14px_rgba(114,240,180,0.4)]'
-                        : 'bg-ink/72 text-primary border border-white/10 group-hover:border-primary/40'
+                    <div className={`p-2.5 rounded-xl transition-colors relative ${
+                      hasNotification
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.3)]'
+                        : isActive
+                          ? 'bg-primary text-accent-ink shadow-[0_0_14px_rgba(114,240,180,0.4)]'
+                          : 'bg-ink/72 text-primary border border-white/10 group-hover:border-primary/40'
                     }`}>
                       <IconComp size={20} />
+                      {hasNotification && (
+                        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-black/50"></span>
+                        </span>
+                      )}
                     </div>
                     <span className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-md border font-mono ${
-                      isActive
-                        ? 'bg-primary/20 text-primary border-primary/40'
-                        : 'bg-base-100/70 text-content-muted border-white/5'
+                      hasNotification
+                        ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 animate-pulse font-extrabold shadow-sm'
+                        : isActive
+                          ? 'bg-primary/20 text-primary border-primary/40'
+                          : 'bg-base-100/70 text-content-muted border-white/5'
                     }`}>
-                      {isActive ? 'Aktywny moduł' : tile.badge}
+                      {hasNotification ? `${notificationCount} NOWYCH` : (isActive ? 'Aktywny moduł' : tile.badge)}
                     </span>
                   </div>
-                  <h3 className="font-extrabold text-base sm:text-lg text-white group-hover:text-primary transition-colors truncate">
+                  <h3 className={`font-extrabold text-base sm:text-lg transition-colors truncate ${
+                    hasNotification ? 'text-amber-200 group-hover:text-amber-100' : 'text-white group-hover:text-primary'
+                  }`}>
                     {tile.title}
                   </h3>
                   <p className="text-xs sm:text-[13px] text-content-muted mt-1 leading-relaxed line-clamp-2 min-h-[2.5rem]">
@@ -1784,10 +1808,12 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                 </div>
 
                 <div className="mt-4 pt-2.5 border-t border-white/5 flex items-center justify-between text-xs font-semibold">
-                  <span className={isActive ? 'text-primary font-bold' : 'text-content-muted'}>
-                    {isActive ? 'Przeglądasz ten moduł' : 'Otwórz moduł'}
+                  <span className={hasNotification ? 'text-amber-400 font-bold' : (isActive ? 'text-primary font-bold' : 'text-content-muted')}>
+                    {hasNotification ? `Otwórz skrzynkę (${notificationCount})` : (isActive ? 'Przeglądasz ten moduł' : 'Otwórz moduł')}
                   </span>
-                  <ChevronRight size={14} className={`transition-transform group-hover:translate-x-0.5 ${isActive ? 'text-primary' : 'text-content-muted'}`} />
+                  <ChevronRight size={14} className={`transition-transform group-hover:translate-x-0.5 ${
+                    hasNotification ? 'text-amber-400' : (isActive ? 'text-primary' : 'text-content-muted')
+                  }`} />
                 </div>
               </div>
             );
@@ -1795,8 +1821,8 @@ const [users, setUsers] = useState<UserWithId[]>([]);
         </div>
       </div>
 
-      {/* JEŚLI AKTYWNY JEST MODUŁ OGÓLNY (Planer, Prezentacja, Mailing) */}
-      {activeTab && ['lesson-planner', 'presentation', 'mailing'].includes(activeTab) && (
+      {/* JEŚLI AKTYWNY JEST MODUŁ OGÓLNY (Planer, Prezentacja) */}
+      {activeTab && ['lesson-planner', 'presentation'].includes(activeTab) && (
         <div className="p-4 sm:p-5 rounded-2xl bg-base-200/60 border border-primary/40 shadow-[0_0_30px_rgba(114,240,180,0.1)] space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-white/10">
             <div className="flex items-center gap-2.5">
@@ -1804,7 +1830,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
               <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                 {activeTab === 'lesson-planner' && 'Planer lekcji AI (Tworzenie scenariuszy)'}
                 {activeTab === 'presentation' && 'Prezentacja & Notatnik Live'}
-                {activeTab === 'mailing' && 'Mailing & Powiadomienia e-mail'}
               </h2>
             </div>
             <button
@@ -1817,9 +1842,6 @@ const [users, setUsers] = useState<UserWithId[]>([]);
           </div>
 
           <div>
-            {activeTab === 'mailing' && (
-              <AdminMailingScreen onBack={() => setActiveTab(selectedUser ? 'profile' : null)} />
-            )}
             {activeTab === 'presentation' && (
               <LessonPresentationView
                 selectedUser={selectedUser}
@@ -4959,6 +4981,51 @@ const [users, setUsers] = useState<UserWithId[]>([]);
             showToast('Pomyślnie zaktualizowano lekcje do formatu bloków Notion!');
           }}
         />
+      )}
+      {/* DEDYKOWANY POP-UP MODAL DLA MODUŁU MAILING */}
+      {isMailingModalOpen && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsMailingModalOpen(false);
+          }}
+        >
+          <div className="w-full max-w-6xl max-h-[94vh] bg-base-100 border border-primary/30 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-scale-up">
+            {/* Header modalu */}
+            <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-b border-white/10 flex items-center justify-between bg-base-200/70 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+                    Mailing & Powiadomienia e-mail
+                    {unreadMailingCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                        {unreadMailingCount} nowe
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-content-muted">
+                    Szablony wiadomości, skrzynka odbiorcza, monitoring dostarczalności oraz weryfikacja wysyłek
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsMailingModalOpen(false)}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-content-muted hover:text-white transition-colors border border-white/10 flex items-center gap-1 text-xs font-bold cursor-pointer"
+                title="Zamknij okno mailingu (Esc)"
+              >
+                <X size={16} />
+                <span className="hidden sm:inline">Zamknij</span>
+              </button>
+            </div>
+            {/* Treść modalu */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              <AdminMailingScreen onBack={() => setIsMailingModalOpen(false)} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
