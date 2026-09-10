@@ -202,6 +202,41 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 - **Produkcyjny Build**:
   - `npm run build` kompiluje aplikację Vite oraz PWA Service Worker bez przeszkód.
 
+### I. Nowa Organizacja Panelu Nauczyciela: Koncepcja „Bez zbędnego szumu” & Przyjazna ADHD
+- **Czysty widok główny (General View) z 3 modułami uniwersalnymi**:
+  - Zgodnie z wytycznymi z widoku głównego usunięto rozpraszające kafelki powiązane z pojedynczymi kursantami.
+  - Pozostawiono wyłącznie 3 uniwersalne, estetyczne kafelki modułów ogólnych:
+    1. **Planer lekcji** (`lesson-planner`) — projektowanie scenariuszy zajęć i materiałów dydaktycznych,
+    2. **Prezentacja & Notatnik** (`presentation`) — interaktywna tablica lekcyjna, rysowanie i slajdy,
+    3. **Mailing** (`mailing`) — moduł newsletterów, szablonów i masowych powiadomień przez Resend API.
+  - Aktywny moduł ogólny otwiera się bezpośrednio pod kafelkami z wyraźnym nagłówkiem modułu oraz przyciskiem *„✕ Zamknij moduł / Wróć do profilu kursanta”*.
+- **Wydzielony obszar roboczy profilu kursanta (Student Workspace)**:
+  - Przy braku wybranego kursanta: czytelna, estetyczna karta zachęcająca do wyboru ucznia z wyszukiwarki.
+  - Po wyborze kursanta wyświetla się **Student Hero Card** z najważniejszymi informacjami w pigułce:
+    - Zdjęcie / inicjały, pełne imię i nazwisko, login `@username`,
+    - Odznaka poziomu CEFR (A1–C2) oraz rola systemowa (`Kursant`, `Nauczyciel`, `Admin`),
+    - Wskaźnik dostarczalności e-mail Resend (`✓ Dostarczalny` vs `⚠ Zastępczy`),
+    - Licznik wizyt, data ostatniej aktywności,
+    - Szybki przycisk synchronizacji z Notion (`StudentNotionSyncModal`),
+    - Przyciski szybkiej zmiany ucznia oraz zamknięcia profilu.
+- **Estetyczne i czytelne zakładki na górze profilu**:
+  - Pasek 7 poziomych zakładek z wyraźnym stanem aktywnym (wysoki kontrast `bg-primary`, brak rozpraszających animacji i mrugania):
+    1. `Profil & Dane` (UserIcon)
+    2. `Kontekst` (FileText)
+    3. `Historia lekcji` (BookOpen + badge z liczbą lekcji)
+    4. `Praca domowa` (Award + badge z liczbą zadań)
+    5. `Słownictwo & AI` (BookMarked + badge z liczbą zestawów fiszek)
+    6. `Testy AI` (Award)
+    7. `Statystyki & Wyniki` (BarChart2)
+- **Kompletna zakładka „Profil & Dane” (odzwierciedlenie Bazy Kursantów)**:
+  - Zbudowano 5 dedykowanych, ustrukturyzowanych kart edycji:
+    1. **Dane podstawowe i identyfikacja**: Imię, Nazwisko, Login konta (`@username`) z przyciskiem natychmiastowej zmiany, ID użytkownika,
+    2. **Komunikacja i powiadomienia e-mail (Mailing)**: Pole adresu e-mail, weryfikacja poprawności formatu, status Resend, intuicyjny przełącznik wypisania z mailingu (`emailNotificationsDisabled`),
+    3. **Poziom zaawansowania i konfiguracja AI**: Wybór poziomu CEFR A1–C2, opis kursanta stanowiący kontekst dla promptów AI, żelazne reguły i ograniczenia dla modeli generatywnych,
+    4. **Integracja Notion & Aktywność**: Wywołanie synchronizacji lekcji z bazy Notion, statystyki wizyt, liczba lekcji, data logowania,
+    5. **Uprawnienia i zarządzanie kontem**: Przełącznik ról użytkownika, zmiana hasła, kopiowanie hasła do schowka, przełącznik ukończenia onboardingu, zawieszenie konta, archiwizacja, kontrola widoczności modeli AI i Live Monitora, bezpośrednia wiadomość do kursanta, bezpieczne usuwanie konta.
+  - Duży, wyraźny przycisk zapisu profilu ze stanem ładowania i potwierdzeniem.
+
 ---
 
 ## 4. Przewodnik Szybkiego Startu dla Nowych Sesji i AI

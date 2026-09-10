@@ -51,7 +51,7 @@ import {
   User as UserIcon, Users, Search, X, ChevronRight, ChevronDown, ChevronUp, Sparkles, BarChart2, Clock, 
   BookOpen, BookMarked, UserCheck, Filter, Award, Activity, Calendar, 
   RefreshCw, Plus, Eye, Shield, Target, CalendarClock, Layers, Link as LinkIcon, Airplay, Mail, Database, Wand2,
-  AlertTriangle, Edit3
+  AlertTriangle, Edit3, Save, Bell, BellOff, Lock, Copy, Key, Send, Archive, CheckSquare, Square, Edit2
 } from 'lucide-react';
 import i18n from "i18next";
 import html2pdf from 'html2pdf.js';
@@ -222,7 +222,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
 
   const handleSelectUser = (user: UserWithId, targetTab?: string) => {
     setSelectedUser(user);
-    const nextTab = targetTab || activeTab || 'profile';
+    const validStudentTabs = ['profile', 'context', 'history', 'homework', 'vocabulary', 'tests', 'stats'];
+    const nextTab = targetTab || (activeTab && validStudentTabs.includes(activeTab) ? activeTab : 'profile');
     setActiveTab(nextTab);
     if (onUserSelect) onUserSelect(user.id);
     fetchUserLogsAndStats(user.id);
@@ -236,15 +237,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
     if (tabId === 'mailing') {
       if (onViewChange) onViewChange('mailing');
       else {
-        setActiveTab('mailing');
+        setActiveTab(tabId);
         setTimeout(() => {
           tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 150);
       }
       return;
     }
-    // Wewnętrzne zakładki (profile, stats, tests, homework, vocabulary,
-    // lesson-planner, presentation, context, history) — zmiana wyłącznie wewnątrz AdminPanel.
+    // Moduły ogólne (niezwiązane z profilem) — przełączane bezpośrednio
     if (tabId === 'lesson-planner' || tabId === 'presentation') {
       setActiveTab(tabId);
       setTimeout(() => {
@@ -285,6 +285,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
         level: formState.level,
         description: formState.description,
         aiPrompt: formState.aiPrompt,
+        emailNotificationsDisabled: Boolean(formState.emailNotificationsDisabled),
+        role: formState.role || selectedUser.role || 'user',
       };
       if (trimmedEmail) {
         updates.email = trimmedEmail;
@@ -297,7 +299,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ initialTab, onViewChange, initi
           console.warn('[Admin Auth Email Sync Warning]:', authErr);
         });
       }
-      const updatedUser = { ...selectedUser, ...formState, email: trimmedEmail || selectedUser.email };
+      const updatedUser = { 
+        ...selectedUser, 
+        ...formState, 
+        email: trimmedEmail || selectedUser.email,
+        emailNotificationsDisabled: Boolean(formState.emailNotificationsDisabled),
+        role: formState.role || selectedUser.role || 'user',
+      };
       setSelectedUser(updatedUser);
       setUsers(users.map(u => u.id === selectedUser.id ? updatedUser : u));
       if (!silent) {
@@ -1569,7 +1577,9 @@ const [users, setUsers] = useState<UserWithId[]>([]);
         email: selectedUser.email || '',
         level: selectedUser.level || '',
         description: selectedUser.description || '',
-        aiPrompt: selectedUser.aiPrompt || ''
+        aiPrompt: selectedUser.aiPrompt || '',
+        role: (selectedUser.role || 'user') as 'admin' | 'user' | 'teacher',
+        emailNotificationsDisabled: Boolean(selectedUser.emailNotificationsDisabled)
       });
     }
   }, [selectedUser]);
@@ -1580,7 +1590,9 @@ const [users, setUsers] = useState<UserWithId[]>([]);
     email: '',
     level: '',
     description: '',
-    aiPrompt: ''
+    aiPrompt: '',
+    role: 'user' as 'admin' | 'user' | 'teacher',
+    emailNotificationsDisabled: false
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
@@ -1690,14 +1702,212 @@ const [users, setUsers] = useState<UserWithId[]>([]);
 
       <NotionSyncButton onImported={fetchUsers} />
 
-      {/* Dynamic Student Selector Banner */}
-      <div className={`p-4 sm:p-5 rounded-2xl border-2 transition-all duration-300 ${
-        selectedUser 
-          ? 'bg-gradient-to-r from-primary/15 via-base-200/80 to-base-200/90 border-primary/60 shadow-[0_0_30px_rgba(114,240,180,0.15)]' 
-          : 'bg-base-200/50 border-line-strong'
-      }`}>
-        {selectedUser ? (
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* GŁÓWNE MODUŁY LEKTORA (TYLKO KAFELKI OGÓLNE — BEZ BEZPOŚREDNIEGO ZWIĄZKU Z PROFILEM) */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-extrabold uppercase tracking-wider text-content-muted flex items-center gap-2">
+            <span>Główne Narzędzia Lektora</span>
+            <span className="text-[10px] font-mono bg-white/5 text-content-muted px-2 py-0.5 rounded-full border border-white/10">
+              Tryb ogólny
+            </span>
+          </h2>
+          {activeTab && ['lesson-planner', 'presentation', 'mailing'].includes(activeTab) && (
+            <button
+              onClick={() => setActiveTab(selectedUser ? 'profile' : null)}
+              className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+            >
+              <X size={13} /> Zamknij moduł ogólny
+            </button>
+          )}
+        </div>
+
+        <div ref={mainMenuRef} className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
+          {[
+            {
+              id: 'lesson-planner',
+              title: 'Planer lekcji AI',
+              badge: 'AI Planer',
+              desc: 'Inteligentny asystent AI do planowania i tworzenia scenariuszy lekcji',
+              icon: Sparkles
+            },
+            {
+              id: 'presentation',
+              title: 'Prezentacja & Notatnik',
+              badge: 'Live Lekcja',
+              desc: 'Interaktywne slajdy z wymową audio i wspólny notatnik na żywo z kursantem',
+              icon: Airplay
+            },
+            {
+              id: 'mailing',
+              title: 'Mailing',
+              badge: 'Poczta & Resend',
+              desc: 'Szablony wiadomości, skrzynka odbiorcza oraz monitoring dostarczalności',
+              icon: Mail
+            }
+          ].map((tile) => {
+            const IconComp = tile.icon;
+            const isActive = activeTab === tile.id;
+
+            return (
+              <div
+                key={tile.id}
+                onClick={() => handleTileClick(tile.id)}
+                className={`p-4.5 sm:p-5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-2xl ${
+                  isActive
+                    ? 'border-primary/80 shadow-[0_0_24px_rgba(114,240,180,0.25)] ring-1 ring-primary/40 bg-ink-2 z-10'
+                    : 'hover:border-primary/50'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`p-2.5 rounded-xl transition-colors ${
+                      isActive
+                        ? 'bg-primary text-accent-ink shadow-[0_0_14px_rgba(114,240,180,0.4)]'
+                        : 'bg-ink/72 text-primary border border-white/10 group-hover:border-primary/40'
+                    }`}>
+                      <IconComp size={20} />
+                    </div>
+                    <span className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-md border font-mono ${
+                      isActive
+                        ? 'bg-primary/20 text-primary border-primary/40'
+                        : 'bg-base-100/70 text-content-muted border-white/5'
+                    }`}>
+                      {isActive ? 'Aktywny moduł' : tile.badge}
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base sm:text-lg text-white group-hover:text-primary transition-colors truncate">
+                    {tile.title}
+                  </h3>
+                  <p className="text-xs sm:text-[13px] text-content-muted mt-1 leading-relaxed line-clamp-2 min-h-[2.5rem]">
+                    {tile.desc}
+                  </p>
+                </div>
+
+                <div className="mt-4 pt-2.5 border-t border-white/5 flex items-center justify-between text-xs font-semibold">
+                  <span className={isActive ? 'text-primary font-bold' : 'text-content-muted'}>
+                    {isActive ? 'Przeglądasz ten moduł' : 'Otwórz moduł'}
+                  </span>
+                  <ChevronRight size={14} className={`transition-transform group-hover:translate-x-0.5 ${isActive ? 'text-primary' : 'text-content-muted'}`} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* JEŚLI AKTYWNY JEST MODUŁ OGÓLNY (Planer, Prezentacja, Mailing) */}
+      {activeTab && ['lesson-planner', 'presentation', 'mailing'].includes(activeTab) && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-base-200/60 border border-primary/40 shadow-[0_0_30px_rgba(114,240,180,0.1)] space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+              <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                {activeTab === 'lesson-planner' && 'Planer lekcji AI (Tworzenie scenariuszy)'}
+                {activeTab === 'presentation' && 'Prezentacja & Notatnik Live'}
+                {activeTab === 'mailing' && 'Mailing & Powiadomienia e-mail'}
+              </h2>
+            </div>
+            <button
+              onClick={() => setActiveTab(selectedUser ? 'profile' : null)}
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-content-muted hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-white/10"
+            >
+              <X size={14} />
+              {selectedUser ? 'Wróć do profilu kursanta' : 'Zamknij moduł'}
+            </button>
+          </div>
+
+          <div>
+            {activeTab === 'mailing' && (
+              <AdminMailingScreen onBack={() => setActiveTab(selectedUser ? 'profile' : null)} />
+            )}
+            {activeTab === 'presentation' && (
+              <LessonPresentationView
+                selectedUser={selectedUser}
+                lessonRecords={lessonRecords}
+                onOpenLessonFormWithData={(data) => {
+                  setEditingRecordId(null);
+                  setViewingRecord(null);
+                  const sId = selectedUser?.id || '';
+                  setLessonFormStudentId(sId);
+                  setLessonFormStudentIds(sId ? [sId] : []);
+                  setLessonFormDate(new Date().toISOString().split('T')[0]);
+                  setLessonFormTopic(data.topic || '');
+                  setLessonFormSummary(data.summary || '');
+                  setLessonFormWords(data.words || '');
+                  setLessonFormThingsToImprove(data.thingsToImprove || '');
+                  setLessonFormSuggestedFollowUp(data.followUp || '');
+                  setLessonFormStudentSpeaking('');
+                  openLessonRecordModal('edit', undefined, true);
+                  showToast('Przeniesiono podsumowanie prezentacji do formularza lekcji!');
+                }}
+              />
+            )}
+            {activeTab === 'lesson-planner' && (
+              <LessonPlanner
+                selectedUser={selectedUser}
+                users={users}
+                onSelectUser={(u) => {
+                  if (u) {
+                    handleSelectUser(u, 'lesson-planner');
+                  } else {
+                    setSelectedUser(null);
+                  }
+                }}
+                recentLessons={lessonRecords}
+                onInsertLessonRecord={(data) => {
+                  setEditingRecordId(null);
+                  setViewingRecord(null);
+                  const sId = selectedUser?.id || '';
+                  setLessonFormStudentId(sId);
+                  setLessonFormStudentIds(sId ? [sId] : []);
+                  setLessonFormDate(new Date().toISOString().split('T')[0]);
+                  setLessonFormTopic(data.topic || '');
+                  setLessonFormSummary(data.summary || '');
+                  setLessonFormWords(data.vocabulary || '');
+                  setLessonFormSuggestedFollowUp(data.followUp || '');
+                  setLessonFormThingsToImprove('');
+                  setLessonFormStudentSpeaking('');
+                  setLessonFormScenarioId(data.scenarioId || '');
+                  setLessonFormScenarioTopic(data.scenarioTopic || data.topic || '');
+                  setLessonFormScenarioContent(data.scenarioContent || '');
+                  openLessonRecordModal('edit', undefined, true);
+                  showToast('Przeniesiono scenariusz do nowej notatki z lekcji!');
+                }}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SEKCJA KURSANTA (ZAKŁADKI NA GÓRZE I DANE PROFILOWE) */}
+      {!selectedUser ? (
+        <div className="p-5 sm:p-6 rounded-2xl bg-base-200/50 border-2 border-line-strong flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 rounded-2xl bg-primary/12 text-primary border border-primary/30 shrink-0">
+              <Users size={24} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                Profil i moduły kursanta
+              </h3>
+              <p className="text-xs text-content-muted mt-0.5">
+                Wybierz ucznia z bazy, aby otworzyć jego profil, historię lekcji, zadania domowe, słownictwo, testy i statystyki.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsStudentPickerOpen(true)}
+            className="px-5 min-h-11 bg-primary text-accent-ink font-bold rounded-xl text-xs sm:text-sm shadow-btn hover:brightness-110 hover:-translate-y-px active:translate-y-0 transition-all flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto cursor-pointer"
+          >
+            <Search size={18} />
+            Wybierz kursanta z listy
+          </button>
+        </div>
+      ) : (
+        <div ref={profileContainerRef} className="space-y-4 pt-1">
+          {/* STUDENT HERO CARD */}
+          <div className="p-4 sm:p-5 rounded-2xl border-2 bg-gradient-to-r from-primary/15 via-base-200/80 to-base-200/90 border-primary/60 shadow-[0_0_30px_rgba(114,240,180,0.15)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-4 min-w-0">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/30 to-primary/10 border-2 border-primary/50 flex items-center justify-center font-bold text-primary text-xl flex-shrink-0 shadow-inner overflow-hidden">
                 {selectedUser.photoURL ? (
@@ -1711,7 +1921,7 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   <h2 className="text-lg sm:text-xl font-extrabold text-white truncate">
                     {selectedUser.firstName || selectedUser.lastName ? `${selectedUser.firstName || ''} ${selectedUser.lastName || ''}`.trim() : selectedUser.username}
                   </h2>
-                  <span className="text-xs text-content-muted font-mono truncate">({selectedUser.username})</span>
+                  <span className="text-xs text-content-muted font-mono truncate">(@{selectedUser.username})</span>
                   {selectedUser.level && (
                     <span
                       title={selectedUser.level}
@@ -1725,6 +1935,16 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   }`}>
                     {selectedUser.role === 'teacher' ? 'Nauczyciel' : selectedUser.role === 'admin' ? 'Admin' : 'Kursant'}
                   </span>
+                  {selectedUser.isSuspended && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-warn/20 text-warn border border-warn/40">
+                      Zawieszony
+                    </span>
+                  )}
+                  {selectedUser.isArchived && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-base-100 text-content-muted border border-white/10">
+                      Archiwum
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-content-muted mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
                   <button
@@ -1738,18 +1958,30 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                     title="Kliknij, aby edytować profil lub adres e-mail kursanta"
                   >
                     <span>📧 {selectedUser.email || 'Brak emaila'}</span>
-                    <span className="text-[10px] opacity-70 group-hover:opacity-100 text-primary underline">edytuj</span>
+                    {!selectedUser.email || selectedUser.email.includes('@student.vocabboost.com') ? (
+                      <span className="text-warn text-[10px] font-semibold">(Adres zastępczy)</span>
+                    ) : (
+                      <span className="text-primary text-[10px] font-semibold">✓ Resend</span>
+                    )}
                   </button>
                   <span>🔑 Logowań: <strong className="text-white">{selectedUser.loginCount || 0}</strong></span>
-                  <span>🕒 Ostatnia wizyta: <strong className="text-white">{selectedUser.lastLoginDate ? new Date(selectedUser.lastLoginDate).toLocaleDateString() : 'Brak'}</strong></span>
+                  <span>🕒 Ostatnia wizyta: <strong className="text-white">{selectedUser.lastLoginDate ? new Date(selectedUser.lastLoginDate).toLocaleDateString('pl-PL') : 'Brak'}</strong></span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+            <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end flex-wrap">
+              <button
+                onClick={() => setShowStudentNotionSyncModal(true)}
+                className="px-3.5 py-2 bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+                title="Pobierz lub zaktualizuj lekcje kursanta z Notion"
+              >
+                <RefreshCw size={15} />
+                <span>Pobierz z Notion</span>
+              </button>
               <button
                 onClick={() => setIsStudentPickerOpen(true)}
-                className="px-4 py-2 bg-primary text-accent-ink rounded-xl text-xs sm:text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-md"
+                className="px-3.5 py-2 bg-primary text-accent-ink rounded-xl text-xs sm:text-sm font-bold hover:bg-primary/90 transition-all flex items-center gap-2 shadow-md cursor-pointer"
               >
                 <UserCheck size={16} />
                 Zmień kursanta
@@ -1763,334 +1995,61 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   setPracticeLogs([]);
                   setLessonRecords([]);
                 }}
-                className="px-3 py-2 bg-ink/72 hover:bg-white/10 text-content-muted hover:text-white border border-white/10 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5"
+                className="px-3 py-2 bg-ink/72 hover:bg-white/10 text-content-muted hover:text-white border border-white/10 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <X size={16} />
                 Wyczyść
               </button>
             </div>
           </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-primary/12 text-primary border border-primary/30 shrink-0">
-                <Users size={24} />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  Wybierz kursanta, dla którego chcesz przeglądać dane
-                </h3>
-                <p className="text-xs text-content-muted mt-0.5">
-                  Wybierz ucznia z eleganckiej listy, aby odblokować kafelki profilu, statystyk, historii lekcji i sesji, testów oraz słownictwa.
-                </p>
-              </div>
-            </div>
 
-            <button
-              onClick={() => setIsStudentPickerOpen(true)}
-              className="px-5 min-h-11 bg-primary text-accent-ink font-bold rounded-xl text-xs sm:text-sm shadow-btn hover:brightness-110 hover:-translate-y-px active:translate-y-0 transition-all flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
-            >
-              <Search size={18} />
-              Wybierz kursanta z listy
-            </button>
-          </div>
-        )}
-      </div>
-
-      
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-content-muted flex items-center gap-2">
-            <span>Kafelki modułów kursanta</span>
-            {selectedUser && (
-              <span className="text-xs text-primary font-mono font-normal">
-                (Dla: {selectedUser.firstName || selectedUser.username})
-              </span>
-            )}
-          </h2>
-          {!selectedUser && (
-            <span className="text-xs text-text-mute font-medium flex items-center gap-1">
-              <AlertCircle size={14} /> Kliknij dowolny kafelek, aby wybrać kursanta
-            </span>
-          )}
-        </div>
-
-        {/* KAFELKI GŁÓWNE (4 DUŻE KAFELKI) */}
-        <div className="space-y-2.5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+          {/* PASEK ZAKŁADEK NA SAMEJ GÓRZE PROFILU KURSANTA */}
+          <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-base-200/90 border border-white/10 backdrop-blur-md overflow-x-auto no-scrollbar shadow-inner select-none">
             {[
-              {
-                id: 'lesson-planner',
-                title: 'Planer lekcji',
-                badge: 'AI Planer',
-                desc: 'Inteligentny asystent AI do planowania i tworzenia scenariuszy lekcji',
-                icon: Sparkles
-              },
-              {
-                id: 'presentation',
-                title: 'Prezentacja & Notatnik',
-                badge: 'Live Lekcja',
-                desc: 'Interaktywne slajdy z wymową audio i wspólny notatnik z kursantem',
-                icon: Airplay
-              },
-              {
-                id: 'context',
-                title: 'Kontekst przed lekcją',
-                badge: 'Przed zajęciami',
-                desc: 'Ostatnia lekcja, kluczowe słownictwo i błędy w jednym miejscu',
-                icon: CalendarClock
-              },
-              {
-                id: 'history',
-                title: 'Historia lekcji i sesji',
-                badge: 'Lekcje + App',
-                desc: 'Dziennik przeprowadzonych lekcji oraz ćwiczenia w aplikacji',
-                icon: Clock
-              }
-            ].map((tile) => {
-              const IconComp = tile.icon;
-              const isActive = activeTab === tile.id;
-
+              { id: 'profile', label: 'Profil & Dane', icon: UserIcon },
+              { id: 'context', label: 'Kontekst', icon: CalendarClock },
+              { id: 'history', label: 'Historia lekcji', icon: Clock, count: lessonRecords.length },
+              { id: 'homework', label: 'Praca domowa', icon: BookOpen, count: specialTasks.length },
+              { id: 'vocabulary', label: 'Słownictwo & AI', icon: BookMarked, count: userSets.length },
+              { id: 'tests', label: 'Testy AI', icon: Award },
+              { id: 'stats', label: 'Statystyki & Wyniki', icon: BarChart2 },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
               return (
-                <div
-                  key={tile.id}
-                  onClick={() => handleTileClick(tile.id)}
-                  className={`p-4.5 sm:p-5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-2xl ${
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setTimeout(() => {
+                      tabContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                  }}
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer shrink-0 ${
                     isActive
-                      ? 'border-primary/80 shadow-[0_0_24px_rgba(114,240,180,0.25)] ring-1 ring-primary/40 bg-ink-2 z-10'
-                      : selectedUser || tile.id === 'lesson-planner' || tile.id === 'presentation'
-                      ? 'hover:border-primary/50'
-                      : 'opacity-85 hover:border-warn/40'
+                      ? 'bg-primary text-black font-extrabold shadow-md shadow-primary/20 border border-primary/50'
+                      : 'text-content-muted hover:text-white hover:bg-white/10 border border-transparent'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className={`p-2.5 rounded-xl transition-colors ${
-                        isActive
-                          ? 'bg-primary text-accent-ink shadow-[0_0_14px_rgba(114,240,180,0.4)]'
-                          : 'bg-ink/72 text-primary border border-white/10 group-hover:border-primary/40'
-                      }`}>
-                        <IconComp size={20} />
-                      </div>
-                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-md border font-mono ${
-                        isActive
-                          ? 'bg-primary/20 text-primary border-primary/40'
-                          : 'bg-base-100/70 text-content-muted border-white/5'
-                      }`}>
-                        {isActive ? 'Aktywny' : tile.badge}
-                      </span>
-                    </div>
-                    <h3 className="font-extrabold text-base sm:text-lg text-white group-hover:text-primary transition-colors truncate">
-                      {tile.title}
-                    </h3>
-                    <p className="text-xs sm:text-[13px] text-content-muted mt-1 leading-relaxed line-clamp-2 min-h-[2.5rem]">
-                      {tile.desc}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 pt-2.5 border-t border-white/5 flex items-center justify-between text-xs font-semibold">
-                    <span className={isActive ? 'text-primary font-bold' : 'text-content-muted'}>
-                      {isActive ? 'Przeglądasz ten widok' : tile.id === 'lesson-planner' || tile.id === 'presentation' ? 'Otwórz moduł' : selectedUser ? 'Otwórz widok' : 'Wybierz kursanta'}
+                  <Icon size={16} className={isActive ? 'text-black' : 'text-primary'} />
+                  <span>{tab.label}</span>
+                  {typeof tab.count === 'number' && tab.count > 0 && (
+                    <span
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
+                        isActive ? 'bg-black/20 text-black' : 'bg-white/10 text-primary'
+                      }`}
+                    >
+                      {tab.count}
                     </span>
-                    <ChevronRight size={14} className={`transition-transform group-hover:translate-x-0.5 ${isActive ? 'text-primary' : 'text-content-muted'}`} />
-                  </div>
-                </div>
+                  )}
+                </button>
               );
             })}
           </div>
 
-          {/* POZOSTAŁE KAFELKI (KOMPAKTOWY RZĄD 7 KAFELKÓW) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-            {[
-              {
-                id: 'profile',
-                title: 'Profil kursanta',
-                badge: 'Dane i AI',
-                desc: 'Poziom i wytyczne AI',
-                icon: UserIcon
-              },
-              {
-                id: 'stats',
-                title: 'Statystyki',
-                badge: 'Analityka',
-                desc: 'Aktywność i wyniki',
-                icon: BarChart2
-              },
-              {
-                id: 'tests',
-                title: 'Testy',
-                badge: 'Sprawdziany',
-                desc: 'Generowanie testów AI',
-                icon: Award
-              },
-              {
-                id: 'homework',
-                title: 'Praca domowa',
-                badge: 'Zadania',
-                desc: 'Zadania i oceny',
-                icon: BookOpen
-              },
-              {
-                id: 'vocabulary',
-                title: 'Słownictwo',
-                badge: 'Słówka + AI',
-                desc: 'Zestawy i Zadania AI',
-                icon: BookMarked
-              },
-              {
-                id: 'mailing',
-                title: 'Mailing',
-                badge: 'Resend & Skrzynka',
-                desc: 'Szablony, skrzynka i monitoring',
-                icon: Mail
-              }
-            ].map((tile) => {
-              const IconComp = tile.icon;
-              const isActive = activeTab === tile.id;
-
-              return (
-                <div
-                  key={tile.id}
-                  onClick={() => handleTileClick(tile.id)}
-                  className={`p-3 sm:p-3.5 cursor-pointer flex flex-col justify-between liquid-glass-tile select-none transition-all rounded-xl ${
-                    isActive
-                      ? 'border-primary/80 shadow-[0_0_18px_rgba(114,240,180,0.2)] ring-1 ring-primary/40 bg-ink-2 z-10'
-                      : selectedUser || tile.id === 'mailing'
-                      ? 'hover:border-primary/50'
-                      : 'opacity-80 hover:border-warn/40'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <div className={`p-1.5 rounded-lg transition-colors ${
-                        isActive
-                          ? 'bg-primary text-accent-ink shadow-[0_0_10px_rgba(114,240,180,0.3)]'
-                          : 'bg-ink/72 text-primary border border-white/10 group-hover:border-primary/40'
-                      }`}>
-                        <IconComp size={15} />
-                      </div>
-                      <span className={`text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border font-mono ${
-                        isActive
-                          ? 'bg-primary/20 text-primary border-primary/40'
-                          : 'bg-base-100/70 text-content-muted border-white/5'
-                      }`}>
-                        {isActive ? 'Aktywny' : tile.badge}
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-xs sm:text-sm text-white group-hover:text-primary transition-colors truncate">
-                      {tile.title}
-                    </h3>
-                    <p className="text-[11px] text-content-muted mt-0.5 leading-snug line-clamp-1">
-                      {tile.desc}
-                    </p>
-                  </div>
-
-                  <div className="mt-2.5 pt-1.5 border-t border-white/5 flex items-center justify-between text-[11px] font-semibold">
-                    <span className={isActive ? 'text-primary font-bold' : 'text-content-muted'}>
-                      {isActive ? 'Aktywny' : tile.id === 'mailing' ? 'Otwórz moduł' : selectedUser ? 'Otwórz' : 'Wybierz'}
-                    </span>
-                    <ChevronRight size={12} className={`transition-transform group-hover:translate-x-0.5 ${isActive ? 'text-primary' : 'text-content-muted'}`} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Active Tab Content Header Banner */}
-      {((selectedUser && activeTab) || activeTab === 'lesson-planner' || activeTab === 'presentation' || activeTab === 'mailing') && (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-base-200/50 border border-white/10">
-          <div className="flex items-center gap-3">
-            <span className="w-3 h-3 rounded-full bg-primary animate-pulse" />
-            <h2 className="text-xl font-extrabold text-white">
-              {activeTab === 'lesson-planner' && 'Planer lekcji AI (Wersja robocza)'}
-              {activeTab === 'presentation' && 'Interaktywna Prezentacja i Wspólny Notatnik Live'}
-              {activeTab === 'context' && 'Kontekst kursanta przed lekcją'}
-              {activeTab === 'profile' && 'Profil i parametry kursanta'}
-              {activeTab === 'stats' && 'Statystyki i aktywność kursanta'}
-              {activeTab === 'history' && 'Historia lekcji oraz sesji nauki w aplikacji'}
-              {activeTab === 'tests' && 'Generowanie i przegląd testów AI'}
-              {activeTab === 'vocabulary' && 'Zestawy słówek i Zadania Specjalne AI'}
-              {activeTab === 'homework' && 'Praca domowa kursanta'}
-              {activeTab === 'mailing' && 'Mailing'}
-            </h2>
-          </div>
-          {selectedUser ? (
-            <span className="text-xs font-mono text-content-muted hidden sm:inline">
-              Otwarty profil: <strong className="text-white">{selectedUser.firstName || selectedUser.username}</strong>
-            </span>
-          ) : (
-            <span className="text-xs font-mono text-content-muted hidden sm:inline">
-              {activeTab === 'mailing' ? 'Moduł pocztowy' : 'Tryb ogólny / Wybierz kursanta'}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Active Tab Container */}
-      <div ref={tabContentRef}>
-          {activeTab === 'mailing' && (
-            <div className="pt-2">
-              <AdminMailingScreen onBack={() => setActiveTab(null)} />
-            </div>
-          )}
-          {activeTab === 'presentation' && (
-            <LessonPresentationView
-              selectedUser={selectedUser}
-              lessonRecords={lessonRecords}
-              onOpenLessonFormWithData={(data) => {
-                setEditingRecordId(null);
-                setViewingRecord(null);
-                const sId = selectedUser?.id || '';
-                setLessonFormStudentId(sId);
-                setLessonFormStudentIds(sId ? [sId] : []);
-                setLessonFormDate(new Date().toISOString().split('T')[0]);
-                setLessonFormTopic(data.topic || '');
-                setLessonFormSummary(data.summary || '');
-                setLessonFormWords(data.words || '');
-                setLessonFormThingsToImprove(data.thingsToImprove || '');
-                setLessonFormSuggestedFollowUp(data.followUp || '');
-                setLessonFormStudentSpeaking('');
-                openLessonRecordModal('edit', undefined, true);
-                showToast('Przeniesiono podsumowanie prezentacji do formularza lekcji!');
-              }}
-            />
-          )}
-
-          {activeTab === 'lesson-planner' && (
-            <LessonPlanner
-              selectedUser={selectedUser}
-              users={users}
-              onSelectUser={(u) => {
-                if (u) {
-                  handleSelectUser(u, 'lesson-planner');
-                } else {
-                  setSelectedUser(null);
-                }
-              }}
-              recentLessons={lessonRecords}
-              onInsertLessonRecord={(data) => {
-                setEditingRecordId(null);
-                setViewingRecord(null);
-                const sId = selectedUser?.id || '';
-                setLessonFormStudentId(sId);
-                setLessonFormStudentIds(sId ? [sId] : []);
-                setLessonFormDate(new Date().toISOString().split('T')[0]);
-                setLessonFormTopic(data.topic || '');
-                setLessonFormSummary(data.summary || '');
-                setLessonFormWords(data.vocabulary || '');
-                setLessonFormSuggestedFollowUp(data.followUp || '');
-                setLessonFormThingsToImprove('');
-                setLessonFormStudentSpeaking('');
-                setLessonFormScenarioId(data.scenarioId || '');
-                setLessonFormScenarioTopic(data.scenarioTopic || data.topic || '');
-                setLessonFormScenarioContent(data.scenarioContent || '');
-                openLessonRecordModal('edit', undefined, true);
-                showToast('Przeniesiono scenariusz do nowej notatki z lekcji!');
-              }}
-            />
-          )}
+          {/* ZAWARTOŚĆ ZAKŁADKI KURSANTA */}
+          <div ref={tabContentRef} className="pt-2">
 
           {activeTab === 'context' && selectedUser && (
             <PreLessonContext
@@ -2890,334 +2849,582 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                 </div>
               ) : (
                 <div className="text-center p-8 bg-base-200/50 rounded-2xl border border-white/5 text-content-muted">
-                  
-                                                                                {i18n.t("Brak przypisanych zestawów słówek.")}
-                                                                              </div>
+                  {i18n.t("Brak przypisanych zestawów słówek.")}
+                </div>
               )}
             </div>
           )}
 
           {activeTab === 'profile' && (
-            <div className="max-w-2xl space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="max-w-4xl space-y-6 animate-fade-in">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-2 border-b border-white/10">
                 <div>
-                  <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Imię")}</label>
-                  <input
-                    type="text"
-                    value={profileForm.firstName}
-                    onChange={(e) => setProfileForm(prev => ({ ...prev, firstName: e.target.value }))}
-                    
-                    className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 transition-colors"
-                  />
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
+                    <UserIcon size={20} className="text-primary" />
+                    {i18n.t("Profil i parametry kursanta")}
+                  </h3>
+                  <p className="text-xs text-content-muted mt-0.5">
+                    {i18n.t("Kompleksowa edycja danych konta, powiadomień e-mail, poziomu CEFR, integracji z Notion i uprawnień systemowych.")}
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Nazwisko")}</label>
-                  <input
-                    type="text"
-                    value={profileForm.lastName}
-                    onChange={(e) => setProfileForm(prev => ({ ...prev, lastName: e.target.value }))}
-                    
-                    className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 transition-colors"
-                  />
+                <Button 
+                  onClick={() => handleSaveProfile()} 
+                  isLoading={isSavingProfile}
+                  className="bg-primary text-accent-ink hover:brightness-110 font-bold px-5 py-2 rounded-xl shadow-btn flex items-center gap-2 text-sm shrink-0 cursor-pointer"
+                >
+                  <Save size={16} />
+                  {i18n.t("Zapisz profil")}
+                </Button>
+              </div>
+
+              {/* CARD 1: DANE PODSTAWOWE I IDENTYFIKACJA */}
+              <div className="bg-base-200/50 border border-white/10 rounded-2xl p-5 md:p-6 space-y-4 shadow-sm backdrop-blur-sm">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                      <UserIcon size={16} />
+                    </span>
+                    <h4 className="font-bold text-white text-base">{i18n.t("Dane podstawowe i identyfikacja")}</h4>
+                  </div>
+                  <span className="text-xs text-content-muted font-mono">
+                    ID: <span className="text-white/80 select-all" title="Kliknij, aby zaznaczyć">{selectedUser.id}</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-1.5">
+                      {i18n.t("Imię")}
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.firstName}
+                      onChange={(e) => setProfileForm(prev => ({ ...prev, firstName: e.target.value }))}
+                      placeholder={i18n.t("Wprowadź imię...")}
+                      className="w-full bg-base-100/60 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all text-sm text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-1.5">
+                      {i18n.t("Nazwisko")}
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.lastName}
+                      onChange={(e) => setProfileForm(prev => ({ ...prev, lastName: e.target.value }))}
+                      placeholder={i18n.t("Wprowadź nazwisko...")}
+                      className="w-full bg-base-100/60 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all text-sm text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-base-100/40 p-3.5 rounded-xl border border-white/5">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-content-muted uppercase tracking-wider block">
+                      {i18n.t("Nazwa konta / Login (username)")}
+                    </span>
+                    <span className="text-sm font-mono font-bold text-primary">
+                      @{selectedUser.username}
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/10 border-white/10 text-white cursor-pointer"
+                    onClick={() => {
+                      const newName = prompt('Podaj nową nazwę konta (username):', selectedUser.username);
+                      if (newName && newName.trim() && newName.trim() !== selectedUser.username) {
+                        const trimmedName = newName.trim();
+                        const userRef = doc(db, 'users', selectedUser.id);
+                        updateDoc(userRef, { username: trimmedName }).then(() => {
+                          const updated = { ...selectedUser, username: trimmedName };
+                          setSelectedUser(updated);
+                          setUsers(users.map(u => u.id === updated.id ? updated : u));
+                          showToast('Nazwa konta została zaktualizowana.');
+                        }).catch(err => alert('Błąd: ' + err.message));
+                      }
+                    }}
+                  >
+                    <Edit2 size={13} />
+                    {i18n.t("Zmień login")}
+                  </Button>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-content-muted mb-1 flex items-center justify-between">
-                  <span>{i18n.t("Adres e-mail kursanta")}</span>
-                  {profileForm.email && !profileForm.email.includes('@student.vocabboost.com') && profileForm.email.includes('@') ? (
-                    <span className="text-xs text-primary flex items-center gap-1 font-semibold">
+              {/* CARD 2: KOMUNIKACJA I MAILING */}
+              <div className="bg-base-200/50 border border-white/10 rounded-2xl p-5 md:p-6 space-y-4 shadow-sm backdrop-blur-sm">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                      <Mail size={16} />
+                    </span>
+                    <h4 className="font-bold text-white text-base">{i18n.t("Komunikacja i powiadomienia e-mail (Mailing)")}</h4>
+                  </div>
+                  {profileForm.email && !profileForm.email.includes('@student.vocabboost.com') && profileForm.email.includes('@') && profileForm.email.includes('.') ? (
+                    <span className="text-xs text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full flex items-center gap-1 font-semibold">
                       ✓ {i18n.t("Dostarczalny (Resend)")}
                     </span>
                   ) : (
-                    <span className="text-xs text-warn flex items-center gap-1 font-semibold">
+                    <span className="text-xs text-warn bg-warn/10 border border-warn/20 px-2.5 py-1 rounded-full flex items-center gap-1 font-semibold">
                       ⚠ {i18n.t("Zastępczy / brak wysyłki")}
                     </span>
                   )}
-                </label>
-                <input
-                  type="email"
-                  value={profileForm.email}
-                  onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder={i18n.t("np. kursant@gmail.com")}
-                  className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 transition-colors font-mono text-sm"
-                />
-                <p className="text-xs text-content-muted mt-1">
-                  {i18n.t("Adres zsynchronizowany z Notion lub wprowadzony ręcznie. Zmiana adresu zaktualizuje profil kursanta w bazie, konto logowania Firebase Auth oraz umożliwi wysyłkę powiadomień przez Resend.")}
-                </p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Poziom zaawansowania")}</label>
-                <select
-                  value={profileForm.level}
-                  onChange={(e) => {
-                    setProfileForm(prev => ({ ...prev, level: e.target.value }));
-                  }}
-                  className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 text-white appearance-none cursor-pointer transition-colors"
-                >
-                  <option value="">{i18n.t("Wybierz poziom...")}</option>
-                  <option value="A1">{i18n.t("A1")}</option>
-                  <option value="A2">{i18n.t("A2")}</option>
-                  <option value="A2/B1">{i18n.t("A2/B1")}</option>
-                  <option value="B1">{i18n.t("B1")}</option>
-                  <option value="B1/B2">{i18n.t("B1/B2")}</option>
-                  <option value="B2">{i18n.t("B2")}</option>
-                  <option value="B2/C1">{i18n.t("B2/C1")}</option>
-                  <option value="C1">{i18n.t("C1")}</option>
-                  <option value="C2">{i18n.t("C2")}</option>
-                </select>
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Opis kursanta (wykorzystywany przez AI)")}</label>
-                
-            <textarea
-                  value={profileForm.description}
-                  onChange={(e) => setProfileForm(prev => ({ ...prev, description: e.target.value }))}
-                  
-                  placeholder={i18n.t("Zainteresowania, słabe strony, cele nauki...")}
-                  rows={6}
-                  className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 resize-y transition-colors"
-                />
-                <p className="text-xs text-content-muted mt-2">
-                  
-                                                                            {i18n.t("Ten opis będzie wysyłany do sztucznej inteligencji jako dodatkowy kontekst podczas generowania zadań domowych, aby lepiej dopasować je do kursanta.")}
-                                                                          </p>
-              </div>
+                <div>
+                  <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-1.5">
+                    {i18n.t("Adres e-mail kursanta")}
+                  </label>
+                  <input
+                    type="email"
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder={i18n.t("np. kursant@gmail.com")}
+                    className="w-full bg-base-100/60 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all font-mono text-sm text-white"
+                  />
+                  <p className="text-xs text-content-muted mt-1.5">
+                    {i18n.t("Adres wykorzystywany do wysyłki prac domowych i ogłoszeń przez Resend API oraz do logowania konta.")}
+                  </p>
+                </div>
 
-              <div>
-                <label className="block text-sm font-bold text-content-muted mb-1">{i18n.t("Spersonalizowany Prompt dla AI")}</label>
-                <textarea
-                  value={profileForm.aiPrompt}
-                  onChange={(e) => setProfileForm(prev => ({ ...prev, aiPrompt: e.target.value }))}
-                  
-                  placeholder={i18n.t("Tutaj wpisz przykładowe zdania, wzornictwo, specyficzne polecenia i żelazne zasady dla tego kursanta...")}
-                  rows={4}
-                  className="w-full bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-2.5 outline-none focus:border-primary/50 resize-y font-mono text-sm transition-colors"
-                />
-                <p className="text-xs text-content-muted mt-2">
-                  
-                                                                            {i18n.t("To pole służy do ustawienia żelaznych zasad dla AI. Będzie one absolutnie priorytetowe dla sztucznej inteligencji podczas generowania zdań lub testów.")}
-                                                                          </p>
-              </div>
-
-              <div className="pt-4 border-t border-white/10 flex justify-end">
-                <Button onClick={() => handleSaveProfile()} isLoading={isSavingProfile}>
-                  
-                                                                            {i18n.t("Zapisz profil")}
-                                                                          </Button>
-              </div>
-              
-              {currentUser?.role === 'admin' && (
-<div className="mt-8 pt-6 border-t border-white/10">
-                  <h3 className="text-lg font-bold mb-4">{i18n.t("Ustawienia konta")}</h3>
-                  
-                  <div className="space-y-6">
-                    <div>
-                      <span className="text-sm font-bold text-content-muted block mb-2">{i18n.t("Uprawnienia:")}</span>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => handleRoleChange('user')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${selectedUser.role === 'user' ? 'bg-primary text-accent-ink border-transparent' : 'bg-base-200 text-content-muted hover:bg-primary/80 hover:text-white border border-white/10'}`}
-                        >
-                          {i18n.t("Kursant (User)")}
-                        </button>
-                        <button
-                          onClick={() => handleRoleChange('admin')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${selectedUser.role === 'admin' ? 'bg-danger text-white border-transparent' : 'bg-base-200 text-content-muted hover:bg-base-200/80 hover:text-white border border-white/10'}`}
-                        >
-                          {i18n.t("Admin")}
-                        </button>
-                        <button
-                          onClick={() => handleRoleChange('teacher')}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-all ${selectedUser.role === 'teacher' ? 'bg-primary text-accent-ink border-transparent' : 'bg-base-200 text-content-muted hover:bg-primary/80 hover:text-white border border-white/10'}`}
-                        >
-                          {i18n.t("Nauczyciel")}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-bold text-content-muted">{i18n.t("Podgląd modeli AI i AI Live Monitor:")}</span>
-                        <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${selectedUser.showAiMonitor || selectedUser.canViewAiMonitor ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-base-300 text-content-muted'}`}>
-                          {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor ? 'Włączony dla tego profilu' : 'Domyślnie ukryty'}
+                {/* Mailing subscription toggle */}
+                <div className="p-4 rounded-xl bg-base-100/40 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="text-sm font-semibold text-white flex items-center gap-2">
+                      {profileForm.emailNotificationsDisabled ? (
+                        <span className="text-warn flex items-center gap-1.5">
+                          <BellOff size={16} />
+                          {i18n.t("Mailing wyłączony (wypisany)")}
                         </span>
-                      </div>
-                      <div className="p-3.5 rounded-xl bg-base-200/60 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                        <div className="space-y-0.5">
-                          <span className="text-sm font-semibold text-white block">
-                            {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor 
-                              ? 'Widoczność modeli AI (OpenAI/Gemini) & Live Monitor' 
-                              : 'Ukryj modele AI przed kursantem (Domyślne)'}
-                          </span>
-                          <p className="text-xs text-content-muted">
-                            {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor
-                              ? 'Ten kursant ma uprawnienie do podglądu nazw modeli AI w zapytaniach oraz włączania Live Monitora.'
-                              : 'Domyślnie kursant nie widzi do jakich modeli wysyłane są zapytania (OpenAI/Gemini) w żadnym panelu.'}
-                          </p>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className={selectedUser.showAiMonitor || selectedUser.canViewAiMonitor ? "bg-primary/20 text-primary hover:bg-primary/30 border border-primary/40 shrink-0" : "bg-base-300 text-content-muted hover:text-white shrink-0"}
-                          onClick={() => {
-                            const currentVal = Boolean(selectedUser.showAiMonitor || selectedUser.canViewAiMonitor);
-                            const newStatus = !currentVal;
-                            const userRef = doc(db, 'users', selectedUser.id);
-                            updateDoc(userRef, { showAiMonitor: newStatus, canViewAiMonitor: newStatus }).then(() => {
-                              const updated = { ...selectedUser, showAiMonitor: newStatus, canViewAiMonitor: newStatus };
-                              setSelectedUser(updated);
-                              setUsers(users.map(u => u.id === updated.id ? updated : u));
-                              showToast(newStatus ? 'Włączono podgląd modeli AI i Live Monitor dla tego kursanta.' : 'Ukryto modele AI i wyłączono monitor dla tego kursanta.');
-                            }).catch(err => alert('Błąd: ' + err.message));
-                          }}
-                        >
-                          {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor ? '✅ Podgląd AI: WŁĄCZONY' : '🔒 Podgląd AI: WYŁĄCZONY'}
-                        </Button>
-                      </div>
+                      ) : (
+                        <span className="text-primary flex items-center gap-1.5">
+                          <Bell size={16} />
+                          {i18n.t("Powiadomienia i mailing aktywne")}
+                        </span>
+                      )}
+                    </span>
+                    <p className="text-xs text-content-muted max-w-lg">
+                      {profileForm.emailNotificationsDisabled 
+                        ? i18n.t("Kursant nie będzie otrzymywał automatycznych e-maili z pracami domowymi ani wiadomości z modułu Mailing.")
+                        : i18n.t("Kursant może otrzymywać powiadomienia o nowych zadaniach domowych i wiadomości e-mail z modułu Mailing.")}
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className={`shrink-0 cursor-pointer font-semibold ${
+                      profileForm.emailNotificationsDisabled 
+                        ? 'bg-warn/15 text-warn hover:bg-warn/25 border-warn/30' 
+                        : 'bg-primary/15 text-primary hover:bg-primary/25 border-primary/30'
+                    }`}
+                    onClick={() => {
+                      setProfileForm(prev => ({
+                        ...prev,
+                        emailNotificationsDisabled: !prev.emailNotificationsDisabled
+                      }));
+                    }}
+                  >
+                    {profileForm.emailNotificationsDisabled ? (
+                      <>
+                        <Bell size={14} className="mr-1" />
+                        {i18n.t("Włącz powiadomienia")}
+                      </>
+                    ) : (
+                      <>
+                        <BellOff size={14} className="mr-1" />
+                        {i18n.t("Wyłącz powiadomienia")}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* CARD 3: POZIOM CEFR & KONFIGURACJA AI */}
+              <div className="bg-base-200/50 border border-white/10 rounded-2xl p-5 md:p-6 space-y-4 shadow-sm backdrop-blur-sm">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                      <Sparkles size={16} />
+                    </span>
+                    <h4 className="font-bold text-white text-base">{i18n.t("Poziom zaawansowania i konfiguracja AI")}</h4>
+                  </div>
+                  {profileForm.level && (
+                    <span className="px-2.5 py-1 bg-primary/10 text-primary border border-primary/30 rounded-lg text-xs font-mono font-bold">
+                      {profileForm.level}
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-1.5">
+                    {i18n.t("Poziom biegłości językowej (CEFR)")}
+                  </label>
+                  <select
+                    value={profileForm.level}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, level: e.target.value }))}
+                    className="w-full bg-base-100/60 border border-white/10 rounded-xl px-3.5 py-2.5 outline-none focus:border-primary text-white cursor-pointer transition-colors text-sm"
+                  >
+                    <option value="">{i18n.t("Brak wybranego poziomu")}</option>
+                    <option value="A1">A1 — Początkujący</option>
+                    <option value="A2">A2 — Podstawowy</option>
+                    <option value="A2/B1">A2/B1 — Średniozaawansowany niższy</option>
+                    <option value="B1">B1 — Średniozaawansowany</option>
+                    <option value="B1/B2">B1/B2 — Średniozaawansowany wyższy</option>
+                    <option value="B2">B2 — Wyższy średniozaawansowany</option>
+                    <option value="B2/C1">B2/C1 — Zaawansowany niższy</option>
+                    <option value="C1">C1 — Zaawansowany</option>
+                    <option value="C2">C2 — Biegły / Profesjonalny</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-1.5">
+                    {i18n.t("Opis profilu kursanta (kontekst dla modeli AI)")}
+                  </label>
+                  <textarea
+                    value={profileForm.description}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder={i18n.t("Zainteresowania, branża, cele językowe, trudności gramatyczne...")}
+                    rows={4}
+                    className="w-full bg-base-100/60 border border-white/10 rounded-xl p-3 outline-none focus:border-primary resize-y transition-colors text-sm text-white"
+                  />
+                  <p className="text-xs text-content-muted mt-1.5">
+                    {i18n.t("AI uwzględnia ten opis podczas generowania zadań domowych, fiszek i scenariuszy lekcji.")}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-1.5">
+                    {i18n.t("Żelazne reguły i prompt dla AI (absolutny priorytet)")}
+                  </label>
+                  <textarea
+                    value={profileForm.aiPrompt}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, aiPrompt: e.target.value }))}
+                    placeholder={i18n.t("Wpisz specyficzne zasady, wzornictwo lub słownictwo, którego AI ma ściśle przestrzegać...")}
+                    rows={3}
+                    className="w-full bg-base-100/60 border border-white/10 rounded-xl p-3 outline-none focus:border-primary resize-y font-mono text-sm text-white transition-colors"
+                  />
+                  <p className="text-xs text-content-muted mt-1.5">
+                    {i18n.t("Reguły te nadpisują domyślne zachowanie asystenta AI przy generowaniu ćwiczeń dla tego ucznia.")}
+                  </p>
+                </div>
+              </div>
+
+              {/* CARD 4: INTEGRACJA NOTION & METRYKI AKTYWNOŚCI */}
+              <div className="bg-base-200/50 border border-white/10 rounded-2xl p-5 md:p-6 space-y-4 shadow-sm backdrop-blur-sm">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                      <RefreshCw size={16} />
+                    </span>
+                    <h4 className="font-bold text-white text-base">{i18n.t("Integracja Notion & Aktywność")}</h4>
+                  </div>
+                  <span className="text-xs text-content-muted">
+                    Baza Notion
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-base-100/40 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-sm font-semibold text-white flex items-center gap-2">
+                      <RefreshCw size={15} className="text-primary" />
+                      {i18n.t("Synchronizacja lekcji i 4 bloków")}
+                    </span>
+                    <p className="text-xs text-content-muted max-w-md">
+                      {i18n.t("Pobierz nowe lekcje lub zaktualizuj istniejące wpisy bezpośrednio z powiązanej bazy Notion kursanta.")}
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="bg-primary/15 text-primary hover:bg-primary/25 border-primary/30 flex items-center gap-2 shrink-0 cursor-pointer font-semibold"
+                    onClick={() => setShowStudentNotionSyncModal(true)}
+                  >
+                    <RefreshCw size={14} />
+                    {i18n.t("Pobierz / Zaktualizuj z Notion")}
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                  <div className="p-3.5 rounded-xl bg-base-100/40 border border-white/5 text-center">
+                    <div className="text-xs text-content-muted uppercase tracking-wider mb-1 font-mono">
+                      {i18n.t("Liczba wizyt")}
                     </div>
-                    
-                    <div>
-                      <span className="text-sm font-bold text-content-muted block mb-2">{i18n.t("Zarządzanie kontem:")}</span>
-                      <div className="flex flex-wrap gap-2">
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
-                          onClick={() => {
-                            const newName = prompt('Podaj nową nazwę (username):', selectedUser.username);
-                            if (newName && newName !== selectedUser.username) {
-                              const userRef = doc(db, 'users', selectedUser.id);
-                              updateDoc(userRef, { username: newName }).then(() => {
-                                const updated = { ...selectedUser, username: newName };
-                                setSelectedUser(updated);
-                                setUsers(users.map(u => u.id === updated.id ? updated : u));
-                                showToast('Zmiana nazwy konta została zapisana.');
-                              }).catch(err => alert('Błąd: ' + err.message));
-                            }
-                          }}
-                        >
-                          
-                                                                                                    {i18n.t("Zmień nazwę konta")}
-                                                                                                  </Button>
-                        
-                        <Button 
-                          variant="secondary" 
-                          size="sm"
-                          onClick={() => {
-                            setNewPasswordForUser('');
-                            setChangePasswordError('');
-                            setShowChangePasswordModal(true);
-                          }}
-                        >
-                          
-                                                                                                    {i18n.t("Zmień hasło")}
-                                                                                                  </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            setMessageTitle('Wiadomość od nauczyciela');
-                            setMessageText('');
-                            setShowMessageModal(true);
-                          }}
-                        >
-                          Wyślij wiadomość
-                        </Button>
-                        {selectedUser?.tempPassword && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="bg-primary/10 text-primary border-transparent hover:bg-primary/20"
-                            onClick={() => {
-                              navigator.clipboard.writeText(selectedUser.tempPassword || '');
-                              showToast('Hasło zostało skopiowane.');
-                            }}
-                          >
-                            
-                                                                                                          {i18n.t("📋 Skopiuj aktualne hasło")}
-                                                                                                        </Button>
-                        )}
-
-                        
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className={selectedUser.onboardingCompleted ? "bg-primary/20 text-primary border-transparent" : "bg-base-300 text-content-muted"}
-                          onClick={() => {
-                            const newStatus = !selectedUser.onboardingCompleted;
-                            const userRef = doc(db, 'users', selectedUser.id);
-                            updateDoc(userRef, { onboardingCompleted: newStatus }).then(() => {
-                              const updated = { ...selectedUser, onboardingCompleted: newStatus };
-                              setSelectedUser(updated);
-                              setUsers(users.map(u => u.id === updated.id ? updated : u));
-                              showToast(newStatus ? 'Onboarding oznaczony jako ukończony.' : 'Onboarding zresetowany (pojawi się ponownie).');
-                            }).catch(err => alert('Błąd: ' + err.message));
-                          }}
-                        >
-                          {selectedUser.onboardingCompleted ? '✅ Onboarding: Zrobiony' : '⬛ Onboarding: Brak'}
-                        </Button>
-
-                        <Button 
-                          variant="secondary" 
-                          size="sm"
-                          className={selectedUser.isSuspended ? "bg-primary/20 text-primary hover:bg-primary/30 border-transparent" : "bg-warn/20 text-warn hover:bg-warn/30 border-transparent"}
-                          onClick={() => {
-                            const newSuspended = !selectedUser.isSuspended;
-                            const userRef = doc(db, 'users', selectedUser.id);
-                            updateDoc(userRef, { isSuspended: newSuspended }).then(() => {
-                              const updated = { ...selectedUser, isSuspended: newSuspended };
-                              setSelectedUser(updated);
-                              setUsers(users.map(u => u.id === updated.id ? updated : u));
-                            }).catch(err => alert('Błąd: ' + err.message));
-                          }}
-                        >
-                          {selectedUser.isSuspended ? 'Odwieś konto' : 'Zawieś konto'}
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className={selectedUser.isArchived ? "bg-primary/20 text-primary hover:bg-primary/30 border-transparent" : "bg-base-100/60 text-content hover:bg-base-100 border-transparent"}
-                          onClick={() => {
-                            // Archiwum zamyka współpracę, ale niczego nie kasuje:
-                            // historia lekcji i wyniki zostają, gdyby kursant wrócił.
-                            const archived = !selectedUser.isArchived;
-                            const userRef = doc(db, 'users', selectedUser.id);
-                            updateDoc(userRef, {
-                              isArchived: archived,
-                              archivedAt: archived ? new Date().toISOString() : null,
-                            }).then(() => {
-                              const updated = { ...selectedUser, isArchived: archived };
-                              setSelectedUser(updated);
-                              setUsers(users.map(u => u.id === updated.id ? updated : u));
-                              showToast(archived ? 'Przeniesiono do archiwum.' : 'Przywrócono z archiwum.');
-                            }).catch(err => alert('Błąd: ' + err.message));
-                          }}
-                        >
-                          {selectedUser.isArchived ? 'Przywróć z archiwum' : 'Przenieś do archiwum'}
-                        </Button>
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
-                          className="bg-danger/20 text-danger hover:bg-danger/30 border-transparent"
-                          onClick={() => {
-                            if (confirm('Czy na pewno chcesz usunąć to konto? Tej operacji nie można cofnąć.')) {
-                              handleDeleteUser(selectedUser.id);
-                            }
-                          }}
-                        >
-                          
-                                                                                                    {i18n.t("Skasuj konto")}
-                                                                                                  </Button>
-                      </div>
+                    <div className="text-2xl font-bold text-white">
+                      {selectedUser.loginCount || 0}
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-base-100/40 border border-white/5 text-center">
+                    <div className="text-xs text-content-muted uppercase tracking-wider mb-1 font-mono">
+                      {i18n.t("Lekcje w bazie")}
+                    </div>
+                    <div className="text-2xl font-bold text-primary">
+                      {lessonRecords.length}
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-base-100/40 border border-white/5 text-center">
+                    <div className="text-xs text-content-muted uppercase tracking-wider mb-1 font-mono">
+                      {i18n.t("Ostatnia aktywność")}
+                    </div>
+                    <div className="text-xs font-mono text-white mt-1.5 truncate">
+                      {selectedUser.lastLoginDate ? new Date(selectedUser.lastLoginDate).toLocaleDateString('pl-PL') : i18n.t('Brak danych')}
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* CARD 5: UPRAWNIENIA I ZARZĄDZANIE KONTEM */}
+              <div className="bg-base-200/50 border border-white/10 rounded-2xl p-5 md:p-6 space-y-4 shadow-sm backdrop-blur-sm">
+                <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                      <Shield size={16} />
+                    </span>
+                    <h4 className="font-bold text-white text-base">{i18n.t("Uprawnienia i zarządzanie kontem")}</h4>
+                  </div>
+                </div>
+
+                {/* Role Switcher */}
+                <div>
+                  <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-2">
+                    {i18n.t("Rola w systemie:")}
+                  </label>
+                  <div className="flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileForm(prev => ({ ...prev, role: 'user' }));
+                        handleRoleChange('user');
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                        (profileForm.role || selectedUser.role) === 'user' 
+                          ? 'bg-primary text-accent-ink shadow-md scale-[1.02]' 
+                          : 'bg-base-100/60 text-content-muted hover:text-white border border-white/10'
+                      }`}
+                    >
+                      <UserIcon size={14} />
+                      {i18n.t("Kursant (User)")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileForm(prev => ({ ...prev, role: 'teacher' }));
+                        handleRoleChange('teacher');
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                        (profileForm.role || selectedUser.role) === 'teacher' 
+                          ? 'bg-blue-500 text-white shadow-md scale-[1.02]' 
+                          : 'bg-base-100/60 text-content-muted hover:text-white border border-white/10'
+                      }`}
+                    >
+                      <Sparkles size={14} />
+                      {i18n.t("Nauczyciel (Teacher)")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileForm(prev => ({ ...prev, role: 'admin' }));
+                        handleRoleChange('admin');
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                        (profileForm.role || selectedUser.role) === 'admin' 
+                          ? 'bg-danger text-white shadow-md scale-[1.02]' 
+                          : 'bg-base-100/60 text-content-muted hover:text-white border border-white/10'
+                      }`}
+                    >
+                      <Shield size={14} />
+                      {i18n.t("Administrator (Admin)")}
+                    </button>
+                  </div>
+                </div>
+
+                {/* AI Live Monitor Setting */}
+                <div className="p-3.5 rounded-xl bg-base-100/40 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-sm font-semibold text-white block">
+                      {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor 
+                        ? i18n.t("Widoczność modeli AI & Live Monitor: Włączone") 
+                        : i18n.t("Widoczność modeli AI: Ukryte przed kursantem (domyślne)")}
+                    </span>
+                    <p className="text-xs text-content-muted">
+                      {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor
+                        ? i18n.t("Uczeń może podejrzeć nazwy modeli AI (OpenAI/Gemini) i logi zapytań.")
+                        : i18n.t("Domyślnie uczeń nie widzi nazw modeli AI ani zapytań technicznych.")}
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className={selectedUser.showAiMonitor || selectedUser.canViewAiMonitor ? "bg-primary/20 text-primary hover:bg-primary/30 border border-primary/40 shrink-0 cursor-pointer" : "bg-base-300 text-content-muted hover:text-white shrink-0 cursor-pointer"}
+                    onClick={() => {
+                      const currentVal = Boolean(selectedUser.showAiMonitor || selectedUser.canViewAiMonitor);
+                      const newStatus = !currentVal;
+                      const userRef = doc(db, 'users', selectedUser.id);
+                      updateDoc(userRef, { showAiMonitor: newStatus, canViewAiMonitor: newStatus }).then(() => {
+                        const updated = { ...selectedUser, showAiMonitor: newStatus, canViewAiMonitor: newStatus };
+                        setSelectedUser(updated);
+                        setUsers(users.map(u => u.id === updated.id ? updated : u));
+                        showToast(newStatus ? 'Włączono podgląd modeli AI i Live Monitor dla tego kursanta.' : 'Ukryto modele AI i wyłączono monitor dla tego kursanta.');
+                      }).catch(err => alert('Błąd: ' + err.message));
+                    }}
+                  >
+                    <Eye size={14} className="mr-1.5" />
+                    {selectedUser.showAiMonitor || selectedUser.canViewAiMonitor ? i18n.t("Podgląd AI: Włączony") : i18n.t("Podgląd AI: Wyłączony")}
+                  </Button>
+                </div>
+
+                {/* Account Actions Grid */}
+                <div>
+                  <label className="block text-xs font-bold text-content-muted uppercase tracking-wider mb-2">
+                    {i18n.t("Akcje i zabezpieczenia konta:")}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      variant="secondary" 
+                      size="sm"
+                      className="cursor-pointer text-xs"
+                      onClick={() => {
+                        setNewPasswordForUser('');
+                        setChangePasswordError('');
+                        setShowChangePasswordModal(true);
+                      }}
+                    >
+                      <Key size={13} className="mr-1" />
+                      {i18n.t("Zmień hasło")}
+                    </Button>
+
+                    {selectedUser?.tempPassword && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 cursor-pointer text-xs"
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedUser.tempPassword || '');
+                          showToast('Hasło zostało skopiowane do schowka.');
+                        }}
+                      >
+                        <Copy size={13} className="mr-1" />
+                        {i18n.t("Skopiuj aktualne hasło")}
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="cursor-pointer text-xs"
+                      onClick={() => {
+                        setMessageTitle('Wiadomość od nauczyciela');
+                        setMessageText('');
+                        setShowMessageModal(true);
+                      }}
+                    >
+                      <Send size={13} className="mr-1" />
+                      {i18n.t("Wyślij wiadomość")}
+                    </Button>
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className={`cursor-pointer text-xs ${selectedUser.onboardingCompleted ? "bg-primary/15 text-primary border-primary/30" : "bg-base-100/60 text-content-muted"}`}
+                      onClick={() => {
+                        const newStatus = !selectedUser.onboardingCompleted;
+                        const userRef = doc(db, 'users', selectedUser.id);
+                        updateDoc(userRef, { onboardingCompleted: newStatus }).then(() => {
+                          const updated = { ...selectedUser, onboardingCompleted: newStatus };
+                          setSelectedUser(updated);
+                          setUsers(users.map(u => u.id === updated.id ? updated : u));
+                          showToast(newStatus ? 'Onboarding oznaczony jako ukończony.' : 'Onboarding zresetowany.');
+                        }).catch(err => alert('Błąd: ' + err.message));
+                      }}
+                    >
+                      {selectedUser.onboardingCompleted ? (
+                        <>
+                          <CheckSquare size={13} className="mr-1" />
+                          {i18n.t("Onboarding: Ukończony")}
+                        </>
+                      ) : (
+                        <>
+                          <Square size={13} className="mr-1" />
+                          {i18n.t("Onboarding: Do zrobienia")}
+                        </>
+                      )}
+                    </Button>
+
+                    <Button 
+                      variant="secondary" 
+                      size="sm"
+                      className={`cursor-pointer text-xs ${selectedUser.isSuspended ? "bg-primary/20 text-primary hover:bg-primary/30 border-transparent" : "bg-warn/20 text-warn hover:bg-warn/30 border-transparent"}`}
+                      onClick={() => {
+                        const newSuspended = !selectedUser.isSuspended;
+                        const userRef = doc(db, 'users', selectedUser.id);
+                        updateDoc(userRef, { isSuspended: newSuspended }).then(() => {
+                          const updated = { ...selectedUser, isSuspended: newSuspended };
+                          setSelectedUser(updated);
+                          setUsers(users.map(u => u.id === updated.id ? updated : u));
+                          showToast(newSuspended ? 'Konto zostało zawieszone.' : 'Konto zostało odwieszone.');
+                        }).catch(err => alert('Błąd: ' + err.message));
+                      }}
+                    >
+                      <Lock size={13} className="mr-1" />
+                      {selectedUser.isSuspended ? i18n.t("Odwieś konto") : i18n.t("Zawieś konto")}
+                    </Button>
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className={`cursor-pointer text-xs ${selectedUser.isArchived ? "bg-primary/20 text-primary hover:bg-primary/30 border-transparent" : "bg-base-100/60 text-content hover:bg-base-100 border-white/10"}`}
+                      onClick={() => {
+                        const archived = !selectedUser.isArchived;
+                        const userRef = doc(db, 'users', selectedUser.id);
+                        updateDoc(userRef, {
+                          isArchived: archived,
+                          archivedAt: archived ? new Date().toISOString() : null,
+                        }).then(() => {
+                          const updated = { ...selectedUser, isArchived: archived };
+                          setSelectedUser(updated);
+                          setUsers(users.map(u => u.id === updated.id ? updated : u));
+                          showToast(archived ? 'Przeniesiono do archiwum.' : 'Przywrócono z archiwum.');
+                        }).catch(err => alert('Błąd: ' + err.message));
+                      }}
+                    >
+                      <Archive size={13} className="mr-1" />
+                      {selectedUser.isArchived ? i18n.t("Przywróć z archiwum") : i18n.t("Przenieś do archiwum")}
+                    </Button>
+
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="bg-danger/20 text-danger hover:bg-danger/30 border-danger/30 cursor-pointer text-xs"
+                      onClick={() => {
+                        if (confirm('Czy na pewno chcesz usunąć to konto? Tej operacji nie można cofnąć.')) {
+                          handleDeleteUser(selectedUser.id);
+                        }
+                      }}
+                    >
+                      <Trash2 size={13} className="mr-1" />
+                      {i18n.t("Skasuj konto")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* BOTTOM SAVE BAR */}
+              <div className="pt-2 flex justify-end">
+                <Button 
+                  onClick={() => handleSaveProfile()} 
+                  isLoading={isSavingProfile}
+                  className="bg-primary text-accent-ink hover:brightness-110 font-bold px-6 py-3 rounded-xl shadow-btn flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <Save size={18} />
+                  {i18n.t("Zapisz wszystkie zmiany w profilu")}
+                </Button>
+              </div>
             </div>
           )}
         </div>
+      </div>
+    )}
 
       {showSpecialTaskModal && selectedUser && (
         <TeacherSpecialTaskModal
