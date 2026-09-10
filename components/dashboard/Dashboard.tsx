@@ -48,6 +48,7 @@ import AdminDebuggingScreen from '../admin/AdminDebuggingScreen';
 import OnboardingOverlay from './OnboardingOverlay';
 import TeacherHomeworkNotification from './TeacherHomeworkNotification';
 import StudentHomeworkGradedModal from './StudentHomeworkGradedModal';
+import PasswordChangeSuggestion from './PasswordChangeSuggestion';
 import { createPresentationFromScenario, savePresentationToStorage } from '../../services/presentationService';
 
 const Dashboard: React.FC = () => {
@@ -139,15 +140,20 @@ const Dashboard: React.FC = () => {
 
   const [isExerciseActive, setIsExerciseActive] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [passwordSuggestionDismissed, setPasswordSuggestionDismissed] = useState(false);
 
   useEffect(() => {
     if (isTeacher || !user) return;
     if (user.onboardingCompleted) return;
-    try {
-      if (localStorage.getItem('has_seen_onboarding') === 'true') return;
-    } catch (e) {}
+    // Obowiązkowy onboarding po pierwszym logowaniu kursanta
     setShowOnboarding(true);
   }, [user?.id, user?.onboardingCompleted, isTeacher]);
+
+  const showPasswordSuggestion = !isTeacher && 
+    Boolean(user?.requirePasswordChange || user?.tempPassword) && 
+    !user?.passwordChangeDismissed &&
+    !passwordSuggestionDismissed &&
+    (typeof window !== 'undefined' ? localStorage.getItem(`password_change_dismissed_${user?.id}`) !== 'true' : true);
 
 
 
@@ -562,6 +568,11 @@ const Dashboard: React.FC = () => {
       />
       <main className="flex-1 overflow-y-auto overflow-x-hidden relative min-w-0">
         <StudentNotifications onNavigate={(newView) => handleNavigate(newView)} currentView={view} />
+        {showPasswordSuggestion && (
+          <div className="px-4 pt-4 max-w-5xl mx-auto w-full">
+            <PasswordChangeSuggestion onClose={() => setPasswordSuggestionDismissed(true)} />
+          </div>
+        )}
         {isTeacher && (
           <TeacherHomeworkNotification
             onOpenHomework={(taskId) =>

@@ -47,7 +47,31 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 
 ## 3. Szczegółowy Rejestr Zmian z Ostatnich 24 Godzin
 
-### Nowość: Bezpośrednie Linki do Prac Domowych z E-maila (Bez Logowania)
+### Nowość: Draft E-maila Powitalnego, Sugestia Zmiany Hasła, Logowanie Google & Nowy Onboarding
+- **Draft e-maila powitalnego i zapraszającego do aplikacji (`welcome_invite`)**:
+  - Utworzono szablon e-maila powitalnego `welcome_invite` w `AdminMailingScreen.tsx` oraz dedykowaną funkcję `buildWelcomeEmail()` w `services/homeworkEmail.ts`.
+  - Zawiera spersonalizowane powitanie w wołaczu (`formatPolishGreeting`), wygenerowany login (`username`), hasło tymczasowe (`tempPassword`), bezpośredni przycisk CTA do logowania w aplikacji, wykaz kluczowych modułów oraz oficjalną wizytówkę lektora w stopce.
+  - **Ujednolicenie stylistyki wszystkich e-maili**: Wszystkie szablony (`welcome_invite`, `homework_new`, `homework_reminder_24h`, `homework_graded`, `lesson_summary_vocab`) zostały sformatowane w jednolitej, ciemnej kolorystyce platformy CRIBRO (tło `#0f172a`, karty `#1e293b`, akcenty i przyciski w kolorze `#0d9488`, estetyczna stopka kontaktowa lektora).
+- **Sugestia zmiany hasła po pierwszym logowaniu (`PasswordChangeSuggestion.tsx`)**:
+  - Dedykowany, nieblokujący banner informacyjny wyświetlany kursantowi po pierwszym zalogowaniu przy użyciu hasła tymczasowego (`user.requirePasswordChange === true && !user.passwordChangeDismissed`).
+  - Oferuje 3 ścieżki: (1) Natychmiastowa zmiana hasła na własne (z walidacją powtórzenia hasła), (2) Połączenie profilu z kontem Google za pomocą 1 kliknięcia, (3) „Pomiń na razie”, co trwale zapisuje flagę `passwordChangeDismissed: true` w Firestore i nie narzuca przymusu.
+  - Zaktualizowano reguły bezpieczeństwa Firestore (`firestore.rules`) o pole `passwordChangeDismissed`.
+- **Łączenie konta z Google i logowanie przez Google**:
+  - Integracja metody `linkGoogleAccount()` z `AuthContext` na poziomie banneru sugestii oraz w `SettingsScreen.tsx`.
+  - Po pomyślnym powiązaniu konta z Google, system automatycznie usuwa hasło tymczasowe (`tempPassword: deleteField()`) i wyłącza flagę `requirePasswordChange`, umożliwiając późniejsze logowanie jednym kliknięciem przez Google.
+- **Rozbudowa i unowocześnienie Onboardingu (`OnboardingOverlay.tsx`)**:
+  - Przebudowa przewodnika na dynamiczną, 7-krokową ścieżkę oprowadzającą kursanta po kluczowych sekcjach aplikacji:
+    1. *Wprowadzenie i Panel Główny* (`tour-generator`)
+    2. *Prace Domowe i Zadania od Lektora* (`tour-homework`)
+    3. *Fiszki i Inteligentne Powtórki SRS* (`tour-flashcards`)
+    4. *Historia Lekcji i Format 4 Bloków Notion* (`tour-history`)
+    5. *Układanka i Tłumaczenie z Pamięci AI* (`tour-generator-header`)
+    6. *Personalizacja, Bezpieczeństwo i Konto Google* (`tour-nav-settings`)
+    7. *Przycisk Pomoc w Menu* (`tour-help-button`)
+  - **Ruchome dymki i spotlight**: Interaktywne ramki spotlightu nad wskazywanym elementem, płynne animacje `motion/react`, wskaźniki kroków oraz bogate mikro-repliki interfejsu (symulacja wpisywania, animowane klocki układanki, obracana fiszka z wymową fonetyczną).
+  - **Dostępność i wymóg**: Onboarding uruchamia się obowiązkowo po pierwszym zalogowaniu kursanta, a w menu bocznym (`Sidebar.tsx`) dostępny jest wyraźny przycisk **„Pomoc”** (`id="tour-help-button"`), który pozwala uruchomić przewodnik w dowolnym momencie.
+
+### Poprzedni etap: Bezpośrednie Linki do Prac Domowych z E-maila (Bez Logowania)
 - **Generowanie unikalnego linku i tokenu**:
   - Każda nowo utworzona i przypisana praca domowa (`HomeworkComposer.tsx`, `HomeworkEmailConfirmationModal.tsx`) otrzymuje kryptograficznie bezpieczny unikalny `accessToken` (prefiks `hw_...`) oraz 14-dniowy limit ważności (`accessExpiresAt`).
   - Generowany jest dedykowany adres URL `/hw?token={accessToken}` prowadzący bezpośrednio do materiału.

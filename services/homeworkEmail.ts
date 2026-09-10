@@ -250,3 +250,174 @@ export function buildHomeworkConfirmationEmail(params: HomeworkConfirmationEmail
     greeting,
   };
 }
+
+// ──────────────────────────────────────────────────────────────
+// Wspólny reusable blok: wizytówka lektora w stopce e-maili
+// ──────────────────────────────────────────────────────────────
+export const INSTRUCTOR_CARD_HTML = `
+  <div style="margin:28px 0 0;border:1.5px solid #334155;border-radius:12px;background:#0f172a;padding:20px 22px;text-align:left;">
+    <div style="font-size:18px;font-weight:800;color:#e2e8f0;line-height:1.25;letter-spacing:-0.01em;">
+      Maciej Wyrozumski
+    </div>
+    <div style="margin-top:4px;font-size:13px;font-weight:400;color:#94a3b8;line-height:1.4;">
+      Instructional Designer | AI EdTech Specialist | English Trainer
+    </div>
+    <div style="margin:14px 0 12px;border-top:1px solid #334155;height:0;line-height:0;font-size:0;">&nbsp;</div>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;">
+      <tr>
+        <td style="width:24px;vertical-align:middle;padding:4px 0;font-size:15px;line-height:1;">✉️</td>
+        <td style="vertical-align:middle;padding:4px 0 4px 8px;font-size:13.5px;">
+          <a href="mailto:wyrozumski@maciej.pro" style="color:#e2e8f0;text-decoration:none;font-weight:500;">wyrozumski@maciej.pro</a>
+        </td>
+      </tr>
+      <tr>
+        <td style="width:24px;vertical-align:middle;padding:4px 0;font-size:15px;line-height:1;">📞</td>
+        <td style="vertical-align:middle;padding:4px 0 4px 8px;font-size:13.5px;">
+          <a href="tel:+48698250507" style="color:#e2e8f0;text-decoration:none;font-weight:500;">+48 698 250 507</a>
+        </td>
+      </tr>
+      <tr>
+        <td style="width:24px;vertical-align:middle;padding:4px 0;font-size:15px;line-height:1;">🌐</td>
+        <td style="vertical-align:middle;padding:4px 0 4px 8px;font-size:13.5px;">
+          <a href="https://www.maciej.pro" target="_blank" rel="noopener noreferrer" style="color:#e2e8f0;text-decoration:none;font-weight:500;">www.maciej.pro</a>
+        </td>
+      </tr>
+      <tr>
+        <td style="width:24px;vertical-align:middle;padding:4px 0;font-size:15px;line-height:1;">🔗</td>
+        <td style="vertical-align:middle;padding:4px 0 4px 8px;font-size:13.5px;">
+          <a href="https://linkedin.com/in/maciej-pro" target="_blank" rel="noopener noreferrer" style="color:#e2e8f0;text-decoration:none;font-weight:500;">linkedin.com/in/maciej-pro</a>
+        </td>
+      </tr>
+    </table>
+  </div>
+`;
+
+// ──────────────────────────────────────────────────────────────
+// E-mail powitalny: zaproszenie do zalogowania się
+// ──────────────────────────────────────────────────────────────
+export interface WelcomeEmailParams {
+  studentName?: string;
+  username: string;
+  tempPassword: string;
+  appUrl?: string;
+  unsubscribeUrl?: string;
+}
+
+export function buildWelcomeEmail(params: WelcomeEmailParams): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const {
+    studentName,
+    username,
+    tempPassword,
+    appUrl = 'https://app.maciej.pro',
+    unsubscribeUrl,
+  } = params;
+
+  const greeting = formatPolishGreeting(studentName);
+  const subject = 'Witaj w CRIBRO ENGLISH — Twoje dane logowania';
+
+  const unsubscribeHtml = unsubscribeUrl
+    ? `<p style="margin:16px 0 0;color:#64748b;font-size:11px;line-height:1.5;text-align:center;">
+         Nie chcesz otrzymywać wiadomości?
+         <a href="${escapeHtml(unsubscribeUrl)}" style="color:#94a3b8;text-decoration:underline;">
+           Wypisz się z powiadomień e-mail
+         </a>
+       </p>`
+    : '';
+
+  const html = `<!doctype html>
+<html lang="pl">
+  <body style="margin:0;padding:24px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
+      <!-- Header Gradient Bar -->
+      <tr>
+        <td style="background:linear-gradient(90deg, #0d9488, #3b82f6);height:6px;font-size:0;line-height:0;">&nbsp;</td>
+      </tr>
+      <tr>
+        <td style="padding:32px 32px 28px;">
+          <div style="margin-bottom:20px;">
+            <p style="margin:0;font-size:12px;letter-spacing:0.14em;font-weight:800;text-transform:uppercase;color:#0d9488;">CRIBRO ENGLISH</p>
+            <span style="display:inline-block;margin-top:8px;font-size:11px;font-weight:600;background:rgba(13,148,136,0.15);color:#5eead4;border:1px solid rgba(13,148,136,0.3);padding:3px 10px;border-radius:999px;">🎓 WITAMY W ZESPOLE</span>
+          </div>
+
+          <h1 style="margin:0 0 14px;font-size:24px;line-height:1.3;color:#f1f5f9;font-weight:800;">
+            ${escapeHtml(greeting)}
+          </h1>
+
+          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.65;">
+            Twoje konto na platformie <strong style="color:#f1f5f9;">CRIBRO ENGLISH</strong> jest już aktywne! Poniżej znajdziesz dane logowania — zapamiętaj je lub zmień hasło po pierwszym zalogowaniu.
+          </p>
+
+          <!-- Dane logowania w karcie -->
+          <div style="margin:24px 0;background:#0f172a;border:1px solid #334155;border-radius:12px;padding:20px 20px;overflow:hidden;">
+            <p style="margin:0 0 12px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:#0d9488;">Twoje dane logowania</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:8px 0;color:#94a3b8;font-size:13px;border-bottom:1px solid #1e293b;width:100px;">Login</td>
+                <td style="padding:8px 0;color:#f1f5f9;font-size:15px;font-weight:700;font-family:'Courier New',monospace;border-bottom:1px solid #1e293b;text-align:right;">${escapeHtml(username)}</td>
+              </tr>
+              <tr>
+                <td style="padding:8px 0;color:#94a3b8;font-size:13px;width:100px;">Hasło</td>
+                <td style="padding:8px 0;color:#f1f5f9;font-size:15px;font-weight:700;font-family:'Courier New',monospace;text-align:right;">${escapeHtml(tempPassword)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="margin:0 0 4px;color:#94a3b8;font-size:13px;line-height:1.5;">
+            💡 Po zalogowaniu możesz zmienić hasło na własne lub powiązać konto z Google — wystarczy jedno kliknięcie.
+          </p>
+
+          <!-- CTA Button -->
+          <div style="margin:26px 0 0;text-align:center;">
+            <a href="${escapeHtml(appUrl)}"
+               style="display:inline-block;background:#0d9488;background:linear-gradient(135deg, #0d9488 0%, #0f766e 100%);color:#ffffff;text-decoration:none;
+                      padding:15px 36px;border-radius:12px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(13, 148, 136, 0.4);">
+              Zaloguj się do CRIBRO ENGLISH →
+            </a>
+          </div>
+
+          <!-- Co Cię czeka -->
+          <div style="margin:28px 0 0;background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.2);border-radius:12px;padding:16px 18px;">
+            <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#5eead4;text-transform:uppercase;letter-spacing:0.05em;">Co Cię czeka na platformie:</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:5px 0;color:#cbd5e1;font-size:13px;line-height:1.5;">📝 Interaktywne prace domowe z natychmiastową oceną</td></tr>
+              <tr><td style="padding:5px 0;color:#cbd5e1;font-size:13px;line-height:1.5;">🃏 Fiszki i system inteligentnych powtórek (SRS)</td></tr>
+              <tr><td style="padding:5px 0;color:#cbd5e1;font-size:13px;line-height:1.5;">📖 Historia lekcji z notatkami i słownictwem</td></tr>
+              <tr><td style="padding:5px 0;color:#cbd5e1;font-size:13px;line-height:1.5;">📊 Statystyki postępów i śledzenie rozwoju</td></tr>
+            </table>
+          </div>
+
+          <!-- Wizytówka lektora -->
+          ${INSTRUCTOR_CARD_HTML}
+
+          ${unsubscribeHtml}
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  const text = [
+    greeting,
+    '',
+    'Twoje konto na platformie CRIBRO ENGLISH jest gotowe!',
+    '',
+    `Login: ${username}`,
+    `Hasło: ${tempPassword}`,
+    '',
+    'Po zalogowaniu możesz zmienić hasło na własne lub powiązać konto z Google.',
+    '',
+    `Zaloguj się: ${appUrl}`,
+    unsubscribeUrl ? `\nWypisz się z powiadomień: ${unsubscribeUrl}` : null,
+    '',
+    '—',
+    'Maciej Wyrozumski',
+    'CRIBRO ENGLISH',
+  ].filter((line) => line !== null).join('\n');
+
+  return { subject, html, text };
+}
+

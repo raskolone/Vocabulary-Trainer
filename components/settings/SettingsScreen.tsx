@@ -1,5 +1,5 @@
 import { auth, db } from '../../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteField } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 
 import React, { useState } from 'react';
@@ -501,8 +501,17 @@ const SettingsScreen: React.FC = () => {
                                         setLinkError(null);
                                         try {
                                             await linkGoogleAccount();
+                                            if (user?.id) {
+                                                await updateDoc(doc(db, 'users', user.id), {
+                                                    requirePasswordChange: false,
+                                                    passwordChangeDismissed: true,
+                                                    tempPassword: deleteField(),
+                                                });
+                                            }
                                         } catch (err: any) {
-                                            setLinkError(err.message || 'Error linking account');
+                                            if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
+                                                setLinkError(err.message || 'Error linking account');
+                                            }
                                         } finally {
                                             setIsLinkingGoogle(false);
                                         }

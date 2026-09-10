@@ -550,10 +550,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
               </NavLink>
             </div>
           )}
-          <NavLink icon={<Settings size={20} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('settings')} isActive={currentView === 'settings'}>
+          <NavLink id="tour-nav-settings" icon={<Settings size={20} />} isCollapsed={isDesktopCollapsed} onClick={() => handleNavigate('settings')} isActive={currentView === 'settings'}>
               {language === 'pl' ? 'Ustawienia' : 'Settings'}
             </NavLink>
-            <NavLink icon={<HelpCircle size={20} />} isCollapsed={isDesktopCollapsed} onClick={() => onShowOnboarding && onShowOnboarding()} isActive={false}>
+            <NavLink id="tour-help-button" icon={<HelpCircle size={20} />} isCollapsed={isDesktopCollapsed} onClick={() => onShowOnboarding && onShowOnboarding()} isActive={false}>
               {language === 'pl' ? 'Pomoc' : 'Help'}
             </NavLink>
             <div className={`flex flex-col gap-2`}>

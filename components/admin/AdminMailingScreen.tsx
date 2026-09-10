@@ -41,6 +41,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useFirebaseAdminApi } from '../../hooks/useFirebaseAdminApi';
 import { formatTaskDateTime } from '../dashboard/HomeworkScreen';
 import { formatPolishGreeting } from '../../utils/polishVocative';
+import { buildWelcomeEmail, INSTRUCTOR_CARD_HTML } from '../../services/homeworkEmail';
 
 interface AdminMailingScreenProps {
   onBack?: () => void;
@@ -49,7 +50,7 @@ interface AdminMailingScreenProps {
 const TEMPLATES: Array<{
   id: string;
   name: string;
-  category: 'homework' | 'reminder' | 'feedback' | 'lesson';
+  category: 'homework' | 'reminder' | 'feedback' | 'lesson' | 'welcome';
   subject: string;
   description: string;
   status: 'active' | 'draft';
@@ -58,6 +59,42 @@ const TEMPLATES: Array<{
   renderHtml: (data: any) => string;
   renderText: (data: any) => string;
 }> = [
+  {
+    id: 'welcome_invite',
+    name: 'Wiadomość powitalna i zaproszenie do aplikacji',
+    category: 'welcome',
+    subject: 'Witaj w CRIBRO ENGLISH — Twoje dane logowania',
+    description: 'Szablon powitalny dla nowego kursanta z wygenerowanym loginem, hasłem tymczasowym i linkiem do aplikacji.',
+    status: 'active',
+    variables: ['studentName', 'username', 'tempPassword', 'appUrl', 'unsubscribeUrl'],
+    sampleData: {
+      studentName: 'Marta',
+      username: 'marta_k',
+      tempPassword: 'Cribro2026!Pass',
+      appUrl: 'https://app.maciej.pro',
+      unsubscribeUrl: 'https://app.maciej.pro/unsubscribe?uid=demo&token=sample',
+    },
+    renderHtml: (data) => {
+      const email = buildWelcomeEmail({
+        studentName: data.studentName,
+        username: String(data.username || ''),
+        tempPassword: String(data.tempPassword || ''),
+        appUrl: String(data.appUrl || 'https://app.maciej.pro'),
+        unsubscribeUrl: String(data.unsubscribeUrl || ''),
+      });
+      return email.html;
+    },
+    renderText: (data) => {
+      const email = buildWelcomeEmail({
+        studentName: data.studentName,
+        username: String(data.username || ''),
+        tempPassword: String(data.tempPassword || ''),
+        appUrl: String(data.appUrl || 'https://app.maciej.pro'),
+        unsubscribeUrl: String(data.unsubscribeUrl || ''),
+      });
+      return email.text;
+    },
+  },
   {
     id: 'homework_new',
     name: 'Nowa praca domowa',
@@ -79,51 +116,59 @@ const TEMPLATES: Array<{
       const greeting = formatPolishGreeting(data.studentName);
       return `<!doctype html>
 <html lang="pl">
-  <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
+  <body style="margin:0;padding:24px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
       <tr>
-        <td style="padding:28px 28px 0;">
-          <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7c8798;">CRIBRO ENGLISH</p>
-          <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Nowa praca domowa</h1>
-          <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            ${greeting} Czeka na Ciebie zadanie <strong style="color:#111820;">${data.title}</strong>.
-          </p>
-          <p style="margin:20px 0 0;color:#3b4655;font-size:14px;line-height:1.6;">
-            ${data.instructions}
-          </p>
-        </td>
+        <td style="background:linear-gradient(90deg, #0d9488, #3b82f6);height:6px;font-size:0;line-height:0;">&nbsp;</td>
       </tr>
       <tr>
-        <td style="padding:20px 28px 0;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3e8ee;border-bottom:1px solid #e3e8ee;">
+        <td style="padding:32px 32px 28px;">
+          <div style="margin-bottom:20px;">
+            <p style="margin:0;font-size:12px;letter-spacing:0.14em;font-weight:800;text-transform:uppercase;color:#0d9488;">CRIBRO ENGLISH</p>
+            <span style="display:inline-block;margin-top:8px;font-size:11px;font-weight:600;background:rgba(13,148,136,0.15);color:#5eead4;border:1px solid rgba(13,148,136,0.3);padding:3px 10px;border-radius:999px;">📝 NOWA PRACA DOMOWA</span>
+          </div>
+
+          <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#f1f5f9;font-weight:800;">
+            ${greeting}
+          </h1>
+
+          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.65;">
+            W systemie została dla Ciebie przypisana nowa praca domowa:
+            <strong style="color:#f1f5f9;display:block;margin-top:6px;font-size:17px;font-weight:700;">${data.title}</strong>
+          </p>
+
+          ${data.instructions ? `
+          <div style="margin:20px 0;background:#0f172a;border-left:3px solid #0d9488;border-radius:0 8px 8px 0;padding:14px 16px;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#0d9488;">Wskazówki lektora</p>
+            <p style="margin:0;color:#cbd5e1;font-size:14px;line-height:1.6;">${data.instructions}</p>
+          </div>` : ''}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border-top:1px solid #334155;border-bottom:1px solid #334155;">
             <tr>
-              <td style="padding:6px 0;color:#7c8798;font-size:13px;">Ćwiczenia</td>
-              <td style="padding:6px 0;color:#111820;font-size:14px;font-weight:600;text-align:right;">${data.itemCount} zadań</td>
+              <td style="padding:10px 0;color:#94a3b8;font-size:13px;">Ćwiczenia</td>
+              <td style="padding:10px 0;color:#f1f5f9;font-size:14px;font-weight:700;text-align:right;">${data.itemCount} zadań</td>
             </tr>
             <tr>
-              <td style="padding:6px 0;color:#7c8798;font-size:13px;">Termin</td>
-              <td style="padding:6px 0;color:#111820;font-size:14px;font-weight:600;text-align:right;">${data.dueDate}</td>
+              <td style="padding:10px 0;color:#94a3b8;font-size:13px;">Termin wykonania</td>
+              <td style="padding:10px 0;color:#5eead4;font-size:14px;font-weight:700;text-align:right;">${data.dueDate}</td>
             </tr>
             <tr>
-              <td style="padding:6px 0;color:#7c8798;font-size:13px;">Od</td>
-              <td style="padding:6px 0;color:#111820;font-size:14px;font-weight:600;text-align:right;">${data.assignedBy}</td>
+              <td style="padding:10px 0;color:#94a3b8;font-size:13px;">Od</td>
+              <td style="padding:10px 0;color:#f1f5f9;font-size:14px;font-weight:600;text-align:right;">${data.assignedBy}</td>
             </tr>
           </table>
-          <p style="margin:28px 0 0;">
-            <a href="https://app.maciej.pro" style="display:inline-block;background:#0f7a52;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;">
-              Otwórz zadanie
+
+          <div style="margin:26px 0 0;text-align:center;">
+            <a href="https://app.maciej.pro" style="display:inline-block;background:#0d9488;background:linear-gradient(135deg, #0d9488 0%, #0f766e 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(13, 148, 136, 0.4);">
+              Otwórz zadanie w aplikacji →
             </a>
-          </p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:24px 28px 28px;">
-          <p style="margin:0;color:#7c8798;font-size:12px;line-height:1.6;">
-            Wiadomość wysłana automatycznie po dodaniu zadania w panelu lektora.
-          </p>
-          <p style="margin:10px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">
-            Nie chcesz otrzymywać tych wiadomości?
-            <a href="${data.unsubscribeUrl}" style="color:#64748b;text-decoration:underline;">Wypisz się z powiadomień e-mail</a>
+          </div>
+
+          ${INSTRUCTOR_CARD_HTML}
+
+          <p style="margin:20px 0 0;color:#64748b;font-size:11px;line-height:1.5;text-align:center;">
+            Nie chcesz otrzymywać powiadomień?
+            <a href="${data.unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">Wypisz się z powiadomień e-mail</a>
           </p>
         </td>
       </tr>
@@ -155,44 +200,49 @@ const TEMPLATES: Array<{
       const greeting = formatPolishGreeting(data.studentName);
       return `<!doctype html>
 <html lang="pl">
-  <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
+  <body style="margin:0;padding:24px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
       <tr>
-        <td style="padding:28px 28px 0;">
-          <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#d97706;font-weight:700;">PRZYPOMNIENIE O TERMINIE</p>
-          <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Zbliża się termin zadania</h1>
-          <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            ${greeting} Przypominamy o zbliżającym się terminie zadania: <strong style="color:#111820;">${data.title}</strong>.
-          </p>
-        </td>
+        <td style="background:linear-gradient(90deg, #f59e0b, #ef4444);height:6px;font-size:0;line-height:0;">&nbsp;</td>
       </tr>
       <tr>
-        <td style="padding:20px 28px 0;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e3e8ee;border-bottom:1px solid #e3e8ee;">
+        <td style="padding:32px 32px 28px;">
+          <div style="margin-bottom:20px;">
+            <p style="margin:0;font-size:12px;letter-spacing:0.14em;font-weight:800;text-transform:uppercase;color:#f59e0b;">CRIBRO ENGLISH</p>
+            <span style="display:inline-block;margin-top:8px;font-size:11px;font-weight:600;background:rgba(245,158,11,0.15);color:#fcd34d;border:1px solid rgba(245,158,11,0.3);padding:3px 10px;border-radius:999px;">⏳ PRZYPOMNIENIE O TERMINIE</span>
+          </div>
+
+          <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#f1f5f9;font-weight:800;">
+            ${greeting}
+          </h1>
+
+          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.65;">
+            Przypominamy o zbliżającym się terminie zadania:
+            <strong style="color:#f1f5f9;display:block;margin-top:6px;font-size:17px;font-weight:700;">${data.title}</strong>
+          </p>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border-top:1px solid #334155;border-bottom:1px solid #334155;">
             <tr>
-              <td style="padding:6px 0;color:#7c8798;font-size:13px;">Termin</td>
-              <td style="padding:6px 0;color:#b45309;font-size:14px;font-weight:700;text-align:right;">${data.dueDate}</td>
+              <td style="padding:10px 0;color:#94a3b8;font-size:13px;">Termin</td>
+              <td style="padding:10px 0;color:#fbbf24;font-size:15px;font-weight:800;text-align:right;">${data.dueDate}</td>
             </tr>
             <tr>
-              <td style="padding:6px 0;color:#7c8798;font-size:13px;">Liczba zadań</td>
-              <td style="padding:6px 0;color:#111820;font-size:14px;font-weight:600;text-align:right;">${data.itemCount}</td>
+              <td style="padding:10px 0;color:#94a3b8;font-size:13px;">Liczba zadań</td>
+              <td style="padding:10px 0;color:#f1f5f9;font-size:14px;font-weight:700;text-align:right;">${data.itemCount} zadań</td>
             </tr>
           </table>
-          <p style="margin:28px 0 0;">
-            <a href="https://app.maciej.pro" style="display:inline-block;background:#0f7a52;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;">
-              Dokończ zadanie
+
+          <div style="margin:26px 0 0;text-align:center;">
+            <a href="https://app.maciej.pro" style="display:inline-block;background:#f59e0b;background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(245, 158, 11, 0.4);">
+              Dokończ zadanie teraz →
             </a>
-          </p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:24px 28px 28px;">
-          <p style="margin:0;color:#7c8798;font-size:12px;line-height:1.6;">
-            Automatyczne przypomnienie z systemu CRIBRO ENGLISH.
-          </p>
-          <p style="margin:10px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">
+          </div>
+
+          ${INSTRUCTOR_CARD_HTML}
+
+          <p style="margin:20px 0 0;color:#64748b;font-size:11px;line-height:1.5;text-align:center;">
             Nie chcesz otrzymywać przypomnień?
-            <a href="${data.unsubscribeUrl}" style="color:#64748b;text-decoration:underline;">Wypisz się z powiadomień</a>
+            <a href="${data.unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">Wypisz się z powiadomień</a>
           </p>
         </td>
       </tr>
@@ -224,35 +274,46 @@ const TEMPLATES: Array<{
       const greeting = formatPolishGreeting(data.studentName);
       return `<!doctype html>
 <html lang="pl">
-  <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
+  <body style="margin:0;padding:24px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
       <tr>
-        <td style="padding:28px 28px 0;">
-          <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#0f7a52;font-weight:700;">WYNIK PRACY DOMOWEJ</p>
-          <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Praca została sprawdzona!</h1>
-          <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            ${greeting} Lektor sprawdził Twoje zadanie <strong style="color:#111820;">${data.title}</strong>.
-          </p>
-        </td>
+        <td style="background:linear-gradient(90deg, #10b981, #06b6d4);height:6px;font-size:0;line-height:0;">&nbsp;</td>
       </tr>
       <tr>
-        <td style="padding:20px 28px 0;">
-          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:16px;">
-            <p style="margin:0;color:#166534;font-size:13px;font-weight:700;">Wynik: ${data.score}</p>
-            <p style="margin:8px 0 0;color:#1e3a8a;font-size:14px;line-height:1.5;">${data.feedback}</p>
+        <td style="padding:32px 32px 28px;">
+          <div style="margin-bottom:20px;">
+            <p style="margin:0;font-size:12px;letter-spacing:0.14em;font-weight:800;text-transform:uppercase;color:#10b981;">CRIBRO ENGLISH</p>
+            <span style="display:inline-block;margin-top:8px;font-size:11px;font-weight:600;background:rgba(16,185,129,0.15);color:#6ee7b7;border:1px solid rgba(16,185,129,0.3);padding:3px 10px;border-radius:999px;">🎯 WYNIK PRACY DOMOWEJ</span>
           </div>
-          <p style="margin:20px 0 0;">
-            <a href="https://app.maciej.pro" style="display:inline-block;background:#0f7a52;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;">
-              Zobacz szczegóły w aplikacji
-            </a>
+
+          <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#f1f5f9;font-weight:800;">
+            ${greeting}
+          </h1>
+
+          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.65;">
+            Lektor sprawdził Twoje zadanie:
+            <strong style="color:#f1f5f9;display:block;margin-top:6px;font-size:17px;font-weight:700;">${data.title}</strong>
           </p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:24px 28px 28px;">
-          <p style="margin:10px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">
+
+          <div style="margin:22px 0;background:#0f172a;border:1px solid #10b981;border-radius:12px;padding:18px 20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;">Wynik</span>
+              <span style="font-size:20px;font-weight:800;color:#10b981;">${data.score}</span>
+            </div>
+            <p style="margin:8px 0 0;color:#e2e8f0;font-size:14px;line-height:1.6;">${data.feedback}</p>
+          </div>
+
+          <div style="margin:26px 0 0;text-align:center;">
+            <a href="https://app.maciej.pro" style="display:inline-block;background:#10b981;background:linear-gradient(135deg, #10b981 0%, #059669 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(16, 185, 129, 0.4);">
+              Zobacz szczegóły w aplikacji →
+            </a>
+          </div>
+
+          ${INSTRUCTOR_CARD_HTML}
+
+          <p style="margin:20px 0 0;color:#64748b;font-size:11px;line-height:1.5;text-align:center;">
             Nie chcesz otrzymywać powiadomień?
-            <a href="${data.unsubscribeUrl}" style="color:#64748b;text-decoration:underline;">Wypisz się z powiadomień</a>
+            <a href="${data.unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">Wypisz się z powiadomień</a>
           </p>
         </td>
       </tr>
@@ -283,27 +344,39 @@ const TEMPLATES: Array<{
       const greeting = formatPolishGreeting(data.studentName);
       return `<!doctype html>
 <html lang="pl">
-  <body style="margin:0;padding:24px;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #e3e8ee;">
+  <body style="margin:0;padding:24px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;margin:0 auto;background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.4);">
       <tr>
-        <td style="padding:28px 28px 0;">
-          <p style="margin:0;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7c8798;">CRIBRO ENGLISH</p>
-          <h1 style="margin:12px 0 0;font-size:20px;line-height:1.35;color:#111820;">Nowe materiały z lekcji</h1>
-          <p style="margin:14px 0 0;color:#3b4655;font-size:15px;line-height:1.6;">
-            ${greeting} W aplikacji czeka podsumowanie lekcji <strong style="color:#111820;">${data.lessonTopic}</strong> oraz <strong>${data.wordCount} nowych słówek</strong> do powtórki.
-          </p>
-          <p style="margin:24px 0 0;">
-            <a href="https://app.maciej.pro" style="display:inline-block;background:#0f7a52;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;">
-              Przejdź do powtórek
-            </a>
-          </p>
-        </td>
+        <td style="background:linear-gradient(90deg, #6366f1, #8b5cf6);height:6px;font-size:0;line-height:0;">&nbsp;</td>
       </tr>
       <tr>
-        <td style="padding:24px 28px 28px;">
-          <p style="margin:10px 0 0;color:#94a3b8;font-size:11px;line-height:1.5;">
+        <td style="padding:32px 32px 28px;">
+          <div style="margin-bottom:20px;">
+            <p style="margin:0;font-size:12px;letter-spacing:0.14em;font-weight:800;text-transform:uppercase;color:#818cf8;">CRIBRO ENGLISH</p>
+            <span style="display:inline-block;margin-top:8px;font-size:11px;font-weight:600;background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);padding:3px 10px;border-radius:999px;">📚 NOWE MATERIAŁY</span>
+          </div>
+
+          <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#f1f5f9;font-weight:800;">
+            ${greeting}
+          </h1>
+
+          <p style="margin:0;color:#cbd5e1;font-size:15px;line-height:1.65;">
+            W aplikacji czeka podsumowanie lekcji:
+            <strong style="color:#f1f5f9;display:block;margin-top:6px;font-size:17px;font-weight:700;">${data.lessonTopic}</strong>
+            oraz <strong>${data.wordCount} nowych słówek</strong> do powtórki w systemie fiszek.
+          </p>
+
+          <div style="margin:26px 0 0;text-align:center;">
+            <a href="https://app.maciej.pro" style="display:inline-block;background:#6366f1;background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:12px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(99, 102, 241, 0.4);">
+              Przejdź do powtórek →
+            </a>
+          </div>
+
+          ${INSTRUCTOR_CARD_HTML}
+
+          <p style="margin:20px 0 0;color:#64748b;font-size:11px;line-height:1.5;text-align:center;">
             Nie chcesz otrzymywać powiadomień?
-            <a href="${data.unsubscribeUrl}" style="color:#64748b;text-decoration:underline;">Wypisz się z powiadomień</a>
+            <a href="${data.unsubscribeUrl}" style="color:#94a3b8;text-decoration:underline;">Wypisz się z powiadomień</a>
           </p>
         </td>
       </tr>

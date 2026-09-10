@@ -61,6 +61,8 @@ export interface User {
   tempPasswordLogins?: number;
   frequentErrors?: any[];
   onboardingCompleted?: boolean;
+  /** Kursant odrzucił sugestię zmiany hasła tymczasowego. Banner nie pojawi się ponownie. */
+  passwordChangeDismissed?: boolean;
   tempPassword?: string;
   showAiMonitor?: boolean;
   canViewAiMonitor?: boolean;
@@ -81,7 +83,7 @@ export interface User {
 export interface EmailTemplate {
   id: string;
   name: string;
-  category: 'homework' | 'reminder' | 'feedback' | 'lesson';
+  category: 'homework' | 'reminder' | 'feedback' | 'lesson' | 'welcome';
   subject: string;
   description: string;
   status: 'active' | 'draft';
