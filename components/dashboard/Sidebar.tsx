@@ -40,7 +40,8 @@ import {
   HelpCircle,
   FlaskConical,
   Eye,
-  Mail
+  Mail,
+  Layers
 } from 'lucide-react';
 import BrandLogo from '../ui/BrandLogo';
 import { isModuleVisible } from '../../config/featureFlags';
@@ -359,6 +360,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onStartPract
               isActive={currentView === 'students-database' || currentView === 'admin-students-database' || currentView === 'students'}
             >
               <span>{language === 'pl' ? 'Baza kursantów' : 'Student Database'}</span>
+            </NavLink>
+          )}
+
+          {isTeacher && (
+            <NavLink
+              icon={<Layers size={20} />}
+              isCollapsed={isDesktopCollapsed}
+              onClick={() => handleNavigate('lesson-scenarios')}
+              isActive={currentView === 'lesson-scenarios' || currentView === 'admin-scenarios'}
+            >
+              <span>{language === 'pl' ? 'Baza scenariuszy' : 'Lesson Scenarios'}</span>
             </NavLink>
           )}
 

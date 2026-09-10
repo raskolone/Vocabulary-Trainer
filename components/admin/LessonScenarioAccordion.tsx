@@ -4,7 +4,7 @@ import {
   FileText, Sparkles, Clock, CheckCircle2, Layers, AlignLeft,
   Trash2, Edit2, Plus, ArrowUp, ArrowDown, X, Save, RefreshCw,
   AlertTriangle, RotateCcw, GripVertical, Zap, ArrowRight, Lightbulb,
-  ExternalLink, ListPlus, Bold, HelpCircle, CheckSquare
+  ExternalLink, ListPlus, Bold, HelpCircle, CheckSquare, Play
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { SAMPLE_MODULES_CATALOG } from './lessonPlannerPresets';
@@ -25,6 +25,7 @@ interface LessonScenarioAccordionProps {
   onUpdateContent?: (newContent: string) => void;
   onDeleteScenario?: () => void;
   onSelectTopicPrompt?: (prompt: string) => void;
+  onOpenInPresentation?: () => void;
 }
 
 export const LessonScenarioAccordion: React.FC<LessonScenarioAccordionProps> = ({
@@ -35,7 +36,8 @@ export const LessonScenarioAccordion: React.FC<LessonScenarioAccordionProps> = (
   onInsertLessonRecord,
   onUpdateContent,
   onDeleteScenario,
-  onSelectTopicPrompt
+  onSelectTopicPrompt,
+  onOpenInPresentation
 }) => {
   const [isScenarioOpen, setIsScenarioOpen] = useState(true);
   const [openBlocks, setOpenBlocks] = useState<Record<string, boolean>>({});
@@ -573,6 +575,19 @@ export const LessonScenarioAccordion: React.FC<LessonScenarioAccordionProps> = (
 
         {/* Global Scenario Action Buttons: Insert into Record, Expand, Delete */}
         <div className="flex items-center gap-2 text-xs flex-wrap">
+          {/* Launch directly in Presentation & Live Notebook */}
+          {onOpenInPresentation && (
+            <button
+              type="button"
+              onClick={onOpenInPresentation}
+              className="px-3.5 py-1.5 rounded-xl bg-primary text-accent-ink hover:brightness-110 font-black flex items-center gap-1.5 transition-all shadow-[0_0_15px_rgba(114,240,180,0.35)] hover:scale-[1.02] active:scale-95 cursor-pointer"
+              title="Przekształć ten scenariusz w slajdy i otwórz w Prezentacji & Notatniku Live"
+            >
+              <Play size={13} className="fill-current" />
+              <span>Uruchom w Prezentacji & Notatniku</span>
+            </button>
+          )}
+
           {/* Transfer directly to Lesson Record note modal */}
           {onInsertLessonRecord && (
             <button

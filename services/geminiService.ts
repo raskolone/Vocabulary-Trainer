@@ -6,7 +6,7 @@ import { db } from '../firebase';
 // Ze SDK zostały już tylko stałe (enumy konfiguracji). Sam klient Gemini żyje
 // na serwerze — patrz getAI() niżej.
 import { Type, Modality } from "@google/genai";
-import { Language, Difficulty, Word, AISuggestion, AudioVocabulary, TranslationExercise, TranslationEvaluationResult, RecallCandidate, RecallLearningType } from '../types';
+import { Language, Difficulty, Word, AISuggestion, AudioVocabulary, TranslationExercise, TranslationEvaluationResult, RecallCandidate, RecallLearningType, LessonAttachment } from '../types';
 import { aiMonitor } from './aiMonitorService';
 import { AI_MODEL_CASCADE, PRIMARY_MODEL, SECONDARY_MODEL, TERTIARY_MODEL } from './aiModels';
 
@@ -359,21 +359,49 @@ export const generateLessonPlannerAI = async ({
   systemInstruction,
   conversationHistory = [],
   preferredModels = PREFERRED_AI_MODELS,
+  attachments = [],
   onModelAttempt
 }: {
   prompt: string;
   systemInstruction: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant' | 'model' | 'system'; content: string }>;
   preferredModels?: string[];
+  attachments?: LessonAttachment[];
   onModelAttempt?: (modelName: string) => void;
 }): Promise<{ text: string; modelUsed: string }> => {
+  // Construct augmented prompt with any attached text/markdown/HTML materials
+  let augmentedPrompt = prompt;
+  if (attachments && attachments.length > 0) {
+    const textAttachments = attachments.filter(a => a.textContent && a.textContent.trim().length > 0);
+    if (textAttachments.length > 0) {
+      augmentedPrompt += `\n\n=== DOŁĄCZONE MATERIAŁY I PLIKI ŹRÓDŁOWE LEKTORA ===`;
+      textAttachments.forEach((att, idx) => {
+        augmentedPrompt += `\n\n--- Materiał ${idx + 1}: ${att.name} (${att.type.toUpperCase()}) ---\n${att.textContent}`;
+      });
+      augmentedPrompt += `\n=== KONIEC DOŁĄCZONYCH MATERIAŁÓW ===\nProszę uwzględnić powyższe materiały przy tworzeniu ćwiczeń, pytań i słownictwa.`;
+    }
+  }
+
   const reqId = aiMonitor.startRequest({
     taskName: 'Planer lekcji AI',
     initialModel: preferredModels[0] || 'openai/gpt-5.6-luna',
     category: 'general',
-    promptSnippet: prompt,
+    promptSnippet: augmentedPrompt,
     statusMessage: `Planer lekcji: inicjalizacja...`
   });
+
+  // Prepare multimodal parts for Gemini (images & PDFs)
+  const geminiMediaParts = attachments
+    .filter(a => a.dataUrl && (a.type === 'image' || a.type === 'pdf'))
+    .map(a => {
+      const base64Data = a.dataUrl!.includes(',') ? a.dataUrl!.split(',')[1] : a.dataUrl!;
+      return {
+        inlineData: {
+          mimeType: a.mimeType || (a.type === 'pdf' ? 'application/pdf' : 'image/jpeg'),
+          data: base64Data
+        }
+      };
+    });
 
   let lastError: any;
   for (const model of preferredModels) {
@@ -382,13 +410,16 @@ export const generateLessonPlannerAI = async ({
       if (onModelAttempt) onModelAttempt(model);
 
       if (model.startsWith('openai')) {
+        // OpenAI messages format: support text or image parts
+        const userContent: any = augmentedPrompt;
+
         const messages = [
           ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
           ...conversationHistory.map(m => ({
             role: m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content
           })),
-          { role: 'user', content: prompt }
+          { role: 'user', content: userContent }
         ];
 
         const openAiRes = await callOpenAI(messages, undefined, model.replace('openai/', ''), false);
@@ -401,6 +432,8 @@ export const generateLessonPlannerAI = async ({
         let retries = 2;
         while (retries > 0) {
           try {
+            const userParts: any[] = [{ text: augmentedPrompt }, ...geminiMediaParts];
+
             const geminiContents = [
               ...conversationHistory.map(m => ({
                 role: m.role === 'assistant' ? 'model' : 'user',
@@ -408,7 +441,7 @@ export const generateLessonPlannerAI = async ({
               })),
               {
                 role: 'user',
-                parts: [{ text: prompt }]
+                parts: userParts
               }
             ];
 

@@ -273,6 +273,16 @@ export interface LessonScenarioStage {
   body: string;
 }
 
+export interface LessonAttachment {
+  id: string;
+  name: string;
+  type: 'image' | 'pdf' | 'markdown' | 'html' | 'text';
+  size: number;
+  mimeType: string;
+  dataUrl?: string;
+  textContent?: string;
+}
+
 export interface GeneratedLessonScenario {
   id: string;
   title: string;
@@ -288,6 +298,9 @@ export interface GeneratedLessonScenario {
   createdAt: string;
   updatedAt?: string;
   tags?: string[];
+  isTemplate?: boolean;
+  category?: string;
+  sourceFiles?: string[];
 }
 
 export interface LessonBlocks {

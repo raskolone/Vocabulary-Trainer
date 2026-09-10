@@ -295,6 +295,30 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
     - Zamiast standardowej plakietki pojawia się pulsujący badge z liczbą powiadomień: `{count} NOWYCH`.
     - Dolna etykieta akcji zmienia się na `Otwórz skrzynkę ({count})` w kolorze akcentu.
 
+### M. Rozwój Planera Lekcji AI: Uproszczony Interfejs, Uploader Plików/Screenshotów, Baza Scenariuszy i Most do Prezentacji
+- **Uproszczony, intuicyjny interfejs Planera Lekcji ([LessonPlanner.tsx](components/admin/LessonPlanner.tsx))**:
+  - Przeprojektowano strukturę wizualną w duchu zasady *„Bez zbędnego szumu”* i zoptymalizowano pod kątem ADHD.
+  - Na samej górze umieszczono pole: **„Opisz, jaką lekcję chciałbyś zrobić”**, zapewniające lektorowi pełną swobodę formułowania tematów (konwersacje, gramatyka, specyficzne kazusy biznesowe).
+  - Pod polem opisu znajduje się przejrzysty pasek parametrów: wybór kursanta, poziomu CEFR (A1-C2), czasu trwania (30-90 min) oraz profilu zajęć.
+  - Szybkie akcje: podpowiedzi tematów z historii kursanta oraz lekcje powtórkowe z ostatnich błędów.
+- **Obsługa plików, materiałów i screenshotów ([LessonFileUploader.tsx](components/admin/LessonFileUploader.tsx))**:
+  - Wprowadzono sekcję **„Dodaj pliki, które chcesz wykorzystać do generowania lekcji”**.
+  - Obsługa formatów:
+    - **Obrazy i screenshoty**: PNG, JPG, WEBP, GIF (z obsługą przeciągania Drag & Drop, wyboru z dysku oraz wklejania ze schowka `Ctrl+V` / `Cmd+V` prosto z pamięci podręcznej systemu).
+    - **Dokumenty**: PDF.
+    - **Tekst i struktury**: Markdown (.md), HTML (.html), zwykłe pliki tekstowe (.txt).
+  - Wizualne miniatury załączników z plakietkami formatów, rozmiarem, możliwością podglądu (lightbox) oraz usuwania.
+  - Wzbogacenie komunikacji z modelami AI ([geminiService.ts](services/geminiService.ts)) o wielomodalną analizę załączników i wstrzykiwanie tekstu źródłowego.
+- **Nowa Baza Scenariuszy Lekcji ([StandaloneLessonScenariosScreen.tsx](components/admin/StandaloneLessonScenariosScreen.tsx), [ChooseScenarioModal.tsx](components/admin/ChooseScenarioModal.tsx))**:
+  - W pasku bocznym ([Sidebar.tsx](components/dashboard/Sidebar.tsx)) oraz routerze ([Dashboard.tsx](components/dashboard/Dashboard.tsx)) dodano dedykowaną pozycję: **„Baza scenariuszy”**.
+  - Zbiór gotowych, wzorcowych konspektów CELTA ([scenarioService.ts](services/scenarioService.ts)) z podziałem na kategorie (Business Negotiations, Small Talk & Networking, Job Interview Mastery, Mixed Conditionals).
+  - Opcje działania na każdym materiale:
+    1. **Użyj bez modyfikacji**: natychmiastowe wykorzystanie konspektu.
+    2. **Dostosuj z AI dla kursanta**: załadowanie szablonu do Planera Lekcji i personalizacja pod profil i historię ucznia.
+- **Most do Prezentacji & Notatnika Live ([AdminPanel.tsx](components/admin/AdminPanel.tsx), [LessonScenarioAccordion.tsx](components/admin/LessonScenarioAccordion.tsx))**:
+  - Na wygenerowanych i załadowanych scenariuszach dodano przycisk **„Uruchom w Prezentacji & Notatniku”**.
+  - Jednym kliknięciem scenariusz jest przekształcany w interaktywną talię slajdów (`createPresentationFromScenario`) i zapisywany w `presentationService`, po czym system płynnie przełącza lektora do modułu Prezentacji & Notatnika Live.
+
 ---
 
 

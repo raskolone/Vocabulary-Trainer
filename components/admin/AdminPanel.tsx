@@ -41,6 +41,7 @@ import { isTaskForStudent } from '../../utils/homework';
 import TeacherOverview from './TeacherOverview';
 import LessonPlanner from './LessonPlanner';
 import { LessonPresentationView } from './presentation/LessonPresentationView';
+import { createPresentationFromScenario, savePresentationToStorage } from '../../services/presentationService';
 import NotionSyncButton from './NotionSyncButton';
 import StudentNotionSyncModal from './StudentNotionSyncModal';
 import CleanLessonsModal from './CleanLessonsModal';
@@ -1894,6 +1895,18 @@ const [users, setUsers] = useState<UserWithId[]>([]);
                   setLessonFormScenarioContent(data.scenarioContent || '');
                   openLessonRecordModal('edit', undefined, true);
                   showToast('Przeniesiono scenariusz do nowej notatki z lekcji!');
+                }}
+                onOpenInPresentation={async (scenario) => {
+                  try {
+                    const sName = selectedUser ? (selectedUser.firstName ? `${selectedUser.firstName} ${selectedUser.lastName || ''}`.trim() : selectedUser.username) : null;
+                    const pres = createPresentationFromScenario(scenario, selectedUser?.id, sName);
+                    await savePresentationToStorage(pres);
+                    setActiveTab('presentation');
+                    showToast('Scenariusz załadowany do Prezentacji & Notatnika Live!');
+                  } catch (e) {
+                    console.error('Błąd uruchamiania w prezentacji:', e);
+                    showToast('Nie udało się załadować scenariusza do prezentacji.');
+                  }
                 }}
               />
             )}

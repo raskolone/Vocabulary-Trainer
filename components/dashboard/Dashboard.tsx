@@ -21,10 +21,11 @@ import { ChevronDown, Sparkles, Menu } from 'lucide-react';
 import AssignedTasks from './AssignedTasks';
 import i18n from "i18next";
 
-type View = 'dashboard' | 'extra-practice' | 'student-today' | 'preview-vocab' | 'preview-homework' | 'preview-history' | 'preview-tests' | 'practice' | 'settings' | 'flashcard-sets' | 'flashcard-edit' | 'flashcard-study' | 'flashcard-stats' | 'admin' | 'admin-stats' | 'admin-history' | 'admin-profile' | 'admin-tests' | 'admin-debugging' | 'presentation' | 'ai-generator' | 'lesson-history' | 'tests' | 'topic-database' | 'student-stats' | 'homework' | 'mailing' | 'admin-mailing' | 'students-database' | 'admin-students-database' | 'students';
+type View = 'dashboard' | 'extra-practice' | 'student-today' | 'preview-vocab' | 'preview-homework' | 'preview-history' | 'preview-tests' | 'practice' | 'settings' | 'flashcard-sets' | 'flashcard-edit' | 'flashcard-study' | 'flashcard-stats' | 'admin' | 'admin-stats' | 'admin-history' | 'admin-profile' | 'admin-tests' | 'admin-debugging' | 'presentation' | 'ai-generator' | 'lesson-history' | 'tests' | 'topic-database' | 'student-stats' | 'homework' | 'mailing' | 'admin-mailing' | 'students-database' | 'admin-students-database' | 'students' | 'lesson-scenarios' | 'admin-scenarios';
 
 import AdminPanel from '../admin/AdminPanel';
 import StandaloneStudentDatabaseScreen from '../admin/StandaloneStudentDatabaseScreen';
+import StandaloneLessonScenariosScreen from '../admin/StandaloneLessonScenariosScreen';
 import AdminMailingScreen from '../admin/AdminMailingScreen';
 import StudentStatsScreen from './StudentStatsScreen';
 import LessonHistoryScreen from './LessonHistoryScreen';
@@ -47,6 +48,7 @@ import AdminDebuggingScreen from '../admin/AdminDebuggingScreen';
 import OnboardingOverlay from './OnboardingOverlay';
 import TeacherHomeworkNotification from './TeacherHomeworkNotification';
 import StudentHomeworkGradedModal from './StudentHomeworkGradedModal';
+import { createPresentationFromScenario, savePresentationToStorage } from '../../services/presentationService';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
@@ -382,6 +384,27 @@ const Dashboard: React.FC = () => {
           }}
           onOpenMailing={() => handleNavigate('mailing')}
           onBack={() => handleNavigate('dashboard')}
+        />
+      );
+    }
+    if (view === 'lesson-scenarios' || (view as any) === 'admin-scenarios') {
+      return (
+        <StandaloneLessonScenariosScreen
+          onBack={() => handleNavigate('dashboard')}
+          onAdaptWithAI={(scenario) => {
+            setAdminActiveTab('lesson-planner');
+            handleNavigate('dashboard');
+          }}
+          onOpenInPresentation={async (scenario) => {
+            try {
+              const pres = createPresentationFromScenario(scenario, adminSelectedUserId || previewStudentId, null);
+              await savePresentationToStorage(pres);
+              setAdminActiveTab('presentation');
+              handleNavigate('dashboard');
+            } catch (e) {
+              console.error('Błąd uruchamiania w prezentacji:', e);
+            }
+          }}
         />
       );
     }
