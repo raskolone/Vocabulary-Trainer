@@ -643,12 +643,28 @@ function createApp() {
   app2.get("/api/mailing/status", requireFirebaseAdmin, async (_req, res) => {
     try {
       let dbKey = null;
+      let enableBccSender = true;
+      let bccEmail = "wyrozumski@maciej.pro";
+      let dbFromAddress = null;
       if (adminApp) {
         try {
           const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
           const mailingDoc = await adminDb.collection("system").doc("mailing").get();
-          if (mailingDoc.exists && mailingDoc.data()?.resendApiKey) {
-            dbKey = String(mailingDoc.data()?.resendApiKey).trim();
+          if (mailingDoc.exists) {
+            const data = mailingDoc.data();
+            if (data?.resendApiKey) {
+              dbKey = String(data.resendApiKey).trim();
+            }
+            if (typeof data?.enableBccSender === "boolean") {
+              enableBccSender = data.enableBccSender;
+            }
+            if (data?.bccEmail && typeof data.bccEmail === "string") {
+              bccEmail = data.bccEmail.trim();
+            }
+            if (data?.senderEmail) {
+              const name = data.senderName || "Maciej Wyrozumski";
+              dbFromAddress = `${name} <${data.senderEmail}>`;
+            }
           }
         } catch {
         }
@@ -661,7 +677,9 @@ function createApp() {
         hasEnvKey: !!envKey,
         hasDbKey: !!dbKey,
         maskedKey,
-        fromAddress: process.env.FROM_ADDRESS || "Maciej Wyrozumski <wyrozumski@maciej.pro>"
+        fromAddress: dbFromAddress || process.env.FROM_ADDRESS || "Maciej Wyrozumski <wyrozumski@maciej.pro>",
+        enableBccSender,
+        bccEmail
       });
     } catch (err) {
       return res.status(500).json({ error: formatErrorString(err) });
@@ -714,7 +732,7 @@ RESEND_API_KEY=${cleanKey}
   });
   app2.post("/api/mailing/test-send", requireFirebaseAdmin, async (req, res) => {
     try {
-      const { to, from: clientFrom, subject, html, text, apiKey: clientApiKey, replyTo } = req.body;
+      const { to, from: clientFrom, subject, html, text, apiKey: clientApiKey, replyTo, bcc: clientBcc } = req.body;
       if (!to || typeof to !== "string" || !to.includes("@")) {
         return res.status(400).json({ error: "Wymagany jest poprawny adres e-mail odbiorcy." });
       }
@@ -756,15 +774,23 @@ RESEND_API_KEY=${cleanKey}
         });
       }
       let fromAddress = typeof clientFrom === "string" && clientFrom.trim() || process.env.FROM_ADDRESS;
-      if (!fromAddress && adminApp) {
+      let systemBccEmail = null;
+      let systemEnableBcc = true;
+      if (adminApp) {
         try {
           const adminDb = getFirestore(adminApp, FIRESTORE_DATABASE_ID);
           const mailingDoc = await adminDb.collection("system").doc("mailing").get();
           if (mailingDoc.exists) {
             const data2 = mailingDoc.data();
-            if (data2?.senderEmail) {
+            if (!fromAddress && data2?.senderEmail) {
               const name = data2.senderName || "Maciej Wyrozumski";
               fromAddress = `${name} <${data2.senderEmail}>`;
+            }
+            if (typeof data2?.enableBccSender === "boolean") {
+              systemEnableBcc = data2.enableBccSender;
+            }
+            if (data2?.bccEmail && typeof data2.bccEmail === "string") {
+              systemBccEmail = data2.bccEmail.trim();
             }
           }
         } catch {
@@ -774,20 +800,34 @@ RESEND_API_KEY=${cleanKey}
         fromAddress = "Maciej Wyrozumski <wyrozumski@maciej.pro>";
       }
       const replyToAddress = typeof replyTo === "string" && replyTo.trim() || process.env.REPLY_TO_ADDRESS || "wyrozumski@maciej.pro";
+      let bccToUse = void 0;
+      if (clientBcc) {
+        if (Array.isArray(clientBcc)) {
+          bccToUse = clientBcc.map((b) => String(b).trim()).filter((b) => b.includes("@"));
+        } else if (typeof clientBcc === "string" && clientBcc.trim().includes("@")) {
+          bccToUse = [clientBcc.trim()];
+        }
+      } else if (clientBcc !== false && systemEnableBcc && systemBccEmail && systemBccEmail.includes("@")) {
+        bccToUse = [systemBccEmail];
+      }
+      const resendPayload = {
+        from: fromAddress,
+        to: [to.trim()],
+        reply_to: replyToAddress,
+        subject: subject || "Powiadomienie CRIBRO ENGLISH",
+        html: html || "<p>To jest testowa wiadomo\u015B\u0107 wys\u0142ana z panelu CRIBRO ENGLISH.</p>",
+        text: text || "To jest testowa wiadomo\u015B\u0107 wys\u0142ana z panelu CRIBRO ENGLISH."
+      };
+      if (bccToUse && bccToUse.length > 0) {
+        resendPayload.bcc = bccToUse;
+      }
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey.trim()}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          from: fromAddress,
-          to: [to.trim()],
-          reply_to: replyToAddress,
-          subject: subject || "Powiadomienie CRIBRO ENGLISH",
-          html: html || "<p>To jest testowa wiadomo\u015B\u0107 wys\u0142ana z panelu CRIBRO ENGLISH.</p>",
-          text: text || "To jest testowa wiadomo\u015B\u0107 wys\u0142ana z panelu CRIBRO ENGLISH."
-        })
+        body: JSON.stringify(resendPayload)
       });
       const raw = await response.text();
       let data = null;
@@ -802,7 +842,7 @@ RESEND_API_KEY=${cleanKey}
         }
         return res.status(response.status).json({ error: `Resend ${response.status}: ${msg}` });
       }
-      return res.json({ ok: true, id: data?.id });
+      return res.json({ ok: true, id: data?.id, bcc: bccToUse });
     } catch (err) {
       console.error("[Mailing Test Send Error]:", err);
       return res.status(500).json({ error: formatErrorString(err) });

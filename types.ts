@@ -563,6 +563,8 @@ export interface MailingSettings {
   enableDueDateReminder: boolean;
   reminderHoursBefore: number;
   enableNotionSyncNotice: boolean;
+  enableBccSender?: boolean;
+  bccEmail?: string;
   resendApiKey?: string;
   customTemplates?: Record<string, { subject?: string; customIntro?: string; enabled?: boolean }>;
   updatedAt?: string;

@@ -237,6 +237,19 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
     5. **Uprawnienia i zarządzanie kontem**: Przełącznik ról użytkownika, zmiana hasła, kopiowanie hasła do schowka, przełącznik ukończenia onboardingu, zawieszenie konta, archiwizacja, kontrola widoczności modeli AI i Live Monitora, bezpośrednia wiadomość do kursanta, bezpieczne usuwanie konta.
   - Duży, wyraźny przycisk zapisu profilu ze stanem ładowania i potwierdzeniem.
 
+### J. Opcja Wysyłki do Ukrytego Nadawcy (BCC / Ukryta Kopia) w Module Mailing
+- **Weryfikacja wychodzących wiadomości przez lektora**:
+  - W module Mailing ([AdminMailingScreen.tsx](components/admin/AdminMailingScreen.tsx)) dodano opcję wysyłania ukrytej kopii wiadomości (BCC — Blind Carbon Copy) z domyślnie zaznaczonym własnym adresem e-mail lektora (`wyrozumski@maciej.pro` / `currentUser.email`), aby lektor mógł bezpośrednio we własnej skrzynce weryfikować, czy wiadomości bez przeszkód opuszczają system i jak prezentują się w programie pocztowym.
+  - Szybkie przełączniki adresów lektora (`wyrozumski@maciej.pro`, `maciej@learnwithmaciej.com`) oraz możliwość wprowadzenia dowolnego adresu BCC.
+- **Globalna konfiguracja BCC w ustawieniach poczty**:
+  - W zakładce Ustawienia skrzynki dodano opcję trwałej konfiguracji `enableBccSender` i `bccEmail` (zapisywane w dokumencie `system/mailing` w Firestore).
+- **Obsługa po stronie backendu ([server.ts](server.ts))**:
+  - Endpoint `/api/mailing/test-send` odbiera parametr `bcc`, sanitizuje adresy i przekazuje je do Resend API w polu `bcc: [...]`.
+  - W przypadku braku bezpośredniego parametru w żądaniu serwer automatycznie sprawdza konfigurację w Firestore i dołącza ukrytą kopię nadawcy.
+  - Endpoint `/api/mailing/status` zwraca aktualny status konfiguracji `enableBccSender` i `bccEmail`.
+- **Integracja z modalem prac domowych ([HomeworkEmailConfirmationModal.tsx](components/admin/HomeworkEmailConfirmationModal.tsx))**:
+  - Dodano przełącznik wysyłki ukrytej kopii (BCC) do nadawcy również podczas zatwierdzania wysyłki zadania domowego do kursanta.
+
 ---
 
 ## 4. Przewodnik Szybkiego Startu dla Nowych Sesji i AI

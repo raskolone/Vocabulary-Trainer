@@ -37,6 +37,8 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
   const [subject, setSubject] = useState<string>('');
   const [customNote, setCustomNote] = useState<string>('');
   const [updateProfileEmail, setUpdateProfileEmail] = useState<boolean>(false);
+  const [enableBcc, setEnableBcc] = useState<boolean>(true);
+  const [bccEmail, setBccEmail] = useState<string>('wyrozumski@maciej.pro');
   const [activeTab, setActiveTab] = useState<'preview' | 'exercises'>('preview');
 
   const [isSending, setIsSending] = useState<boolean>(false);
@@ -64,6 +66,12 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
             } else if (data.fromAddress.includes('@')) {
               setSenderEmail(data.fromAddress.trim());
             }
+          }
+          if (typeof data?.enableBccSender === 'boolean') {
+            setEnableBcc(data.enableBccSender);
+          }
+          if (data?.bccEmail) {
+            setBccEmail(data.bccEmail);
           }
         }
       } catch (err) {
@@ -159,6 +167,7 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
           subject: subject.trim() || emailContent.subject,
           html: emailContent.html,
           text: emailContent.text,
+          bcc: enableBcc && bccEmail ? bccEmail.trim() : undefined,
         }),
       });
 
@@ -356,6 +365,34 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
                   </span>
                 </label>
               </div>
+            </div>
+          </div>
+
+          {/* Opcja ukrytej kopii do nadawcy (BCC) */}
+          <div className="bg-base-200/50 border border-white/10 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer text-white font-semibold">
+              <input
+                type="checkbox"
+                checked={enableBcc}
+                onChange={(e) => setEnableBcc(e.target.checked)}
+                className="checkbox checkbox-xs checkbox-primary"
+              />
+              <span>Wyślij ukrytą kopię (BCC) do nadawcy</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="email"
+                value={bccEmail}
+                onChange={(e) => setBccEmail(e.target.value)}
+                disabled={!enableBcc}
+                placeholder="wyrozumski@maciej.pro"
+                className={`text-xs font-mono px-2.5 py-1 rounded-lg bg-base-300/90 border border-white/10 focus:border-primary focus:outline-none transition-opacity ${
+                  enableBcc ? 'text-primary' : 'text-content-muted opacity-40'
+                }`}
+              />
+              <span className="text-[10px] text-content-muted hidden md:inline font-mono">
+                (weryfikacja wysyłki)
+              </span>
             </div>
           </div>
 

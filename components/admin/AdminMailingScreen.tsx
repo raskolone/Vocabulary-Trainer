@@ -331,6 +331,8 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
     senderName: 'Maciej Wyrozumski - CRIBRO ENGLISH',
     senderEmail: 'wyrozumski@maciej.pro',
     replyToEmail: 'wyrozumski@maciej.pro',
+    enableBccSender: true,
+    bccEmail: 'wyrozumski@maciej.pro',
     emailSignature: 'Pozdrawiam serdecznie,\nMaciej Wyrozumski\nCRIBRO ENGLISH',
     enableHomeworkAssigned: true,
     enableHomeworkReviewed: true,
@@ -352,8 +354,14 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
   const [isSimulatingInbound, setIsSimulatingInbound] = useState<boolean>(false);
 
   // Test sending state
+  const defaultOwnerEmail = (currentUser?.email && !currentUser.email.includes('@student.') && currentUser.email.includes('@'))
+    ? currentUser.email
+    : 'wyrozumski@maciej.pro';
+
   const [testRecipient, setTestRecipient] = useState<string>(currentUser?.email || '');
   const [testSenderEmail, setTestSenderEmail] = useState<string>('wyrozumski@maciej.pro');
+  const [enableBcc, setEnableBcc] = useState<boolean>(true);
+  const [bccRecipient, setBccRecipient] = useState<string>(defaultOwnerEmail);
   const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -392,6 +400,8 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
       if (res.ok) {
         const data = await res.json();
         setServerKeyStatus(data);
+        if (data.bccEmail) setBccRecipient(data.bccEmail);
+        if (typeof data.enableBccSender === 'boolean') setEnableBcc(data.enableBccSender);
       }
     } catch (e) {
       console.warn('Nie udało się sprawdzić statusu klucza poczty:', e);
@@ -405,6 +415,8 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
       if (snap.exists()) {
         const d = snap.data() as MailingSettings;
         setSettings((prev) => ({ ...prev, ...d }));
+        if (d.bccEmail) setBccRecipient(d.bccEmail);
+        if (typeof d.enableBccSender === 'boolean') setEnableBcc(d.enableBccSender);
       }
     } catch (err) {
       console.warn('Nie udało się pobrać konfiguracji poczty:', err);
@@ -629,6 +641,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
           html,
           text,
           replyTo: settings.replyToEmail || senderEmailToUse,
+          bcc: enableBcc && bccRecipient.trim() ? bccRecipient.trim() : undefined,
         }),
       });
 
@@ -639,7 +652,7 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
       setTestResult({
         success: true,
-        message: `Wiadomość testowa wysłana na adres ${testRecipient}! Identyfikator: ${data.id || 'OK'}`,
+        message: `Wiadomość testowa wysłana na adres ${testRecipient}${enableBcc && bccRecipient.trim() ? ` (oraz kopia BCC do: ${bccRecipient.trim()})` : ''}! Identyfikator: ${data.id || 'OK'}`,
       });
     } catch (err: any) {
       setTestResult({
@@ -1026,25 +1039,84 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
 
                 <div>
                   <label className="text-[11px] font-bold text-content-muted block mb-1 uppercase">
-                    Adres docelowy (Odbiorca testu)
+                    Adres docelowy (Odbiorca wiadomości)
                   </label>
                   <input
                     type="email"
                     value={testRecipient}
                     onChange={(e) => setTestRecipient(e.target.value)}
-                    placeholder="twoj-email@domena.pl"
+                    placeholder="twoj-email@domena.pl lub kursant@gmail.com"
                     className="w-full px-3.5 py-2 rounded-xl bg-black/40 border border-white/15 text-white text-xs focus:outline-none focus:border-primary"
                   />
+                </div>
+
+                {/* OPCJA UKRYTEJ KOPII / UKRYTEGO NADAWCY (BCC) */}
+                <div className="p-3.5 rounded-xl bg-black/50 border border-white/10 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-white flex items-center gap-2 uppercase tracking-wider cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enableBcc}
+                        onChange={(e) => setEnableBcc(e.target.checked)}
+                        className="rounded text-primary focus:ring-0 focus:ring-offset-0 bg-ink-2 border-white/20"
+                      />
+                      <span>Ukryta kopia (BCC) dla Ciebie</span>
+                    </label>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono ${
+                      enableBcc ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-white/5 text-content-muted'
+                    }`}>
+                      {enableBcc ? 'BCC aktywne' : 'Brak BCC'}
+                    </span>
+                  </div>
+
+                  {enableBcc && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setBccRecipient('wyrozumski@maciej.pro')}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-mono border transition-colors cursor-pointer ${
+                            bccRecipient === 'wyrozumski@maciej.pro'
+                              ? 'bg-primary/20 border-primary text-primary font-bold'
+                              : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                          }`}
+                        >
+                          wyrozumski@maciej.pro
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBccRecipient('maciej@learnwithmaciej.com')}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-mono border transition-colors cursor-pointer ${
+                            bccRecipient === 'maciej@learnwithmaciej.com'
+                              ? 'bg-primary/20 border-primary text-primary font-bold'
+                              : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                          }`}
+                        >
+                          maciej@learnwithmaciej.com
+                        </button>
+                      </div>
+                      <input
+                        type="email"
+                        value={bccRecipient}
+                        onChange={(e) => setBccRecipient(e.target.value)}
+                        placeholder="wyrozumski@maciej.pro"
+                        className="w-full px-3 py-1.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary"
+                      />
+                      <p className="text-[10px] text-content-muted leading-relaxed">
+                        Kopia każdej wysłanej wiadomości trafi na Twój e-mail, abyś mógł bezpośrednio zweryfikować czy wiadomości wychodzą.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <Button
                   onClick={handleSendTestEmail}
                   isLoading={isSendingTest}
                   disabled={!testRecipient || !serverKeyStatus.configured}
-                  className="w-full text-xs font-bold py-2.5"
+                  className="w-full text-xs font-bold py-2.5 cursor-pointer"
                 >
                   <Send size={14} />
-                  Wyślij test na swój e-mail
+                  {enableBcc ? 'Wyślij wiadomość z ukrytą kopią (BCC)' : 'Wyślij wiadomość'}
                 </Button>
 
                 {testResult && (
@@ -1523,6 +1595,66 @@ export const AdminMailingScreen: React.FC<AdminMailingScreenProps> = ({ onBack }
                   <span className="text-[10px] text-content-muted mt-1 block">
                     Gdy kursant kliknie „Odpowiedz” w swoim programie pocztowym, wiadomość trafi bezpośrednio na ten adres.
                   </span>
+                </div>
+
+                {/* Sekcja automatycznej ukrytej kopii (BCC) dla nadawcy */}
+                <div className="p-3.5 rounded-xl bg-black/50 border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-white flex items-center gap-2 uppercase tracking-wider cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(settings.enableBccSender)}
+                        onChange={(e) => setSettings({ ...settings, enableBccSender: e.target.checked })}
+                        className="rounded text-primary focus:ring-0 focus:ring-offset-0 bg-ink-2 border-white/20"
+                      />
+                      <span>Automatyczna ukryta kopia (BCC) do nadawcy</span>
+                    </label>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono ${
+                      settings.enableBccSender ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-white/5 text-content-muted'
+                    }`}>
+                      {settings.enableBccSender ? 'BCC aktywne' : 'BCC wyłączone'}
+                    </span>
+                  </div>
+
+                  {settings.enableBccSender && (
+                    <div className="space-y-2 pt-1">
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, bccEmail: 'wyrozumski@maciej.pro' })}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-mono border transition-colors cursor-pointer ${
+                            (settings.bccEmail || 'wyrozumski@maciej.pro') === 'wyrozumski@maciej.pro'
+                              ? 'bg-primary/20 border-primary text-primary font-bold'
+                              : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                          }`}
+                        >
+                          wyrozumski@maciej.pro
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSettings({ ...settings, bccEmail: 'maciej@learnwithmaciej.com' })}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-mono border transition-colors cursor-pointer ${
+                            settings.bccEmail === 'maciej@learnwithmaciej.com'
+                              ? 'bg-primary/20 border-primary text-primary font-bold'
+                              : 'bg-white/5 border-white/10 text-content-muted hover:text-white'
+                          }`}
+                        >
+                          maciej@learnwithmaciej.com
+                        </button>
+                      </div>
+
+                      <input
+                        type="email"
+                        value={settings.bccEmail || 'wyrozumski@maciej.pro'}
+                        onChange={(e) => setSettings({ ...settings, bccEmail: e.target.value })}
+                        placeholder="wyrozumski@maciej.pro"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-primary"
+                      />
+                      <span className="text-[10px] text-content-muted mt-1 block leading-relaxed">
+                        Każda wychodząca wiadomość e-mail z platformy (zadania domowe, powiadomienia, testy) otrzyma ukrytą kopię na ten adres, abyś mógł bezpośrednio w skrzynce sprawdzać czy wiadomości wychodzą.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
