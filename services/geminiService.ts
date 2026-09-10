@@ -222,11 +222,11 @@ const geminiProxy = {
       try {
         data = JSON.parse(rawText);
       } catch {
-        throw new Error(`Serwer AI zwrócił nieprawidłową odpowiedź (status ${res.status}): ${rawText.slice(0, 100)}`);
+        throw new Error(`Serwer zwrócił nieprawidłową odpowiedź (status ${res.status}): ${rawText.slice(0, 100)}`);
       }
 
       if (!res.ok) {
-        const error: any = new Error(extractErrorMessage(data, `Błąd serwera AI (${res.status})`));
+        const error: any = new Error(extractErrorMessage(data, `Błąd serwera (${res.status})`));
         error.status = res.status;
         throw error;
       }
@@ -343,7 +343,7 @@ const callOpenAI = async (
     }
 
     if (!res.ok) {
-      throw new Error(extractErrorMessage(data, `Błąd serwera AI (${res.status})`));
+      throw new Error(extractErrorMessage(data, `Błąd serwera (${res.status})`));
     }
     
     console.log("Odpowiedź AI odebrana pomyślnie. Model:", data.modelUsed);
@@ -849,7 +849,7 @@ Zwróć skorygowany wynik WYŁĄCZNIE jako poprawny obiekt JSON, zachowując dok
     } catch (error: any) {
       console.error(`Error generating translation exercises on attempt ${attempt}:`, error);
       if (attempt === MAX_RETRIES) {
-        throw new Error(error.message || "Failed to generate translation exercises from AI.");
+        throw new Error(error.message || "Failed to generate translation exercises.");
       }
     }
   }
@@ -969,7 +969,7 @@ Return ONLY a valid JSON object matching this schema. No markdown, no extra conv
       if (!evalList || evalList.length !== exercises.length) {
         console.warn(`Attempt ${attempt}: Evaluation length mismatch. Expected ${exercises.length}, got ${evalList?.length || 0}. Retrying...`);
         if (attempt === MAX_RETRIES) {
-          throw new Error("AI returned invalid evaluation format.");
+          throw new Error("Invalid evaluation format returned.");
         }
         continue;
       }
@@ -1026,7 +1026,7 @@ Return ONLY a valid JSON object matching this schema. No markdown, no extra conv
     } catch (error: any) {
       console.error(`Error evaluating translations on attempt ${attempt}:`, error);
       if (attempt === MAX_RETRIES) {
-        throw new Error(error.message || "Failed to evaluate translations with AI.");
+        throw new Error(error.message || "Failed to evaluate translations.");
       }
     }
   }
@@ -1804,7 +1804,7 @@ Zwróć poprawny obiekt JSON o strukturze:
     return [];
   } catch (err) {
     console.error("Error evaluating teacher homework:", err);
-    throw new Error("Nie udało się ocenić pracy za pomocą AI.");
+    throw new Error("Nie udało się ocenić pracy.");
   }
 };
 export const generateLessonSummary = async (

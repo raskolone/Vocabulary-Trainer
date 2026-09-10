@@ -410,8 +410,8 @@ const AIGenerationLoader: React.FC<{ language: 'pl' | 'en'; level: string; logs?
       
       <p ref={statusTextRef} className="text-base text-[var(--accent)]/80 font-medium tracking-wide max-w-sm mx-auto">
         {language === 'pl' 
-          ? 'Sztuczna inteligencja eliminuje chaos i tworzy przejrzystą strukturę.' 
-          : 'AI is eliminating chaos and building a clear structure.'}
+          ? 'Inteligentny system eliminuje chaos i tworzy przejrzystą strukturę.' 
+          : 'The system eliminates chaos and builds a clear structure.'}
       </p>
 
       {currentModel && canViewAiModels && (
@@ -1611,8 +1611,8 @@ ${learningContext?.briefing || ''}
       console.error(err);
       if (!isAppending) {
         setError(language === 'pl' 
-           ? `Wystąpił błąd AI: ${err.message || 'Nieznany błąd'}` 
-           : `AI Error: ${err.message || 'Unknown error'}`);
+           ? `Wystąpił błąd podczas przygotowywania ćwiczeń: ${err.message || 'Nieznany błąd'}` 
+           : `Error preparing exercises: ${err.message || 'Unknown error'}`);
       }
     } finally {
       if (isAppending) setIsGeneratingMore(false);
@@ -1686,8 +1686,8 @@ ${learningContext?.briefing || ''}
     } catch (err: any) {
       console.error(err);
       setError(language === 'pl'
-        ? 'Wystąpił błąd podczas oceniania odpowiedzi przez AI. Spróbuj ponownie. (' + err.message + ')'
-        : 'An error occurred while evaluating your answers with AI. Please try again. (' + err.message + ')');
+        ? 'Wystąpił błąd podczas oceniania odpowiedzi. Spróbuj ponownie. (' + err.message + ')'
+        : 'An error occurred while evaluating your answers. Please try again. (' + err.message + ')');
       setEvaluationStatuses(prev => {
          const updated = { ...prev };
          delete updated[currentIdx];
@@ -2432,7 +2432,7 @@ ${learningContext?.briefing || ''}
                                 {language === 'pl' ? 'Prawdziwe Wyzwanie' : 'Real Challenge'} <ChevronRight className="w-4 h-4 text-primary group-hover/card:translate-x-1 transition-transform" />
                               </h3>
                               <p className="text-xs text-text-2 mt-1 leading-relaxed">
-                                {language === 'pl' ? 'Pisanie pełnych zdań z pamięci i inteligentna korekta AI.' : 'Type full sentences with instant AI feedback.'}
+                                {language === 'pl' ? 'Pisanie pełnych zdań z pamięci i natychmiastowa korekta.' : 'Type full sentences with instant feedback.'}
                               </p>
                             </div>
                           </button>
@@ -2619,7 +2619,7 @@ ${learningContext?.briefing || ''}
                       <AILoadingButton
                         onClick={() => handleGenerate(false)}
                         isLoading={isLoading}
-                        loadingText={language === 'pl' ? 'AI przygotowuje ćwiczenie...' : 'AI is preparing the exercise...'}
+                        loadingText={language === 'pl' ? 'Przygotowywanie ćwiczenia...' : 'Preparing the exercise...'}
                         className="w-full py-4 px-6 rounded-2xl border border-primary/50 bg-gradient-to-r from-primary/80 via-primary/10 to-primary/80 hover:from-primary/90 hover:to-primary/90 text-white font-bold text-base flex items-center justify-center gap-3 transition-all duration-300 shadow-[0_0_25px_rgba(114, 240, 180,0.2)] hover:shadow-[0_0_35px_rgba(114, 240, 180,0.35)] hover:scale-[1.008] active:scale-[0.995] group"
                       >
                         <span className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(114, 240, 180,0.9)] animate-pulse shrink-0" />
@@ -2809,7 +2809,7 @@ ${learningContext?.briefing || ''}
                                 handleGenerate(false);
                               }}
                               isLoading={isLoading}
-                              loadingText={language === 'pl' ? 'AI przygotowuje ćwiczenie...' : 'AI is preparing...'}
+                              loadingText={language === 'pl' ? 'Przygotowywanie ćwiczenia...' : 'Preparing...'}
                               className="w-full py-4 px-6 rounded-2xl border border-primary/50 bg-gradient-to-r from-primary/90 via-primary/10 to-primary/90 hover:from-primary hover:to-primary text-white font-bold text-base flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(114, 240, 180,0.3)] transition-all cursor-pointer"
                             >
                               <span className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(114, 240, 180,0.9)] animate-pulse shrink-0" />
@@ -3683,7 +3683,7 @@ ${learningContext?.briefing || ''}
                                         className="py-3 px-3 rounded-xl bg-primary text-accent-ink font-bold text-xs flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(114, 240, 180,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all"
                                       >
                                         <Sparkles className="w-4 h-4" />
-                                        <span>{language === 'pl' ? 'Trening AI' : 'AI Sentences'}</span>
+                                        <span>{language === 'pl' ? 'Trening zdań' : 'Sentence Practice'}</span>
                                       </button>
 
                                       <button
@@ -4309,7 +4309,7 @@ ${learningContext?.briefing || ''}
               {averageScore >= 80 
                 ? (language === 'pl' ? 'Fantastyczna robota! Wykazujesz się świetnym wyczuciem językowym.' : 'Fantastic job! You show excellent language proficiency.')
                 : averageScore >= 50
-                  ? (language === 'pl' ? 'Dobry krok naprzód! Przeanalizuj wskazówki AI poniżej, aby wyeliminować błędy.' : 'Good progress! Check out the AI tips below to eliminate mistakes.')
+                  ? (language === 'pl' ? 'Dobry krok naprzód! Przeanalizuj wskazówki poniżej, aby wyeliminować błędy.' : 'Good progress! Check out the tips below to eliminate mistakes.')
                   : (language === 'pl' ? 'Trening czyni mistrza. Przyjrzyj się objaśnieniom i spróbuj jeszcze raz.' : 'Practice makes perfect. Carefully review the explanations and try again.')}
             </div>
 
@@ -4412,7 +4412,7 @@ ${learningContext?.briefing || ''}
 
                       <div>
                         <div className="text-xs text-content-muted font-bold mb-1 uppercase tracking-wider flex items-center justify-between">
-                          <span>{language === 'pl' ? 'Rekomendowane przez AI' : 'Suggested translation'}</span>
+                          <span>{language === 'pl' ? 'Wzorcowe tłumaczenie' : 'Suggested translation'}</span>
                           <div className="flex items-center gap-1">
                             <span className="text-[10px] text-content-muted mr-1">{language === 'pl' ? 'Odsłuchaj:' : 'Listen:'}</span>
                             {ACCENTS.map(accent => (

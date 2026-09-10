@@ -38,17 +38,17 @@ const steps: StepData[] = [
     badge: { pl: 'KROK 1 Z 6 • WPROWADZENIE', en: 'STEP 1 OF 6 • WELCOME' },
     title: { 
       pl: 'Inteligentny trening językowy Cribro', 
-      en: 'Cribro Smart AI Training' 
+      en: 'Cribro Smart Training' 
     },
     desc: {
-      pl: 'Witaj w swoim centrum codziennego treningu! Zamiast biernego wypełniania testów, tutaj uczysz się aktywnego budowania zdań i formułowania myśli po angielsku. Sztuczna inteligencja na bieżąco analizuje Twoje odpowiedzi i pomaga przełamać barierę językową.',
-      en: 'Welcome to your daily training center! Instead of passive multiple choice tests, you practice active sentence formation. AI analyzes your responses instantly to build true fluency.'
+      pl: 'Witaj w swoim centrum codziennego treningu! Zamiast biernego wypełniania testów, tutaj uczysz się aktywnego budowania zdań i formułowania myśli po angielsku. System na bieżąco analizuje Twoje odpowiedzi i pomaga przełamać barierę językową.',
+      en: 'Welcome to your daily training center! Instead of passive multiple choice tests, you practice active sentence formation. The system analyzes your responses instantly to build true fluency.'
     },
     renderMockup: (lang) => (
       <div className="p-3.5 bg-base-300/80 rounded-2xl border border-primary/25 space-y-2 text-center">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/30">
           <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-          <span>{lang === 'pl' ? 'Praktyczne Formaty Ćwiczeń z AI' : 'AI-Powered Practice Formats'}</span>
+          <span>{lang === 'pl' ? 'Praktyczne Formaty Ćwiczeń' : 'Smart Practice Formats'}</span>
         </div>
         <div className="text-white font-bold text-sm">
           {lang === 'pl' ? '🎯 Cel: Swobodne budowanie zdań i mówienie' : '🎯 Goal: Fluent speaking and writing in English'}
@@ -188,7 +188,7 @@ const steps: StepData[] = [
     },
     desc: {
       pl: 'Po ukończeniu układanki z konkretnych słów, przejdź do „Prawdziwego Wyzwania”. Na bazie opanowanego materiału system wygeneruje dla Ciebie zdania, które tłumaczysz i wpisujesz w całości z pamięci.',
-      en: 'After completing the puzzle, switch to the "Real Challenge". The AI generates full sentences for you to translate and type directly from memory.'
+      en: 'After completing the puzzle, switch to the "Real Challenge". The system generates full sentences for you to translate and type directly from memory.'
     },
     renderMockup: (lang) => (
       <div className="p-3.5 bg-primary/60 rounded-2xl border-2 border-primary/40 space-y-2 shadow-[0_0_20px_rgba(114, 240, 180,0.15)]">
@@ -203,18 +203,18 @@ const steps: StepData[] = [
     )
   },
 
-  // Krok 6: Ocena i Feedback AI
+  // Krok 6: Ocena i Feedback
   {
     targetId: 'tour-generator-header',
     placement: 'bottom',
-    badge: { pl: 'KROK 6 Z 6 • OCENA I FEEDBACK', en: 'STEP 6 OF 6 • AI SCORING' },
+    badge: { pl: 'KROK 6 Z 6 • OCENA I FEEDBACK', en: 'STEP 6 OF 6 • SCORING & FEEDBACK' },
     title: { 
-      pl: 'Precyzyjna ocena AI i native audio', 
-      en: 'Deep AI Scoring & Native Audio' 
+      pl: 'Precyzyjna ocena i native audio', 
+      en: 'Deep Scoring & Native Audio' 
     },
     desc: {
-      pl: 'Każde Twoje zdanie otrzymuje szczegółową ocenę: Znaczenie (40 pkt), Gramatyka (40 pkt) oraz Słownictwo (20 pkt). AI wskazuje ewentualne literówki, sugeruje naturalniejsze zwroty i pozwala odsłuchać poprawną wymowę!',
-      en: 'Every sentence is scored across Meaning (40 pts), Grammar (40 pts), and Vocabulary (20 pts). AI highlights mistakes, suggests natural phrases, and plays audio.'
+      pl: 'Każde Twoje zdanie otrzymuje szczegółową ocenę: Znaczenie (40 pkt), Gramatyka (40 pkt) oraz Słownictwo (20 pkt). System wskazuje ewentualne literówki, sugeruje naturalniejsze zwroty i pozwala odsłuchać poprawną wymowę!',
+      en: 'Every sentence is scored across Meaning (40 pts), Grammar (40 pts), and Vocabulary (20 pts). The system highlights mistakes, suggests natural phrases, and plays audio.'
     },
     renderMockup: (lang) => (
       <div className="p-3.5 bg-ink-2 rounded-2xl border border-primary/30 space-y-2 text-xs">

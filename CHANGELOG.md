@@ -247,10 +247,40 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
   - Endpoint `/api/mailing/test-send` odbiera parametr `bcc`, sanitizuje adresy i przekazuje je do Resend API w polu `bcc: [...]`.
   - W przypadku braku bezpośredniego parametru w żądaniu serwer automatycznie sprawdza konfigurację w Firestore i dołącza ukrytą kopię nadawcy.
   - Endpoint `/api/mailing/status` zwraca aktualny status konfiguracji `enableBccSender` i `bccEmail`.
-- **Integracja z modalem prac domowych ([HomeworkEmailConfirmationModal.tsx](components/admin/HomeworkEmailConfirmationModal.tsx))**:
-  - Dodano przełącznik wysyłki ukrytej kopii (BCC) do nadawcy również podczas zatwierdzania wysyłki zadania domowego do kursanta.
+### K. Usunięcie Wzmianek o AI z Widoków Kursanta i Ujednolicenie Interfejsu Systemu
+- **Koncepcja jednego spójnego systemu**:
+  - Wyeliminowano jawne akronimy i odniesienia do „AI” / „sztucznej inteligencji” z interfejsów dedykowanych kontom kursantów (`role === 'user'`).
+  - Zaawansowany silnik generatywny i ewaluacyjny nadal działa w tle, napędzając platformę, jednak dla ucznia system prezentuje się jako spójny, profesjonalny i naturalny partner edukacyjny.
+- **Szczegółowy zakres modyfikacji widoków kursanta**:
+  - **Statystyki kursanta ([StudentStatsScreen.tsx](components/dashboard/StudentStatsScreen.tsx))**:
+    - Zastąpiono etykiety dymków *„Komentarz Nauczyciela AI”* / *„Wskazówka Nauczyciela AI”* profesjonalnymi określeniami *„Komentarz pedagogiczny”* oraz *„Wskazówka językowa”*.
+    - Opisy podsumowań i stanów ładowania przeformułowano na naturalne: *„Szybkie podsumowanie Twoich postępów...”*, *„Analizowanie Twoich wykonanych zdań...”*.
+    - Nazwę domyślnej sesji zmieniono z *„Sesja Tłumaczeniowa AI”* na *„Sesja Tłumaczeniowa”*.
+  - **Dziennik sesji ćwiczeń ([PracticeSessionsSection.tsx](components/dashboard/PracticeSessionsSection.tsx))**:
+    - Zmiana typu sesji z *„Trening z AI”* / *„AI training”* na czytelny *„Trening zdań”* / *„Sentence training”*.
+  - **Szczegóły lekcji i powtórki ([LessonDetails.tsx](components/dashboard/LessonDetails.tsx), [StudentLessonHistory.tsx](components/dashboard/StudentLessonHistory.tsx))**:
+    - Przyciski utrwalania materiału z *„Zdania AI”* / *„Przećwicz z AI”* / *„Trening zdań z AI”* przemianowano na *„Trening zdań”* (*„Sentence Practice”*).
+    - Opis opcji zmieniono na: *„Układaj i tłumacz nowe zdania kontekstowe oparte o materiał lekcji”*.
+  - **Wprowadzenie dla nowych uczniów ([OnboardingOverlay.tsx](components/dashboard/OnboardingOverlay.tsx))**:
+    - Zastąpiono hasła marketingowe typu *„Cribro Smart AI Training”*, *„AI-Powered Practice Formats”*, *„AI SCORING”* eleganckimi wersjami: *„Inteligentny trening językowy Cribro”*, *„Praktyczne Formaty Ćwiczeń”*, *„Ocena i feedback”*.
+    - Wskazówki techniczne o modelach AI zastąpiono informacją o natychmiastowej analizie i wsparciu systemu.
+  - **Moduł ćwiczeń i generowania zdań ([AIExerciseGeneratorScreen.tsx](components/dashboard/AIExerciseGeneratorScreen.tsx))**:
+    - Zastąpiono sformułowania *„inteligentna korekta AI”*, *„AI przygotowuje ćwiczenie...”*, *„Trening AI”*, *„wskazówki AI”* oraz *„Rekomendowane przez AI”* czystymi, profesjonalnymi frazami (*„natychmiastowa korekta”*, *„Przygotowywanie ćwiczenia...”*, *„Trening zdań”*, *„Wzorcowe tłumaczenie”*).
+    - Komunikaty błędów nie eksponują już surowych technicznych haseł AI.
+  - **Testy kursanta ([StudentTestsScreen.tsx](components/tests/StudentTestsScreen.tsx))**:
+    - Zmieniono komunikat braku recenzji z *„Brak feedbacku AI dla tego testu”* na *„Brak dodatkowego komentarza dla tego testu”*.
+  - **Edytor zestawów słówek i fiszek ([FlashcardEditScreen.tsx](components/flashcards/FlashcardEditScreen.tsx))**:
+    - Przyciski akcji zmieniono na *„Inteligentny import”*, *„Generuj z tematu”*, *„✨ Generuj”*.
+    - Opisy analizy tekstu zamiast *„sztuczna inteligencja przeanalizuje go...”* informują o automatycznym stworzeniu zestawu przez system.
+  - **Ustawienia lektora i dźwięku ([SettingsScreen.tsx](components/settings/SettingsScreen.tsx))**:
+    - Dla kursantów zablokowano widok modeli AI, a opcje lektora przemianowano na *„Zaawansowany Lektor (Płynny)”* oraz *„Ekspresyjny Lektor (Dynamiczny)”*.
+  - **Animacje ładowania i usługi ([AISkeletonLoader.tsx](components/ui/AISkeletonLoader.tsx), [VocabularyGenerator.tsx](components/dashboard/VocabularyGenerator.tsx), [LanguageContext.tsx](context/LanguageContext.tsx), [geminiService.ts](services/geminiService.ts))**:
+    - Domyślny loader informuje o *„Przygotowywaniu materiału...”*, a opisy w kontekście językowym i serwisy zwracają czyste, przyjazne komunikaty błędów.
+- **Zachowanie narzędzi nauczyciela i administratora**:
+  - Panele `teacher` oraz `admin` zachowały pełne instrumentarium AI (prompty, wybór modeli, generator sprawdzania, zaawansowane parametry generowania zadań).
 
 ---
+
 
 ## 4. Przewodnik Szybkiego Startu dla Nowych Sesji i AI
 

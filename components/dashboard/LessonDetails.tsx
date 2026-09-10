@@ -96,7 +96,7 @@ const LessonDetails: React.FC<LessonDetailsProps> = ({
           empty: 'Lektor nie dodał jeszcze notatek do tej lekcji.',
           count: (n: number) => `${n}`,
           flashcards: 'Fiszki',
-          aiSentences: 'Zdania AI',
+          aiSentences: 'Trening zdań',
         }
       : {
           block1Title: 'Lesson Overview',
@@ -112,7 +112,7 @@ const LessonDetails: React.FC<LessonDetailsProps> = ({
           empty: 'Your teacher has not added notes to this lesson yet.',
           count: (n: number) => `${n}`,
           flashcards: 'Flashcards',
-          aiSentences: 'AI sentences',
+          aiSentences: 'Sentence practice',
         };
 
   const summary = firstSentences(blocks.summary, 3);

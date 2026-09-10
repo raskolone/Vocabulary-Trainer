@@ -592,13 +592,13 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
             onClick={() => setIsImportModalOpen(true)}
             className="text-sm font-medium text-warn hover:opacity-80 transition-colors flex items-center gap-2"
           >
-            <Sparkles className="w-4 h-4" /> {language === 'pl' ? 'Importuj z AI' : 'Import with AI'}
+            <Sparkles className="w-4 h-4" /> {language === 'pl' ? 'Inteligentny import' : 'Smart import'}
           </button>
           <button 
             onClick={() => setIsAIGenModalOpen(true)}
             className="text-sm font-medium text-warn hover:opacity-80 transition-colors flex items-center gap-2"
           >
-            <Sparkles className="w-4 h-4" /> {language === 'pl' ? 'Wygeneruj z tematu AI' : 'Generate from topic AI'}
+            <Sparkles className="w-4 h-4" /> {language === 'pl' ? 'Generuj z tematu' : 'Generate from topic'}
           </button>
 
                     <Button onClick={async () => { await handleManualSave(); onBack(); }} className="bg-warn text-black hover:brightness-110 border-transparent">
@@ -742,7 +742,7 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
                 <div className="flex flex-col items-center md:items-end gap-2 group/media">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-content-muted uppercase tracking-widest">{language === 'pl' ? 'OBRAZ' : 'IMAGE'}</span>
-                    <button onClick={() => handleGenerateImage(index)} disabled={isGeneratingImageFor === index || card.isLocked} className="text-[10px] font-bold text-primary hover:text-accent-soft transition-colors uppercase" title={i18n.t("Generate with AI")}>{i18n.t("✨ AI")}</button>
+                    <button onClick={() => handleGenerateImage(index)} disabled={isGeneratingImageFor === index || card.isLocked} className="text-[10px] font-bold text-primary hover:text-accent-soft transition-colors uppercase" title={language === 'pl' ? 'Generuj obrazek' : 'Generate image'}>✨ {language === 'pl' ? 'Generuj' : 'Generate'}</button>
                   </div>
                   {card.imageUrl ? (
                     <div className="relative group/img">
@@ -773,8 +773,8 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
                 <div>
                   <div className="flex justify-between mb-3 border-b-2 border-transparent">
                     <span className="text-xs font-bold text-content-muted uppercase tracking-widest">{language === 'pl' ? 'ZDANIE Z KONTEKSTEM' : 'CONTEXT SENTENCE'}</span>
-                    <button onClick={() => handleGenerateContext(index)} disabled={isGeneratingContextFor === index || card.isLocked} className="text-[10px] font-bold text-primary hover:text-accent-soft transition-colors uppercase" title={i18n.t("Generate Context with AI")}>
-                      {isGeneratingContextFor === index ? '⏳' : '✨ AI'}
+                    <button onClick={() => handleGenerateContext(index)} disabled={isGeneratingContextFor === index || card.isLocked} className="text-[10px] font-bold text-primary hover:text-accent-soft transition-colors uppercase" title={language === 'pl' ? 'Generuj zdanie z kontekstem' : 'Generate context sentence'}>
+                      {isGeneratingContextFor === index ? '⏳' : `✨ ${language === 'pl' ? 'Generuj' : 'Generate'}`}
                     </button>
                   </div>
                   <RichTextInput
@@ -808,7 +808,7 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold flex items-center gap-2">
                 <Sparkles className="w-6 h-6 text-warn" />
-                {language === 'pl' ? 'Generuj słówka z AI' : 'Generate vocabulary with AI'}
+                {language === 'pl' ? 'Generuj słówka z tematu' : 'Generate vocabulary from topic'}
               </h2>
               <button onClick={() => setIsAIGenModalOpen(false)} className="text-content-muted hover:text-white text-2xl">{i18n.t("&times;")}</button>
             </div>
@@ -892,7 +892,7 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold flex items-center gap-2">
                 <Sparkles className="w-6 h-6 text-warn" />
-                {language === 'pl' ? 'Importuj z AI' : 'Import with AI'}
+                {language === 'pl' ? 'Inteligentny import' : 'Smart import'}
               </h2>
               <button onClick={() => setIsImportModalOpen(false)} className="text-content-muted hover:text-white text-2xl">{i18n.t("&times;")}</button>
             </div>
@@ -901,8 +901,8 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
               <div>
                 <p className="text-content-muted mb-4">
                   {language === 'pl' 
-                    ? 'Wklej dowolną listę słówek, tekst lub artykuł. Sztuczna inteligencja przeanalizuje go i automatycznie stworzy dla Ciebie gotowy zestaw fiszek.' 
-                    : 'Paste any vocabulary list, text, or article. Artificial intelligence will analyze it and automatically create a ready flashcard set for you.'}
+                    ? 'Wklej dowolną listę słówek, tekst lub artykuł. System przeanalizuje go i automatycznie stworzy dla Ciebie gotowy zestaw fiszek.' 
+                    : 'Paste any vocabulary list, text, or article. The system will analyze it and automatically create a ready flashcard set for you.'}
                 </p>
                 
                 <div className="flex flex-wrap gap-4 mb-4">
@@ -933,7 +933,7 @@ const FlashcardEditScreen: React.FC<FlashcardEditScreenProps> = ({ setId, onBack
                   value={importText}
                   onChange={(e) => setImportText(e.target.value)}
                   className="w-full h-64 bg-base-200/40 backdrop-blur-md border border-white/10 rounded-lg p-4 focus:outline-none focus:border-primary font-mono text-sm resize-y"
-                  placeholder={language === 'pl' ? 'Wklej tutaj tekst do analizy przez AI...' : 'Paste text for AI analysis here...'}
+                  placeholder={language === 'pl' ? 'Wklej tutaj tekst do automatycznej analizy...' : 'Paste text for automatic analysis here...'}
                 />
               </div>
               

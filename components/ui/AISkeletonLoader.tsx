@@ -10,7 +10,7 @@ interface AISkeletonLoaderProps {
 const AISkeletonLoader: React.FC<AISkeletonLoaderProps> = ({ 
   variant = 'text', 
   count = 3, 
-  message = "Sztuczna inteligencja przygotowuje dane..." 
+  message = "Przygotowywanie materiału..." 
 }) => {
   return (
     <div className="w-full space-y-4">

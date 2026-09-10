@@ -146,7 +146,7 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
           teacherSpeaking: 'O czym mówił kursant (notatka lektora)',
           thingsToImprove: 'Do poprawy (wskazówki lektora)',
           studyFlashcards: 'Fiszki z lekcji',
-          practiceAI: 'Przećwicz z AI',
+          practiceAI: 'Trening zdań',
           repeatLessonBtn: 'Powtórz ostatnią lekcję',
           repeatModalTitle: 'Powtórka ostatniej lekcji',
           repeatModalSubtitle: 'Wybierz formę utrwalenia materiału z ostatnich zajęć:',
@@ -173,7 +173,7 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
           teacherSpeaking: 'Student speaking (Teacher note)',
           thingsToImprove: 'Things to improve (Teacher feedback)',
           studyFlashcards: 'Study Flashcards',
-          practiceAI: 'Practice with AI',
+          practiceAI: 'Sentence Practice',
           repeatLessonBtn: 'Repeat latest lesson',
           repeatModalTitle: 'Review Latest Lesson',
           repeatModalSubtitle: 'Choose how you want to review the latest lesson material:',
@@ -944,12 +944,12 @@ const StudentLessonHistory: React.FC<StudentLessonHistoryProps> = ({
                   </div>
                   <div>
                     <h4 className="font-bold text-white text-sm group-hover:text-primary transition-colors">
-                      {language === 'pl' ? 'Trening zdań z AI' : 'AI Sentence Practice'}
+                      {language === 'pl' ? 'Trening zdań' : 'Sentence Practice'}
                     </h4>
                     <p className="text-xs text-content-muted mt-0.5">
                       {language === 'pl' 
-                        ? 'Układaj i tłumacz nowe zdania kontekstowe wygenerowane z materiału lekcji'
-                        : 'Translate and assemble new context sentences generated from the lesson'}
+                        ? 'Układaj i tłumacz nowe zdania kontekstowe oparte o materiał lekcji'
+                        : 'Translate and assemble new context sentences based on the lesson'}
                     </p>
                   </div>
                 </div>

@@ -134,7 +134,7 @@ const SpeechBubbleInfo: React.FC<SpeechBubbleInfoProps> = ({
           <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/10">
             <span className="text-base">{isCorrect ? '🎉' : '👨‍🏫'}</span>
             <span className={`font-bold uppercase tracking-wider text-[11px] ${isCorrect ? 'text-primary' : 'text-warn'}`}>
-              {isCorrect ? 'Komentarz Nauczyciela AI' : 'Wskazówka Nauczyciela AI'}
+              {isCorrect ? 'Komentarz pedagogiczny' : 'Wskazówka językowa'}
             </span>
           </div>
 
@@ -414,7 +414,7 @@ const StudentStatsScreen: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      setAiError(language === 'pl' ? 'Nie udało się pobrać komentarza nauczyciela AI.' : 'Could not fetch AI teacher commentary.');
+      setAiError(language === 'pl' ? 'Nie udało się pobrać podsumowania pedagogicznego.' : 'Could not fetch pedagogical summary.');
     } finally {
       setIsAiLoading(false);
     }
@@ -548,8 +548,8 @@ const StudentStatsScreen: React.FC = () => {
               </h2>
               <p className="text-xs text-content-muted">
                 {language === 'pl' 
-                  ? 'Szybkie podsumowanie Twoich postępów, opanowanych struktur oraz wskazówek językowych od AI.' 
-                  : 'Quick summary of your progress, mastered structures, and language tips from AI.'}
+                  ? 'Szybkie podsumowanie Twoich postępów, opanowanych struktur oraz wskazówek językowych.' 
+                  : 'Quick summary of your progress, mastered structures, and language tips.'}
               </p>
             </div>
           </div>
@@ -569,7 +569,7 @@ const StudentStatsScreen: React.FC = () => {
           <div className="py-12 flex flex-col items-center justify-center gap-3 text-content-muted">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
             <p className="text-sm font-medium">
-              {language === 'pl' ? 'Nauczyciel AI analizuje Twoje wykonane zdania...' : 'AI Teacher is analyzing your translated sentences...'}
+              {language === 'pl' ? 'Analizowanie Twoich wykonanych zdań...' : 'Analyzing your translated sentences...'}
             </p>
           </div>
         ) : aiError ? (
@@ -649,7 +649,7 @@ const StudentStatsScreen: React.FC = () => {
           <div className="py-8 text-center text-content-muted text-sm">
             {language === 'pl' 
               ? 'Rozpocznij wykonywanie ćwiczeń, aby otrzymać spersonalizowaną analizę od nauczyciela.' 
-              : 'Complete exercises to generate personalized feedback from your AI teacher.'}
+              : 'Complete exercises to generate personalized feedback from your teacher.'}
           </div>
         )}
       </div>
@@ -718,7 +718,7 @@ const StudentStatsScreen: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="font-bold text-white text-base">
-                            {log.testName || (language === 'pl' ? 'Sesja Tłumaczeniowa AI' : 'AI Translation Practice')}
+                            {log.testName || (language === 'pl' ? 'Sesja Tłumaczeniowa' : 'Translation Practice')}
                           </h3>
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
                             isSuccess ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-warn/20 text-warn border border-warn/30'

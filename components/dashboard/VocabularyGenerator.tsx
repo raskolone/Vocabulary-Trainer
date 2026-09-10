@@ -83,7 +83,7 @@ const VocabularyGenerator: React.FC = () => {
             <AISkeletonLoader 
               variant="cards" 
               count={3} 
-              message={uiLanguage === 'pl' ? 'AI analizuje bazę i układa zestaw 10 słówek...' : 'AI is designing a perfect list of 10 vocabulary words...'} 
+              message={uiLanguage === 'pl' ? 'Przygotowywanie zestawu 10 słówek...' : 'Designing a curated list of 10 vocabulary words...'} 
             />
           </div>
         ) : (

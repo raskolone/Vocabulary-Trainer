@@ -236,11 +236,11 @@ const SettingsScreen: React.FC = () => {
                         </div>
                         <div>
                             <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                {language === 'pl' ? 'Ustawienia Dźwięku i Lektora AI' : 'Sound & AI Voice Settings'}
+                                {language === 'pl' ? 'Ustawienia Dźwięku i Lektora' : 'Sound & Voice Settings'}
                                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/20 text-primary uppercase tracking-wider">
                                     {canViewAiModels
                                         ? (soundSettings.soundEngine === 'browser' ? 'Web Speech' : 'Multi-Tier AI')
-                                        : 'Lektor AI'}
+                                        : 'Lektor'}
                                 </span>
                             </h2>
                             <p className="text-xs text-content-muted">
@@ -306,8 +306,8 @@ const SettingsScreen: React.FC = () => {
                             >
                                 <option value="auto">⚡ {language === 'pl' ? 'Automatyczny (Rekomendowany - wysoka jakość)' : 'Automatic (Recommended - High quality)'}</option>
                                 <option value="openai">🎙️ {language === 'pl' ? 'Studyjny Lektor HD' : 'Studio HD Voice'}</option>
-                                <option value="gpt4o-mini">🤖 {language === 'pl' ? 'Zaawansowany Lektor AI' : 'Advanced AI Voice'}</option>
-                                <option value="gemini">♊ {language === 'pl' ? 'Ekspresyjny Lektor AI' : 'Expressive AI Voice'}</option>
+                                <option value="gpt4o-mini">✨ {language === 'pl' ? 'Zaawansowany Lektor (Płynny)' : 'Advanced Natural Voice'}</option>
+                                <option value="gemini">🎙️ {language === 'pl' ? 'Ekspresyjny Lektor (Dynamiczny)' : 'Expressive Dynamic Voice'}</option>
                                 <option value="browser">🌐 {language === 'pl' ? 'Lokalny w Przeglądarce (Web Speech)' : 'Native Browser (Web Speech)'}</option>
                             </select>
                         )}

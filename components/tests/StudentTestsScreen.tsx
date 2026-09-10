@@ -84,7 +84,7 @@ const StudentTestsScreen: React.FC<StudentTestsScreenProps> = ({ studentId, init
               {feedbackTest.aiFeedback ? (
                 <Markdown>{feedbackTest.aiFeedback}</Markdown>
               ) : (
-                <p className="text-content-muted italic">{i18n.t("Brak feedbacku AI dla tego testu.")}</p>
+                <p className="text-content-muted italic">{i18n.t("Brak dodatkowego komentarza dla tego testu.")}</p>
               )}
             </div>
             <div className="p-6 border-t border-white/10 flex justify-end shrink-0 gap-3">
