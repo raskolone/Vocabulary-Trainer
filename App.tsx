@@ -18,6 +18,7 @@ import { AdminAIActivityMonitor } from './components/admin/AdminAIActivityMonito
 import { handleGlobalEscape } from './utils/modalStack';
 import AppAlertModal from './components/ui/AppAlertModal';
 import UnsubscribeScreen from './components/auth/UnsubscribeScreen';
+import DirectHomeworkScreen from './components/dashboard/DirectHomeworkScreen';
 
 const App: React.FC = () => {
   useEffect(() => {
@@ -87,6 +88,17 @@ const AppContent: React.FC = () => {
     return (
       <SettingsProvider>
         <PresenterScreen />
+      </SettingsProvider>
+    );
+  }
+
+  // Bezpośredni dostęp do pracy domowej z unikalnego linku z e-maila (bez konieczności logowania).
+  // Kursant natychmiast przechodzi do rozwiązywania zadania z tokenem ważnym przez 14 dni.
+  // Zapis i ewaluacja odpowiedzi trafiają wprost na profil kursanta (practiceLogs, specialTasks).
+  if (typeof window !== 'undefined' && (window.location.pathname.startsWith('/hw') || window.location.pathname.startsWith('/homework-direct'))) {
+    return (
+      <SettingsProvider>
+        <DirectHomeworkScreen />
       </SettingsProvider>
     );
   }

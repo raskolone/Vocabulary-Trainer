@@ -47,6 +47,20 @@ CRIBRO ENGLISH (Recall) to zaawansowana platforma edukacyjna do intensywnej nauk
 
 ## 3. Szczegółowy Rejestr Zmian z Ostatnich 24 Godzin
 
+### Nowość: Bezpośrednie Linki do Prac Domowych z E-maila (Bez Logowania)
+- **Generowanie unikalnego linku i tokenu**:
+  - Każda nowo utworzona i przypisana praca domowa (`HomeworkComposer.tsx`, `HomeworkEmailConfirmationModal.tsx`) otrzymuje kryptograficznie bezpieczny unikalny `accessToken` (prefiks `hw_...`) oraz 14-dniowy limit ważności (`accessExpiresAt`).
+  - Generowany jest dedykowany adres URL `/hw?token={accessToken}` prowadzący bezpośrednio do materiału.
+- **Bezpieczne endpointy backendowe w `server.ts`**:
+  - `GET /api/homework/direct/:token`: weryfikuje token, sprawdza datę ważności (zwraca kod HTTP 410 w razie przeterminowania), pobiera dane ucznia i serwuje bezpieczny zestaw ćwiczeń bez ujawniania gotowych odpowiedzi.
+  - `POST /api/homework/direct-submit`: publiczny endpoint z natychmiastową ewaluacją odpowiedzi, aktualizacją statusu zadania na `'submitted'` oraz bezpośrednim zapisem wyników do podkolekcji `users/{studentUid}/practiceLogs` i profilu kursanta za pomocą Firebase Admin SDK (zgodnie z `firestore.rules`).
+- **Nowy ekran kursanta `DirectHomeworkScreen.tsx`**:
+  - Dostępny od razu pod ścieżką `/hw` i `/homework-direct` w `App.tsx` bez konieczności wcześniejszego logowania i bez zbędnego szumu.
+  - Płynny, nowoczesny interfejs: pasek postępu, wskaźnik liczby rozwiązanych ćwiczeń, obsługa wszystkich 5 typów zadań (`translation`, `word_order`, `multiple_choice`, `fill_in_the_blank`, `find_errors`) za pomocą `HomeworkExercise.tsx`.
+  - Ekran sukcesu z natychmiastowym feedbackiem punktowym i opcjonalnym przejściem do zalogowania na platformę.
+- **Szablon e-mail z powiadomieniem**:
+  - `services/homeworkEmail.ts`: zaktualizowano szablon powiadomienia o pracy domowej o wyrazisty przycisk CTA *„Wykonaj zadanie teraz (bez logowania) →”* oraz informację o unikalnym linku i terminie ważności.
+
 ### A. Konfiguracja Resend API i Refaktoryzacja Mailingu
 - **Przeniesienie klucza API do Ustawień Admina**:
   - Usunięto pola wprowadzania i zapisywania klucza Resend API z widoku mailingu (`AdminMailingScreen.tsx`).

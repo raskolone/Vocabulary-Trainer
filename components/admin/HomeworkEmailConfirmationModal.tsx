@@ -18,6 +18,9 @@ interface HomeworkEmailConfirmationModalProps {
     sentences?: any[];
     itemCount?: number;
     assignedBy?: string;
+    accessToken?: string;
+    accessExpiresAt?: string;
+    accessUrl?: string;
   } | null;
   onEmailSent?: () => void;
   onSkip?: () => void;
@@ -122,6 +125,16 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
     return lower.includes('@student.vocabboost.com') || lower.includes('@example.com') || !lower.includes('@');
   }, [recipientEmail]);
 
+  // Bezpieczny unikalny link do bezpośredniego wykonania zadania bez logowania
+  const directAccess = useMemo(() => {
+    if (!task) return { token: '', url: '', expiresAt: '' };
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.maciej.pro';
+    const token = task.accessToken || `hw_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+    const expiresAt = task.accessExpiresAt || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const url = `${origin}/hw?token=${token}`;
+    return { token, url, expiresAt };
+  }, [task]);
+
   // Generowanie dynamicznej treści e-maila
   const emailContent = useMemo(() => {
     if (!task) return { html: '', text: '', subject: '' };
@@ -133,8 +146,11 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
       assignedBy: senderName,
       sentences: task.sentences || [],
       customNote: customNote.trim() || undefined,
+      appUrl: directAccess.url,
+      isDirectLink: true,
+      expiresAt: directAccess.expiresAt,
     });
-  }, [task, student, studentDisplayName, senderName, customNote]);
+  }, [task, student, studentDisplayName, senderName, customNote, directAccess]);
 
   if (!isOpen || !task) return null;
 
@@ -176,7 +192,7 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
         throw new Error(data?.error || 'Nie udało się wysłać powiadomienia e-mail.');
       }
 
-      // 1. Zaktualizuj znacznik w specialTasks
+      // 1. Zaktualizuj znacznik oraz token w specialTasks
       if (task.id) {
         try {
           await updateDoc(doc(db, 'specialTasks', task.id), {
@@ -186,6 +202,9 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
             notificationRecipient: cleanTo,
             manualEmailConfirmationRequired: false,
             skipAutoEmail: false,
+            accessToken: directAccess.token,
+            accessExpiresAt: directAccess.expiresAt,
+            accessUrl: directAccess.url,
           });
         } catch (dbErr) {
           console.warn('Nie udało się zapisać statusu e-mail w specialTasks:', dbErr);
@@ -540,8 +559,11 @@ export const HomeworkEmailConfirmationModal: React.FC<HomeworkEmailConfirmationM
 
                   <div className="text-center my-6">
                     <span className="inline-block bg-teal-700 text-white font-bold text-xs py-2.5 px-6 rounded-lg shadow">
-                      Otwórz zadanie w aplikacji →
+                      Wykonaj zadanie teraz (bez logowania) →
                     </span>
+                    <p className="text-[10px] text-slate-500 mt-2">
+                      🔒 Link unikalny, ważny 14 dni (nie wymaga logowania)
+                    </p>
                   </div>
 
                   {/* Wizytówka stopki lektora */}

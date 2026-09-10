@@ -640,6 +640,257 @@ function createApp() {
       return res.status(500).json({ error: "B\u0142\u0105d zapisu preferencji powiadomie\u0144: " + formatErrorString(err) });
     }
   });
+  app2.get("/api/homework/direct/:token", async (req, res) => {
+    try {
+      const token = String(req.params.token || req.query.token || "").trim();
+      if (!token) {
+        return res.status(400).json({ error: "missing_token", message: "Brak tokenu dost\u0119powego." });
+      }
+      const adminApp2 = getAdminApp();
+      const adminDb = getFirestore(adminApp2, FIRESTORE_DATABASE_ID);
+      let taskSnap = await adminDb.collection("specialTasks").where("accessToken", "==", token).limit(1).get();
+      if (taskSnap.empty && token.length > 8) {
+        const directDoc = await adminDb.collection("specialTasks").doc(token).get();
+        if (directDoc.exists) {
+          const dData = directDoc.data();
+          if (dData?.accessToken === token || !dData?.accessToken) {
+            taskSnap = { empty: false, docs: [directDoc] };
+          }
+        }
+      }
+      if (taskSnap.empty) {
+        return res.status(404).json({
+          error: "not_found",
+          message: "Nie znaleziono zadania dla podanego linku. M\xF3g\u0142 zosta\u0107 usuni\u0119ty lub zast\u0105piony nowym."
+        });
+      }
+      const taskDoc = taskSnap.docs[0];
+      const taskData = taskDoc.data() || {};
+      if (taskData.accessExpiresAt) {
+        const expiresTime = new Date(taskData.accessExpiresAt).getTime();
+        if (expiresTime < Date.now()) {
+          return res.status(410).json({
+            error: "expired",
+            message: "Link do tego zadania straci\u0142 wa\u017Cno\u015B\u0107. Skontaktuj si\u0119 ze swoim lektorem, aby otrzyma\u0107 zaktualizowany dost\u0119p.",
+            expiresAt: taskData.accessExpiresAt
+          });
+        }
+      }
+      let studentDisplayName = taskData.studentName || "Kursancie";
+      const studentUid = taskData.studentUid || taskData.studentId;
+      if (studentUid) {
+        try {
+          const userDoc = await adminDb.collection("users").doc(studentUid).get();
+          if (userDoc.exists) {
+            const uData = userDoc.data();
+            studentDisplayName = uData?.firstName || uData?.username || studentDisplayName;
+          }
+        } catch (e) {
+          console.warn("[Direct Homework] Nie uda\u0142o si\u0119 pobra\u0107 danych kursanta:", e);
+        }
+      }
+      const safeSentences = (taskData.sentences || []).map((s, idx) => ({
+        id: s.id || `s-${idx}`,
+        type: s.type || taskData.type || "translation",
+        polishSentence: s.polishSentence || s.prompt || "",
+        polishHint: s.polishHint || s.hint || "",
+        // Dla word_order udostępniamy rozsypankę słowną:
+        chunks: s.chunks || (s.englishTranslation ? s.englishTranslation.split(" ").sort(() => Math.random() - 0.5) : []),
+        // Dla multiple_choice:
+        question: s.question || s.polishSentence || "",
+        options: s.options || [],
+        // Dla fill_in_the_blank:
+        textWithBlanks: s.textWithBlanks || "",
+        blanks: s.blanks || [],
+        availableWords: s.availableWords || (s.blanks && typeof s.blanks === "object" && !Array.isArray(s.blanks) ? Object.values(s.blanks).sort(() => Math.random() - 0.5) : []),
+        // Dla find_errors:
+        incorrectSentence: s.incorrectSentence || "",
+        hint: s.hint || "",
+        explanation: s.explanation || ""
+      }));
+      const isAlreadySubmitted = taskData.status === "submitted" || taskData.status === "graded" || taskData.status === "completed";
+      return res.json({
+        ok: true,
+        task: {
+          id: taskDoc.id,
+          title: taskData.title || "Praca domowa",
+          type: taskData.type || "translation",
+          types: taskData.types || (taskData.type ? [taskData.type] : []),
+          instructions: taskData.instructions || "",
+          dueDate: taskData.dueDate || "",
+          status: taskData.status || "pending",
+          studentName: studentDisplayName,
+          studentId: studentUid,
+          sentences: safeSentences,
+          studentAnswers: isAlreadySubmitted ? taskData.studentAnswers : void 0,
+          evaluationResults: isAlreadySubmitted ? taskData.evaluationResults : void 0,
+          submittedAt: taskData.submittedAt || null,
+          accessExpiresAt: taskData.accessExpiresAt || null,
+          isAlreadySubmitted
+        }
+      });
+    } catch (err) {
+      console.error("[Direct Homework GET Error]:", err);
+      return res.status(500).json({ error: "server_error", message: "Wyst\u0105pi\u0142 b\u0142\u0105d podczas \u0142adowania pracy domowej: " + formatErrorString(err) });
+    }
+  });
+  app2.post("/api/homework/direct-submit", async (req, res) => {
+    try {
+      const { token, answers } = req.body;
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ error: "missing_token", message: "Brak tokenu dost\u0119powego." });
+      }
+      if (!answers || typeof answers !== "object") {
+        return res.status(400).json({ error: "missing_answers", message: "Brak udzielonych odpowiedzi do oceny." });
+      }
+      const adminApp2 = getAdminApp();
+      const adminDb = getFirestore(adminApp2, FIRESTORE_DATABASE_ID);
+      const taskSnap = await adminDb.collection("specialTasks").where("accessToken", "==", token.trim()).limit(1).get();
+      if (taskSnap.empty) {
+        return res.status(404).json({ error: "not_found", message: "Nie znaleziono zadania dla podanego tokenu." });
+      }
+      const taskDoc = taskSnap.docs[0];
+      const taskData = taskDoc.data() || {};
+      if (taskData.accessExpiresAt) {
+        const expiresTime = new Date(taskData.accessExpiresAt).getTime();
+        if (expiresTime < Date.now()) {
+          return res.status(410).json({
+            error: "expired",
+            message: "Termin wa\u017Cno\u015Bci tego linku min\u0105\u0142. Skontaktuj si\u0119 z lektorem.",
+            expiresAt: taskData.accessExpiresAt
+          });
+        }
+      }
+      if (taskData.status === "submitted" || taskData.status === "graded") {
+        return res.status(400).json({
+          error: "already_submitted",
+          message: "Ta praca domowa zosta\u0142a ju\u017C wcze\u015Bniej oddana.",
+          submittedAt: taskData.submittedAt
+        });
+      }
+      const items = taskData.sentences || [];
+      const normalizeSimple = (str) => String(str || "").toLowerCase().replace(/[.,!?;:"„”]/g, "").replace(/[’']/g, "'").replace(/\s+/g, " ").trim();
+      const rows = [];
+      const storedAnswers = {};
+      items.forEach((item, i) => {
+        const itemType = item.type || taskData.type || "translation";
+        const rawAns = answers[i];
+        storedAnswers[i] = rawAns;
+        let isCorrect = false;
+        let score = 0;
+        let expectedStr = item.englishTranslation || item.correctSentence || "";
+        let studentStr = "";
+        if (itemType === "word_order") {
+          if (Array.isArray(rawAns)) {
+            studentStr = rawAns.map((idx) => item.chunks?.[idx]).filter(Boolean).join(" ");
+          } else {
+            studentStr = String(rawAns || "");
+          }
+          if (normalizeSimple(studentStr) === normalizeSimple(expectedStr)) {
+            isCorrect = true;
+            score = 100;
+          }
+        } else if (itemType === "multiple_choice") {
+          studentStr = typeof rawAns === "number" ? item.options?.[rawAns] || "" : String(rawAns || "");
+          const expectedOption = typeof item.correctOptionIndex === "number" ? item.options?.[item.correctOptionIndex] : item.options?.[0] || "";
+          expectedStr = expectedOption;
+          if (rawAns === item.correctOptionIndex || normalizeSimple(studentStr) === normalizeSimple(expectedOption)) {
+            isCorrect = true;
+            score = 100;
+          }
+        } else if (itemType === "fill_in_the_blank") {
+          const blanksObj = typeof rawAns === "object" && rawAns !== null ? rawAns : {};
+          studentStr = Object.keys(blanksObj).sort().map((k) => `${k}: ${blanksObj[k]}`).join(", ");
+          let totalBlanks = item.blanks?.length || 1;
+          let correctBlanks = 0;
+          if (item.blanks && Array.isArray(item.blanks)) {
+            item.blanks.forEach((b) => {
+              const expectedVal = normalizeSimple(b.correctAnswer || b.word || b.answer || "");
+              const userVal = normalizeSimple(blanksObj[b.id] || blanksObj[`BLANK_${b.id}`] || "");
+              if (expectedVal && userVal && (expectedVal === userVal || userVal.includes(expectedVal))) {
+                correctBlanks++;
+              }
+            });
+          }
+          score = Math.round(correctBlanks / totalBlanks * 100);
+          isCorrect = score >= 80;
+        } else if (itemType === "find_errors") {
+          studentStr = String(rawAns || "").trim();
+          expectedStr = item.correctSentence || "";
+          if (normalizeSimple(studentStr) === normalizeSimple(expectedStr)) {
+            isCorrect = true;
+            score = 100;
+          } else if (normalizeSimple(studentStr).length > 5) {
+            score = 70;
+            isCorrect = true;
+          }
+        } else {
+          studentStr = String(rawAns || "").trim();
+          expectedStr = item.englishTranslation || "";
+          if (normalizeSimple(studentStr) === normalizeSimple(expectedStr)) {
+            isCorrect = true;
+            score = 100;
+          } else if (normalizeSimple(studentStr).length > 3) {
+            score = 75;
+            isCorrect = true;
+          }
+        }
+        rows.push({
+          polishSentence: item.polishSentence || item.prompt || "",
+          correctTranslation: expectedStr,
+          studentAnswer: studentStr || rawAns,
+          isCorrect,
+          score,
+          explanation: item.explanation || void 0
+        });
+      });
+      const averageScore = rows.length > 0 ? Math.round(rows.reduce((sum, r) => sum + r.score, 0) / rows.length) : 0;
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      await taskDoc.ref.update({
+        status: "submitted",
+        studentAnswers: storedAnswers,
+        evaluationResults: rows,
+        submittedAt: nowIso,
+        submittedViaDirectLink: true,
+        updatedAt: nowIso
+      });
+      const studentUid = taskData.studentUid || taskData.studentId;
+      if (studentUid) {
+        try {
+          await adminDb.collection("users").doc(studentUid).collection("practiceLogs").add({
+            exerciseType: "homework",
+            exerciseFormat: taskData.type || "mixed",
+            date: nowIso,
+            isRevisionMode: false,
+            score: averageScore,
+            totalWords: items.length,
+            setDisplayName: taskData.title || "Praca domowa",
+            exercisesData: rows,
+            submittedViaDirectLink: true,
+            taskId: taskDoc.id
+          });
+          await adminDb.collection("users").doc(studentUid).update({
+            hasNewHomework: false,
+            lastHomeworkSubmittedAt: nowIso,
+            lastActivity: nowIso
+          }).catch(() => {
+          });
+        } catch (dbErr) {
+          console.warn("[Direct Homework] B\u0142\u0105d zapisu do profilu kursanta:", dbErr);
+        }
+      }
+      return res.json({
+        ok: true,
+        score: averageScore,
+        rows,
+        submittedAt: nowIso,
+        studentName: taskData.studentName || "Kursancie"
+      });
+    } catch (err) {
+      console.error("[Direct Homework Submit Error]:", err);
+      return res.status(500).json({ error: "server_error", message: "Wyst\u0105pi\u0142 b\u0142\u0105d podczas wysy\u0142ania pracy domowej: " + formatErrorString(err) });
+    }
+  });
   app2.get("/api/mailing/status", requireFirebaseAdmin, async (_req, res) => {
     try {
       let dbKey = null;

@@ -550,6 +550,11 @@ export interface SpecialTask {
   teacherRead?: boolean;
   teacherViewedAt?: string;
   studentViewedAt?: string;
+  // Direct Access Link (Magic Link) properties
+  accessToken?: string;
+  accessExpiresAt?: string;
+  accessUrl?: string;
+  submittedViaDirectLink?: boolean;
 }
 
 export interface InboundMessage {

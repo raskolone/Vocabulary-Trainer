@@ -9,6 +9,8 @@ export interface HomeworkConfirmationEmailParams {
   sentences?: Array<any>;
   customNote?: string;
   appUrl?: string;
+  isDirectLink?: boolean;
+  expiresAt?: string;
   unsubscribeUrl?: string;
 }
 
@@ -35,7 +37,8 @@ const plural = (n: number, one: string, few: string, many: string): string => {
 
 /**
  * Buduje spersonalizowaną wiadomość e-mail o nowej pracy domowej
- * z prostą informacją o przypisanym zadaniu (bez szczegółowej listy zdań)
+ * z prostą informacją o przypisanym zadaniu, unikalnym linkiem bezpośrednim
+ * (Magic Link z limitem ważności bez wymogu logowania)
  * oraz wizytówką lektora w stopce zgodnie ze wzorem.
  */
 export function buildHomeworkConfirmationEmail(params: HomeworkConfirmationEmailParams): {
@@ -52,10 +55,13 @@ export function buildHomeworkConfirmationEmail(params: HomeworkConfirmationEmail
     assignedBy = 'Maciej Wyrozumski',
     customNote,
     appUrl = 'https://app.maciej.pro',
+    isDirectLink,
+    expiresAt,
     unsubscribeUrl,
   } = params;
 
   const due = formatDate(dueDate);
+  const expiresFormatted = formatDate(expiresAt);
   const greeting = formatPolishGreeting(studentName);
 
   const cleanTitle = title.trim() || 'Praca domowa';
@@ -80,6 +86,7 @@ export function buildHomeworkConfirmationEmail(params: HomeworkConfirmationEmail
   const metaRows = [
     ...(due ? [['Termin wykonania', due]] : []),
     ...(assignedBy ? [['Przypisane przez', assignedBy]] : []),
+    ...(expiresFormatted ? [['Ważność linku', expiresFormatted]] : []),
   ];
 
   const metaHtml = metaRows.length > 0
@@ -95,13 +102,23 @@ export function buildHomeworkConfirmationEmail(params: HomeworkConfirmationEmail
        </div>`
     : '';
 
+  const isDirect = Boolean(isDirectLink || (appUrl && (appUrl.includes('/hw') || appUrl.includes('token='))));
+  const buttonLabel = isDirect ? 'Wykonaj zadanie teraz (bez logowania) →' : 'Otwórz zadanie w aplikacji →';
+
+  const directHintHtml = isDirect
+    ? `<p style="margin:10px 0 0;font-size:12px;color:#64748b;line-height:1.4;text-align:center;">
+         🔒 Link jest unikalny i ${expiresFormatted ? `ważny do <strong>${escapeHtml(expiresFormatted)}</strong>` : 'aktywny'}. Nie musisz się logować — po odesłaniu praca automatycznie zapisze się w Twoim profilu kursanta.
+       </p>`
+    : '';
+
   const buttonHtml = appUrl
     ? `<div style="margin:26px 0 0;text-align:center;">
          <a href="${escapeHtml(appUrl)}"
             style="display:inline-block;background:#0d9488;background:linear-gradient(135deg, #0d9488 0%, #0f766e 100%);color:#ffffff;text-decoration:none;
-                   padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;box-shadow:0 4px 12px rgba(13, 148, 136, 0.25);">
-           Otwórz zadanie w aplikacji →
+                   padding:15px 32px;border-radius:12px;font-size:15px;font-weight:700;box-shadow:0 4px 14px rgba(13, 148, 136, 0.3);">
+           ${escapeHtml(buttonLabel)}
          </a>
+         ${directHintHtml}
        </div>`
     : '';
 
@@ -210,7 +227,9 @@ export function buildHomeworkConfirmationEmail(params: HomeworkConfirmationEmail
     instructions ? `\nWskazówki lektora: ${instructions}` : null,
     customNote ? `\nWiadomość od lektora: ${customNote}` : null,
     '',
-    `Otwórz zadanie w aplikacji: ${appUrl}`,
+    isDirect
+      ? `Wykonaj zadanie teraz (bez logowania): ${appUrl}${expiresFormatted ? `\n(Link jest unikalny i ważny do: ${expiresFormatted})` : ''}`
+      : `Otwórz zadanie w aplikacji: ${appUrl}`,
     unsubscribeUrl ? `Wypisz się z powiadomień: ${unsubscribeUrl}` : null,
     '',
     '—',

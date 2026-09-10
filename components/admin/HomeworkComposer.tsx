@@ -232,6 +232,11 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
         ? `Praca domowa: ${sourceLabel}`
         : 'Praca domowa';
 
+      const accessToken = 'hw_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+      const accessExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://app.maciej.pro';
+      const accessUrl = `${origin}/hw?token=${accessToken}`;
+
       const taskPayload = {
         ...taskOwnerFields(studentId),
         studentName: student ? studentLabel(student) : 'Kursant',
@@ -252,6 +257,9 @@ const HomeworkComposer: React.FC<HomeworkComposerProps> = ({ initialStudentId, o
         manualEmailConfirmationRequired: true,
         skipAutoEmail: true,
         emailNotificationSent: false,
+        accessToken,
+        accessExpiresAt,
+        accessUrl,
       };
 
       const docRef = await addDoc(collection(db, 'specialTasks'), taskPayload);
